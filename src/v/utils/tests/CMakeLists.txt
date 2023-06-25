@@ -1,3 +1,4 @@
+set(HANDLE_SIGTERM_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/handle-sigterm.sh")
 
 rp_test(
   UNIT_TEST
@@ -7,6 +8,7 @@ rp_test(
     delta_for_test.cc
     directory_walker_test.cc
     expiring_promise_test.cc
+    external_process_test.cpp
     input_stream_fanout_test.cc
     object_pool_test.cc
     outcome_utils_test.cc
@@ -20,6 +22,8 @@ rp_test(
   LIBRARIES v::seastar_testing_main v::utils v::bytes absl::flat_hash_set
   ARGS "-- -c 1"
   LABELS utils
+  ENV
+    "HANDLE_SIGTERM_SCRIPT=${HANDLE_SIGTERM_SCRIPT}"
 )
 
 rp_test(
