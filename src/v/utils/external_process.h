@@ -7,6 +7,8 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0
 
+#pragma once
+
 #include "gate_guard.h"
 #include "outcome.h"
 #include "seastarx.h"
@@ -142,19 +144,19 @@ public:
       typename Clock = ss::steady_clock_type,
       typename Rep,
       typename Period>
-    ss::future<external_process_errc>
+    ss::future<std::error_code>
     terminate(std::chrono::duration<Rep, Period> timeout) {
         gate_guard g{_gate};
         if (!_process) {
-            return ss::make_ready_future<external_process_errc>(
-              external_process_errc::process_does_not_exist);
+            return ss::make_ready_future<std::error_code>(
+              make_error_code(external_process_errc::process_does_not_exist));
         }
 
         try {
             _process->terminate();
         } catch (...) {
-            return ss::make_ready_future<external_process_errc>(
-              external_process_errc::process_does_not_exist);
+            return ss::make_ready_future<std::error_code>(
+              make_error_code(external_process_errc::process_does_not_exist));
         }
 
         bool cancel = false;
@@ -171,19 +173,20 @@ public:
                              return ss::sleep(std::chrono::milliseconds{10});
                          }))
                 .then([] {
-                    return ss::make_ready_future<external_process_errc>(
-                      external_process_errc::success);
+                    return ss::make_ready_future<std::error_code>(
+                      make_error_code(external_process_errc::success));
                 })
                 .handle_exception_type(
                   [this, &cancel](const ss::timed_out_error&) {
                       cancel = true;
                       try {
                           _process->kill();
-                          return ss::make_ready_future<external_process_errc>(
-                            external_process_errc::success);
+                          return ss::make_ready_future<std::error_code>(
+                            make_error_code(external_process_errc::success));
                       } catch (...) {
-                          return ss::make_ready_future<external_process_errc>(
-                            external_process_errc::process_does_not_exist);
+                          return ss::make_ready_future<std::error_code>(
+                            make_error_code(
+                              external_process_errc::process_does_not_exist));
                       }
                   });
           });
