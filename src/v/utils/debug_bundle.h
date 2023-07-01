@@ -11,16 +11,24 @@
 
 #include "seastarx.h"
 #include "utils/external_process.h"
+#include "utils/fragmented_vector.h"
 #include "utils/gate_guard.h"
 #include "utils/human.h"
 
 #include <seastar/core/sharded.hh>
+#include <seastar/core/timer.hh>
+
+#include <absl/container/flat_hash_map.h>
 
 namespace debug_bundle {
 
 enum class errc : int {
     success = 0,
     debug_bundle_process_running,
+    debug_bundle_process_not_running,
+    debug_bundle_file_does_not_exist,
+    debug_bundle_stop_in_process,
+    system_error,
 };
 
 struct errc_category final : public std::error_category {
@@ -32,6 +40,14 @@ struct errc_category final : public std::error_category {
             return "success";
         case errc::debug_bundle_process_running:
             return "debug_bundle_process_running";
+        case errc::debug_bundle_process_not_running:
+            return "debug_bundle_process_not_running";
+        case errc::debug_bundle_file_does_not_exist:
+            return "debug_bundle_file_does_not_exist";
+        case errc::debug_bundle_stop_in_process:
+            return "debug_bundle_stop_in_process";
+        case errc::system_error:
+            return "system_error";
         default:
             return "debug_bundle::errc::unknown";
         }
@@ -51,6 +67,16 @@ static constexpr ss::shard_id debug_bundle_shard_id = 0;
 
 class debug_bundle final : public ss::peering_sharded_service<debug_bundle> {
 public:
+    struct debug_bundle_credentials {
+        ss::sstring username;
+        ss::sstring password;
+        ss::sstring mechanism;
+        bool use_tls;
+
+        void operator()(std::vector<ss::sstring>& param_vector) const noexcept;
+        friend std::ostream&
+        operator<<(std::ostream&, const debug_bundle_credentials&);
+    };
     struct debug_bundle_parameters {
         std::optional<std::chrono::time_point<std::chrono::system_clock>>
           logs_since;
@@ -58,16 +84,11 @@ public:
           logs_until;
         std::optional<human::golang_bytes> logs_size_limit;
         std::optional<std::chrono::seconds> metrics_interval;
+        std::optional<debug_bundle_credentials> credentials;
 
-        void operator()(std::vector<ss::sstring> & param_vector) const noexcept;
-    };
-    struct debug_bundle_credentials {
-        ss::sstring username;
-        ss::sstring password;
-        ss::sstring mechanism;
-        bool use_tls;
-
-        void operator()(std::vector<ss::sstring> & param_vector) const noexcept;
+        void operator()(std::vector<ss::sstring>& param_vector) const noexcept;
+        friend std::ostream&
+        operator<<(std::ostream&, const debug_bundle_parameters&);
     };
     debug_bundle(
       std::filesystem::path output_directory,
@@ -81,13 +102,27 @@ public:
           [](debug_bundle& b) { return b._rpk_process.has_value(); });
     }
 
-    ss::future<> create_debug_bundle(
-      debug_bundle_parameters bundle_parameters,
-      std::optional<debug_bundle_credentials> credentials);
+    ss::future<ss::sstring>
+    create_debug_bundle(debug_bundle_parameters bundle_parameters);
 
     ss::future<> start();
+    ss::future<> stop();
+
+    ss::future<errc> stop_debug_bundle();
+
+    ss::future<fragmented_vector<ss::sstring>> bundles();
+
+    ss::future<errc> delete_bundle(ss::sstring bundle_name);
+
+    const std::filesystem::path& output_directory() const noexcept {
+        return _output_directory;
+    }
 
 private:
+    /**
+     * stream handler used by seastar's process to consume
+     * stdout/stderr stream
+     */
     class debug_bundle_stream_handler final {
         using consumption_result_type =
           typename ss::input_stream<char>::consumption_result_type;
@@ -98,7 +133,7 @@ private:
     public:
         explicit debug_bundle_stream_handler(
           bool isstdout,
-          std::optional<std::reference_wrapper<std::vector<ss::sstring>>>
+          std::optional<std::reference_wrapper<fragmented_vector<ss::sstring>>>
             string_buffer
           = std::nullopt)
           : _isstdout(isstdout)
@@ -108,22 +143,26 @@ private:
 
     private:
         bool _isstdout;
-        std::optional<std::reference_wrapper<std::vector<ss::sstring>>>
+        std::optional<std::reference_wrapper<fragmented_vector<ss::sstring>>>
           _string_buffer;
     };
 
     static ss::sstring generate_file_name() noexcept;
     std::vector<ss::sstring> generate_rpk_parameters(
-      const std::filesystem::path & output_path,
-      const debug_bundle_parameters& bundle_parameters,
-      const std::optional<debug_bundle_credentials>& credentials)
-      const noexcept;
+      const std::filesystem::path& output_path,
+      const debug_bundle_parameters& bundle_parameters) const noexcept;
+
+    static ss::sstring get_env_variable(const char* env);
+
+    ss::future<errc> delete_bundle_no_gate(ss::sstring bundle_name);
 
     std::filesystem::path _output_directory;
     std::filesystem::path _rpk_binary_path;
     ss::sstring _home_dir;
     ss::sstring _path_val;
     std::optional<external_process<debug_bundle_stream_handler>> _rpk_process;
+    absl::flat_hash_map<ss::sstring, ss::steady_clock_type::time_point>
+      _stored_bundles;
     ss::gate _gate;
 };
 
