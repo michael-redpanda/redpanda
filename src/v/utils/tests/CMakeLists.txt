@@ -1,4 +1,5 @@
 set(HANDLE_SIGTERM_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/handle-sigterm.sh")
+set(RPK_SHIM_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/rpk-shim.sh")
 
 rp_test(
   UNIT_TEST
@@ -24,6 +25,7 @@ rp_test(
   LABELS utils
   ENV
     "HANDLE_SIGTERM_SCRIPT=${HANDLE_SIGTERM_SCRIPT}"
+    "RPK_SHIM_SCRIPT=${RPK_SHIM_SCRIPT}"
 )
 
 rp_test(
