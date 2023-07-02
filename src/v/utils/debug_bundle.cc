@@ -34,7 +34,7 @@
 
 namespace {
 ss::logger logger{"debug_bundle"};
-constexpr auto syslog_time_format_string = "{:%Y-%m-%d %H:%M:%S}";
+constexpr auto syslog_time_format_string = "\"{:%Y-%m-%d %H:%M:%S}\"";
 } // namespace
 
 namespace debug_bundle {

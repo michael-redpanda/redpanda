@@ -43,6 +43,7 @@ rp_test(
   SOURCES
     bottomless_token_bucket_test.cc
     constexpr_string_switch.cc
+    debug_bundle_params_test.cc
     filtered_lower_bound_test.cc
     fragmented_vector_test.cc
     human_test.cc
