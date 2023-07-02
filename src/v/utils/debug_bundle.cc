@@ -18,6 +18,8 @@
 #include "vlog.h"
 
 #include <seastar/core/future.hh>
+#include <seastar/core/loop.hh>
+#include <seastar/core/lowres_clock.hh>
 #include <seastar/core/seastar.hh>
 #include <seastar/core/smp.hh>
 #include <seastar/core/sstring.hh>
@@ -28,6 +30,7 @@
 
 #include <cstdlib>
 #include <exception>
+#include <system_error>
 
 namespace {
 ss::logger logger{"debug_bundle"};
@@ -217,7 +220,7 @@ ss::future<ss::sstring> debug_bundle::create_debug_bundle(
           e.what());
     }
 
-    _stored_bundles[final_path.string()] = ss::steady_clock_type::now();
+    _stored_bundles[final_path.string()] = ss::lowres_clock::now();
 
     co_return final_path.string();
 }
@@ -290,6 +293,22 @@ ss::sstring debug_bundle::get_env_variable(const char* env) {
     return fmt::format("{}={}", env, env_var);
 }
 
+void debug_bundle::arm_debug_bundle_cleanup_timer() {
+    ss::lowres_clock::time_point arm_until
+      = _debug_bundle_cleanup_last_ran + get_debug_bundle_cleanup_period();
+
+    _debug_bundle_cleanup_timer.arm(arm_until);
+}
+
+ss::lowres_clock::duration
+debug_bundle::get_debug_bundle_cleanup_period() const noexcept {
+    return _debug_bundle_cleanup_period;
+}
+
+ss::lowres_clock::duration debug_bundle::get_debug_bundle_ttl() const noexcept {
+    return _debug_bundle_ttl;
+}
+
 ss::future<fragmented_vector<ss::sstring>> debug_bundle::bundles() {
     gate_guard g{_gate};
 
@@ -306,13 +325,15 @@ ss::future<fragmented_vector<ss::sstring>> debug_bundle::bundles() {
     co_return rv;
 }
 
-ss::future<errc> debug_bundle::delete_bundle(ss::sstring bundle_name) {
+ss::future<std::error_code>
+debug_bundle::delete_bundle(ss::sstring bundle_name) {
     gate_guard g{_gate};
 
     co_return co_await delete_bundle_no_gate(bundle_name);
 }
 
-ss::future<errc> debug_bundle::delete_bundle_no_gate(ss::sstring bundle_name) {
+ss::future<std::error_code>
+debug_bundle::delete_bundle_no_gate(ss::sstring bundle_name) {
     auto iter = _stored_bundles.find(bundle_name);
 
     if (iter != _stored_bundles.end()) {
@@ -328,9 +349,29 @@ ss::future<errc> debug_bundle::delete_bundle_no_gate(ss::sstring bundle_name) {
 
         _stored_bundles.erase(iter);
 
-        co_return err;
+        co_return make_error_code(err);
     } else {
-        co_return errc::debug_bundle_file_does_not_exist;
+        co_return make_error_code(errc::debug_bundle_file_does_not_exist);
+    }
+}
+
+ss::future<> debug_bundle::debug_bundle_cleanup() {
+    _debug_bundle_cleanup_last_ran = ss::lowres_clock::now();
+
+    auto last_allowed_time = ss::lowres_clock::now() + get_debug_bundle_ttl();
+
+    for (auto it = _stored_bundles.begin(); it != _stored_bundles.end();) {
+        if (it->second + get_debug_bundle_ttl() > last_allowed_time) {
+            vlog(logger.debug, "Debug bundle at {} has expired", it->first);
+            auto err = co_await delete_bundle_no_gate(it->first);
+            if (err != errc::success) {
+                vlog(logger.warn, "Failed to erase {}: {}", it->first, err);
+            }
+
+            _stored_bundles.erase(it++);
+        } else {
+            ++it;
+        }
     }
 }
 
@@ -339,11 +380,20 @@ ss::future<> debug_bundle::start() {
     _home_dir = debug_bundle::get_env_variable("HOME");
     _path_val = debug_bundle::get_env_variable("PATH");
 
+    if (ss::this_shard_id() == debug_bundle_shard_id) {
+        _debug_bundle_cleanup_timer.arm(
+          ss::lowres_clock::now() + get_debug_bundle_cleanup_period());
+    }
+
     return ss::make_ready_future<>();
 }
 
 ss::future<> debug_bundle::stop() {
     vlog(logger.debug, "stopping debug bundle service");
+
+    if (ss::this_shard_id() == debug_bundle_shard_id) {
+        _debug_bundle_cleanup_timer.cancel();
+    }
 
     co_await _gate.close();
 

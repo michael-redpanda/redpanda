@@ -10,12 +10,15 @@
 #pragma once
 
 #include "seastarx.h"
+#include "ssx/future-util.h"
 #include "utils/external_process.h"
 #include "utils/fragmented_vector.h"
 #include "utils/gate_guard.h"
 #include "utils/human.h"
 
+#include <seastar/core/lowres_clock.hh>
 #include <seastar/core/sharded.hh>
+#include <seastar/core/smp.hh>
 #include <seastar/core/timer.hh>
 
 #include <absl/container/flat_hash_map.h>
@@ -92,9 +95,22 @@ public:
     };
     debug_bundle(
       std::filesystem::path output_directory,
-      std::filesystem::path rpk_binary_path)
+      std::filesystem::path rpk_binary_path,
+      std::chrono::seconds debug_bundle_cleanup_period,
+      std::chrono::seconds debug_bundle_ttl)
       : _output_directory(std::move(output_directory))
-      , _rpk_binary_path(std::move(rpk_binary_path)) {}
+      , _rpk_binary_path(std::move(rpk_binary_path))
+      , _debug_bundle_ttl(debug_bundle_ttl)
+      , _debug_bundle_cleanup_period(debug_bundle_cleanup_period) {
+        if (ss::this_shard_id() == debug_bundle_shard_id) {
+            _debug_bundle_cleanup_timer.set_callback([this] {
+                ssx::spawn_with_gate(_gate, [this] {
+                    return debug_bundle_cleanup().finally(
+                      [this] { arm_debug_bundle_cleanup_timer(); });
+                });
+            });
+        }
+    }
 
     ss::future<bool> is_running() noexcept {
         co_return co_await container().invoke_on(
@@ -112,7 +128,7 @@ public:
 
     ss::future<fragmented_vector<ss::sstring>> bundles();
 
-    ss::future<errc> delete_bundle(ss::sstring bundle_name);
+    ss::future<std::error_code> delete_bundle(ss::sstring bundle_name);
 
     const std::filesystem::path& output_directory() const noexcept {
         return _output_directory;
@@ -147,21 +163,29 @@ private:
           _string_buffer;
     };
 
+    void arm_debug_bundle_cleanup_timer();
     static ss::sstring generate_file_name() noexcept;
     std::vector<ss::sstring> generate_rpk_parameters(
       const std::filesystem::path& output_path,
       const debug_bundle_parameters& bundle_parameters) const noexcept;
 
+    ss::future<> debug_bundle_cleanup();
+    ss::lowres_clock::duration get_debug_bundle_cleanup_period() const noexcept;
+    ss::lowres_clock::duration get_debug_bundle_ttl() const noexcept;
     static ss::sstring get_env_variable(const char* env);
 
-    ss::future<errc> delete_bundle_no_gate(ss::sstring bundle_name);
+    ss::future<std::error_code> delete_bundle_no_gate(ss::sstring bundle_name);
 
     std::filesystem::path _output_directory;
     std::filesystem::path _rpk_binary_path;
+    std::chrono::seconds _debug_bundle_ttl;
+    std::chrono::seconds _debug_bundle_cleanup_period;
+    ss::lowres_clock::time_point _debug_bundle_cleanup_last_ran;
+    ss::timer<ss::lowres_clock> _debug_bundle_cleanup_timer;
     ss::sstring _home_dir;
     ss::sstring _path_val;
     std::optional<external_process<debug_bundle_stream_handler>> _rpk_process;
-    absl::flat_hash_map<ss::sstring, ss::steady_clock_type::time_point>
+    absl::flat_hash_map<ss::sstring, ss::lowres_clock::time_point>
       _stored_bundles;
     ss::gate _gate;
 };
