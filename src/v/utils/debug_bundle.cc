@@ -225,14 +225,14 @@ ss::future<ss::sstring> debug_bundle::create_debug_bundle(
     co_return final_path.string();
 }
 
-ss::future<errc> debug_bundle::stop_debug_bundle() {
+ss::future<std::error_code> debug_bundle::stop_debug_bundle() {
     using namespace std::chrono_literals;
     static thread_local mutex stop_bundle_mutex;
     gate_guard g{_gate};
 
     auto try_result = stop_bundle_mutex.try_get_units();
     if (!try_result) {
-        co_return errc::debug_bundle_stop_in_process;
+        co_return make_error_code(errc::debug_bundle_stop_in_process);
     }
 
     if (ss::this_shard_id() != debug_bundle_shard_id) {
@@ -245,14 +245,14 @@ ss::future<errc> debug_bundle::stop_debug_bundle() {
         vlog(logger.info, "Attempting to halt rpk bundle process");
         auto halt_result = co_await _rpk_process->terminate(5s);
         if (halt_result) {
-            co_return errc::debug_bundle_process_not_running;
+            co_return make_error_code(errc::debug_bundle_process_not_running);
         }
     } else {
-        co_return errc::debug_bundle_process_running;
+        co_return make_error_code(errc::debug_bundle_process_running);
     }
 
     vlog(logger.info, "Successfully halted rpk debug bundle process");
-    co_return errc::success;
+    co_return make_error_code(errc::success);
 }
 
 ss::sstring debug_bundle::generate_file_name() noexcept {
@@ -358,21 +358,42 @@ debug_bundle::delete_bundle_no_gate(ss::sstring bundle_name) {
 ss::future<> debug_bundle::debug_bundle_cleanup() {
     _debug_bundle_cleanup_last_ran = ss::lowres_clock::now();
 
-    auto last_allowed_time = ss::lowres_clock::now() + get_debug_bundle_ttl();
+    return ss::do_with(
+      fragmented_vector<ss::sstring>{},
+      [this](fragmented_vector<ss::sstring>& keys_to_remove) {
+          return ss::do_for_each(
+                   _stored_bundles,
+                   [this, &keys_to_remove](auto& item) {
+                       if (
+                         item.second + get_debug_bundle_ttl()
+                         > ss::lowres_clock::now()) {
+                           vlog(
+                             logger.debug,
+                             "Debug bundle at {} has expired",
+                             item.first);
+                           return delete_bundle_no_gate(item.first)
+                             .then(
+                               [&item, &keys_to_remove](std::error_code err) {
+                                   if (err != errc::success) {
+                                       vlog(
+                                         logger.warn,
+                                         "Failed to erase {}: {}",
+                                         item.first,
+                                         err);
+                                   }
+                                   keys_to_remove.emplace_back(item.first);
+                                   return ss::make_ready_future();
+                               });
+                       }
 
-    for (auto it = _stored_bundles.begin(); it != _stored_bundles.end();) {
-        if (it->second + get_debug_bundle_ttl() > last_allowed_time) {
-            vlog(logger.debug, "Debug bundle at {} has expired", it->first);
-            auto err = co_await delete_bundle_no_gate(it->first);
-            if (err != errc::success) {
-                vlog(logger.warn, "Failed to erase {}: {}", it->first, err);
-            }
-
-            _stored_bundles.erase(it++);
-        } else {
-            ++it;
-        }
-    }
+                       return ss::make_ready_future();
+                   })
+            .then([this, &keys_to_remove] {
+                for (auto& k : keys_to_remove) {
+                    _stored_bundles.erase(k);
+                }
+            });
+      });
 }
 
 ss::future<> debug_bundle::start() {

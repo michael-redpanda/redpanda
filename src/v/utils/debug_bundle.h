@@ -68,7 +68,7 @@ inline std::error_code make_error_code(errc e) noexcept {
 
 static constexpr ss::shard_id debug_bundle_shard_id = 0;
 
-class debug_bundle final : public ss::peering_sharded_service<debug_bundle> {
+class debug_bundle : public ss::peering_sharded_service<debug_bundle> {
 public:
     struct debug_bundle_credentials {
         ss::sstring username;
@@ -109,6 +109,8 @@ public:
                       [this] { arm_debug_bundle_cleanup_timer(); });
                 });
             });
+
+            arm_debug_bundle_cleanup_timer();
         }
     }
 
@@ -124,7 +126,7 @@ public:
     ss::future<> start();
     ss::future<> stop();
 
-    ss::future<errc> stop_debug_bundle();
+    ss::future<std::error_code> stop_debug_bundle();
 
     ss::future<fragmented_vector<ss::sstring>> bundles();
 

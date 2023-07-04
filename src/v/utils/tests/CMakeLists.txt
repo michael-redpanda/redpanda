@@ -6,6 +6,7 @@ rp_test(
   BINARY_NAME utils_single_thread
   SOURCES
     base64_test.cc
+    debug_bundle_test.cc
     delta_for_test.cc
     directory_walker_test.cc
     expiring_promise_test.cc
