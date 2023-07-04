@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "config/property.h"
 #include "seastarx.h"
 #include "ssx/future-util.h"
 #include "utils/external_process.h"
@@ -94,14 +95,20 @@ public:
         operator<<(std::ostream&, const debug_bundle_parameters&);
     };
     debug_bundle(
-      std::filesystem::path output_directory,
-      std::filesystem::path rpk_binary_path,
-      std::chrono::seconds debug_bundle_cleanup_period,
-      std::chrono::seconds debug_bundle_ttl)
+      config::binding<std::filesystem::path> output_directory,
+      config::binding<std::filesystem::path> rpk_binary_path,
+      config::binding<std::chrono::seconds> debug_bundle_cleanup_period,
+      config::binding<std::chrono::seconds> debug_bundle_ttl)
       : _output_directory(std::move(output_directory))
       , _rpk_binary_path(std::move(rpk_binary_path))
       , _debug_bundle_ttl(debug_bundle_ttl)
       , _debug_bundle_cleanup_period(debug_bundle_cleanup_period) {
+        _debug_bundle_cleanup_period.watch([this] {
+            if (_debug_bundle_cleanup_timer.cancel()) {
+                arm_debug_bundle_cleanup_timer();
+            }
+        });
+
         if (ss::this_shard_id() == debug_bundle_shard_id) {
             _debug_bundle_cleanup_timer.set_callback([this] {
                 ssx::spawn_with_gate(_gate, [this] {
@@ -133,7 +140,7 @@ public:
     ss::future<std::error_code> delete_bundle(ss::sstring bundle_name);
 
     const std::filesystem::path& output_directory() const noexcept {
-        return _output_directory;
+        return _output_directory();
     }
 
 private:
@@ -178,10 +185,10 @@ private:
 
     ss::future<std::error_code> delete_bundle_no_gate(ss::sstring bundle_name);
 
-    std::filesystem::path _output_directory;
-    std::filesystem::path _rpk_binary_path;
-    std::chrono::seconds _debug_bundle_ttl;
-    std::chrono::seconds _debug_bundle_cleanup_period;
+    config::binding<std::filesystem::path> _output_directory;
+    config::binding<std::filesystem::path> _rpk_binary_path;
+    config::binding<std::chrono::seconds> _debug_bundle_ttl;
+    config::binding<std::chrono::seconds> _debug_bundle_cleanup_period;
     ss::lowres_clock::time_point _debug_bundle_cleanup_last_ran;
     ss::timer<ss::lowres_clock> _debug_bundle_cleanup_timer;
     ss::sstring _home_dir;

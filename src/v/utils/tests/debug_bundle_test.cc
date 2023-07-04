@@ -42,10 +42,12 @@ SEASTAR_THREAD_TEST_CASE(rpk_debug_bundle_run) {
 
     bundle
       .start(
-        std::filesystem::path(dir),
-        std::filesystem::path(script_path),
-        debug_bundle_cleanup_period,
-        debug_bundle_ttl)
+        config::mock_binding<std::filesystem::path>(std::filesystem::path{dir}),
+        config::mock_binding<std::filesystem::path>(script_path),
+        config::mock_binding<std::chrono::seconds>(
+          std::chrono::seconds{debug_bundle_cleanup_period}),
+        config::mock_binding<std::chrono::seconds>(
+          std::chrono::seconds{debug_bundle_ttl}))
       .get();
 
     auto result = bundle.local().create_debug_bundle(
@@ -76,10 +78,12 @@ SEASTAR_THREAD_TEST_CASE(rpk_debug_bundle_interrupt) {
 
     bundle
       .start(
-        std::filesystem::path(dir),
-        std::filesystem::path(script_path),
-        debug_bundle_cleanup_period,
-        debug_bundle_ttl)
+        config::mock_binding<std::filesystem::path>(std::filesystem::path{dir}),
+        config::mock_binding<std::filesystem::path>(script_path),
+        config::mock_binding<std::chrono::seconds>(
+          std::chrono::seconds{debug_bundle_cleanup_period}),
+        config::mock_binding<std::chrono::seconds>(
+          std::chrono::seconds{debug_bundle_ttl}))
       .get();
 
     auto result = bundle.local().create_debug_bundle(
@@ -115,10 +119,12 @@ SEASTAR_THREAD_TEST_CASE(rpk_debug_bundle_erase) {
 
     bundle
       .start(
-        std::filesystem::path(dir),
-        std::filesystem::path(script_path),
-        debug_bundle_cleanup_period,
-        debug_bundle_ttl)
+        config::mock_binding<std::filesystem::path>(std::filesystem::path{dir}),
+        config::mock_binding<std::filesystem::path>(script_path),
+        config::mock_binding<std::chrono::seconds>(
+          std::chrono::seconds{debug_bundle_cleanup_period}),
+        config::mock_binding<std::chrono::seconds>(
+          std::chrono::seconds{debug_bundle_ttl}))
       .get();
 
     auto result = bundle.local().create_debug_bundle(

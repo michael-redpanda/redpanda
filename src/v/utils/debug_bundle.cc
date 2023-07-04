@@ -174,7 +174,7 @@ ss::future<ss::sstring> debug_bundle::create_debug_bundle(
     auto file_name = generate_file_name();
     auto temporary_path = std::filesystem::path("/tmp")
                           / std::filesystem::path(file_name);
-    auto final_path = _output_directory / std::filesystem::path(file_name);
+    auto final_path = _output_directory() / std::filesystem::path(file_name);
 
     auto params = generate_rpk_parameters(temporary_path, bundle_parameters);
 
@@ -211,13 +211,10 @@ ss::future<ss::sstring> debug_bundle::create_debug_bundle(
         vlog(logger.error, "Failed to sync '/tmp': {}", e.what());
     }
     try {
-        co_await ss::sync_directory(_output_directory.c_str());
+        co_await ss::sync_directory(_output_directory().string());
     } catch (std::exception& e) {
         vlog(
-          logger.error,
-          "Failed to sync {}: {}",
-          _output_directory.string(),
-          e.what());
+          logger.error, "Failed to sync {}: {}", _output_directory(), e.what());
     }
 
     _stored_bundles[final_path.string()] = ss::lowres_clock::now();
@@ -266,11 +263,11 @@ std::vector<ss::sstring> debug_bundle::generate_rpk_parameters(
     vlog(
       logger.trace,
       "{} debug bundle --output {}{}",
-      _rpk_binary_path.string(),
+      _rpk_binary_path(),
       output_path.string(),
       bundle_parameters);
     std::vector<ss::sstring> args;
-    args.emplace_back(_rpk_binary_path.string());
+    args.emplace_back(_rpk_binary_path().string());
     args.emplace_back("debug");
     args.emplace_back("bundle");
     args.emplace_back("--output");
@@ -302,11 +299,16 @@ void debug_bundle::arm_debug_bundle_cleanup_timer() {
 
 ss::lowres_clock::duration
 debug_bundle::get_debug_bundle_cleanup_period() const noexcept {
-    return _debug_bundle_cleanup_period;
+    return _debug_bundle_cleanup_period();
 }
 
 ss::lowres_clock::duration debug_bundle::get_debug_bundle_ttl() const noexcept {
-    return _debug_bundle_ttl;
+    const auto v = _debug_bundle_ttl();
+    if (v == std::chrono::seconds::zero()) {
+        return std::chrono::duration_cast<std::chrono::seconds>(
+          ss::lowres_clock::duration::max() / 2);
+    }
+    return v;
 }
 
 ss::future<fragmented_vector<ss::sstring>> debug_bundle::bundles() {
@@ -423,6 +425,6 @@ ss::future<> debug_bundle::stop() {
         return delete_bundle_no_gate(item.first).discard_result();
     });
 
-    co_await ss::sync_directory(_output_directory.string()).discard_result();
+    co_await ss::sync_directory(_output_directory().string()).discard_result();
 }
 } // namespace debug_bundle
