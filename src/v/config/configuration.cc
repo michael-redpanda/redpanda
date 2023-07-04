@@ -2255,7 +2255,31 @@ configuration::configuration()
       "The sample period for the CPU profiler",
       {.needs_restart = needs_restart::no, .visibility = visibility::user},
       100ms,
-      {.min = 1ms}) {}
+      {.min = 1ms})
+  , debug_bundle_output_directory(
+      *this,
+      "debug_bundle_output_directory",
+      "directory to place generated debug bundles",
+      {.needs_restart = needs_restart::no, .visibility = visibility::user},
+      "/var/lib/redpanda/data")
+  , rpk_binary_path(
+      *this,
+      "rpk_binary_path",
+      "path to the rpk binary",
+      {.needs_restart = needs_restart::no, .visibility = visibility::user},
+      "/usr/bin/rpk")
+  , debug_bundle_cleanup_period_sec(
+      *this,
+      "debug_bundle_cleanup_period_sec",
+      "how often to run the debug bundle cleanup task",
+      {.needs_restart = needs_restart::no, .visibility = visibility::user},
+      60s)
+  , debug_bundle_ttl_sec(
+      *this,
+      "debug_bundle_ttl_sec",
+      "how long to keep generated debug bundles (0 for infinite)",
+      {.needs_restart = needs_restart::no, .visibility = visibility::user},
+      std::chrono::seconds::zero()) {}
 
 configuration::error_map_t configuration::load(const YAML::Node& root_node) {
     if (!root_node["redpanda"]) {

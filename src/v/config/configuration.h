@@ -451,6 +451,12 @@ struct configuration final : public config_store {
     property<bool> cpu_profiler_enabled;
     bounded_property<std::chrono::milliseconds> cpu_profiler_sample_period_ms;
 
+    // debug bundle controls
+    property<std::filesystem::path> debug_bundle_output_directory;
+    property<std::filesystem::path> rpk_binary_path;
+    property<std::chrono::seconds> debug_bundle_cleanup_period_sec;
+    property<std::chrono::seconds> debug_bundle_ttl_sec;
+
     configuration();
 
     error_map_t load(const YAML::Node& root_node);
