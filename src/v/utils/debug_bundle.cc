@@ -24,6 +24,7 @@
 #include <seastar/core/smp.hh>
 #include <seastar/core/sstring.hh>
 #include <seastar/core/timer.hh>
+#include <seastar/util/defer.hh>
 
 #include <fmt/chrono.h>
 #include <fmt/core.h>
@@ -144,7 +145,7 @@ debug_bundle::debug_bundle_stream_handler::operator()(
       ss::continue_consuming{});
 }
 
-ss::future<ss::sstring> debug_bundle::create_debug_bundle(
+ss::future<result<ss::sstring>> debug_bundle::create_debug_bundle(
   debug_bundle::debug_bundle::debug_bundle_parameters bundle_parameters) {
     // thread local mutex to prevent another shard from trying to fire off a new
     // bundle process while one is in action
@@ -152,8 +153,8 @@ ss::future<ss::sstring> debug_bundle::create_debug_bundle(
     gate_guard g{_gate};
     auto try_result = create_bundle_mutex.try_get_units();
     if (!try_result) {
-        throw std::system_error(
-          make_error_code(errc::debug_bundle_process_running));
+        vlog(logger.info, "Bundle creation already running");
+        co_return make_error_code(errc::debug_bundle_process_running);
     }
 
     if (ss::this_shard_id() != debug_bundle_shard_id) {
@@ -167,8 +168,11 @@ ss::future<ss::sstring> debug_bundle::create_debug_bundle(
     }
 
     if (co_await is_running()) {
-        throw std::system_error(
-          make_error_code(errc::debug_bundle_process_running));
+        vlog(
+          logger.info,
+          "Bundle creation already running on shard {}",
+          debug_bundle_shard_id);
+        co_return make_error_code(errc::debug_bundle_process_running);
     }
 
     auto file_name = generate_file_name();
@@ -183,16 +187,20 @@ ss::future<ss::sstring> debug_bundle::create_debug_bundle(
     _rpk_process.emplace(
       ::external_process<debug_bundle::debug_bundle_stream_handler>::
         create_external_process(params, env));
+    // auto reset _rpk_process when function exits for any reason
+    ss::deferred_action<std::function<void()>> destroy_rpk_process(
+      [this] { _rpk_process.reset(); });
     vlog(logger.debug, "Starting rpk process");
     try {
         co_await _rpk_process->run();
         vlog(logger.debug, "rpk process exited successfully");
-    } catch (...) {
-        vlog(logger.warn, "rpk process exiting with error");
-        _rpk_process.reset();
-        std::rethrow_exception(std::current_exception());
+    } catch (std::system_error& e) {
+        vlog(logger.warn, "rpk process exited with error code {}", e);
+        co_return e.code();
+    } catch (std::exception& e) {
+        vlog(logger.warn, "rpk process exiting with unknown error {}", e);
+        co_return make_error_code(errc::system_error);
     }
-    _rpk_process.reset();
 
     // now that the debug bundle has been successfully created
     // we need to move it to its new home
@@ -201,7 +209,17 @@ ss::future<ss::sstring> debug_bundle::create_debug_bundle(
       "Moving bundle from {} to {}",
       temporary_path.string(),
       final_path.string());
-    co_await ss::rename_file(temporary_path.c_str(), final_path.c_str());
+    try {
+        co_await ss::rename_file(temporary_path.c_str(), final_path.c_str());
+    } catch (std::exception& e) {
+        vlog(
+          logger.error,
+          "Failed to move {} to {}: {}",
+          temporary_path.c_str(),
+          final_path.c_str(),
+          e.what());
+        co_return make_error_code(errc::system_error);
+    }
 
     // seastar's doc state that the move is not guaranteed to be stable until
     // after the directories are synced
@@ -229,6 +247,7 @@ ss::future<std::error_code> debug_bundle::stop_debug_bundle() {
 
     auto try_result = stop_bundle_mutex.try_get_units();
     if (!try_result) {
+        vlog(logger.debug, "bundle stop process already executing");
         co_return make_error_code(errc::debug_bundle_stop_in_process);
     }
 

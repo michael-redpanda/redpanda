@@ -54,7 +54,9 @@ SEASTAR_THREAD_TEST_CASE(rpk_debug_bundle_run) {
       debug_bundle::debug_bundle::debug_bundle_parameters{});
     ss::sleep(1s).get();
     BOOST_CHECK(bundle.local().is_running().get());
-    auto name = result.get0();
+    auto process_result = result.get0();
+    BOOST_REQUIRE(process_result.has_value());
+    auto name = process_result.value();
     BOOST_CHECK(ss::file_exists(name).get0());
     auto bundles = bundle.local().bundles().get0();
     BOOST_REQUIRE_EQUAL(bundles.size(), 1);
@@ -131,7 +133,9 @@ SEASTAR_THREAD_TEST_CASE(rpk_debug_bundle_erase) {
       debug_bundle::debug_bundle::debug_bundle_parameters{});
     ss::sleep(1s).get();
     BOOST_CHECK(bundle.local().is_running().get());
-    auto name = result.get0();
+    auto process_result = result.get0();
+    BOOST_REQUIRE(process_result.has_value());
+    auto name = process_result.value();
     BOOST_CHECK(ss::file_exists(name).get0());
     auto bundles = bundle.local().bundles().get0();
     BOOST_REQUIRE_EQUAL(bundles.size(), 1);

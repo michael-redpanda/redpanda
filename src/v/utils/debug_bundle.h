@@ -10,6 +10,7 @@
 #pragma once
 
 #include "config/property.h"
+#include "outcome.h"
 #include "seastarx.h"
 #include "ssx/future-util.h"
 #include "utils/external_process.h"
@@ -127,7 +128,7 @@ public:
           [](debug_bundle& b) { return b._rpk_process.has_value(); });
     }
 
-    ss::future<ss::sstring>
+    ss::future<result<ss::sstring>>
     create_debug_bundle(debug_bundle_parameters bundle_parameters);
 
     ss::future<> start();
