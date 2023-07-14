@@ -49,6 +49,7 @@ v_cc_library(
     v::cluster
     v::syschecks
     v::kafka
+    v::kafka_internal
     v::pandaproxy_rest
     v::pandaproxy_schema_registry
     v::migrations

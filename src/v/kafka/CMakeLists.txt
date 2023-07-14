@@ -63,6 +63,7 @@ v_cc_library(
 )
 
 add_subdirectory(client)
+add_subdirectory(internal)
 add_subdirectory(server/tests)
 
 set_source_files_properties(
