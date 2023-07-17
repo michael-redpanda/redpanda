@@ -182,7 +182,7 @@ ss::future<> connection_context::handle_auth_v0(const size_t size) {
 
     sasl_authenticate_response response;
     {
-        auto ctx = request_context(
+        auto ctx = make_request_context(
           shared_from_this(),
           request_header{
             .key = sasl_authenticate_api::key,
@@ -386,7 +386,7 @@ connection_context::dispatch_method_once(request_header hdr, size_t size) {
         co_return;
     }
     auto self = shared_from_this();
-    auto rctx = request_context(
+    auto rctx = make_request_context(
       self, std::move(hdr), std::move(buf), sres->backpressure_delay);
     /*
      * we process requests in order since all subsequent requests

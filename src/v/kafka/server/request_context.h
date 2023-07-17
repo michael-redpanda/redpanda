@@ -67,36 +67,33 @@ concept has_throttle_time_ms = requires(T a) {
     { a.data.throttle_time_ms };
 };
 
-class request_context {
+template<typename T>
+concept request_context_impl = requires(T a) {
+    //{ a.metadata_cache() } -> std::same_as<const cluster::metadata_cache&>;
+    //{ a.metadata_cache()  } -> std::same_as<cluster::metadata_cache&>;
+    { a.topics_frontend() } -> std::same_as<cluster::topics_frontend&>;
+    //{ a.quota_mgr() } -> std::same_as<quota_manager&>;
+    //{
+    //    a.config_frontend()
+    //} -> std::same_as<ss::sharded<cluster::config_frontend>&>;
+    //{
+    //    a.feature_table()
+    //} -> std::same_as<ss::sharded<features::feature_table>&>;
+    //{ a.probe() } -> std::same_as<latency_probe&>;
+    //{ a.usage_mgr() } -> std::same_as<kafka::usage_manager&>;
+    //{ a.id_allocator_frontend() } -> std::same_as<cluster::id_allocator_frontend&>;
+    //{ a.is_idempotence_enabled() } -> std::same_as<bool>;
+    //{ a.are_transactions_enabled() } -> std::same_as<bool>;
+    //{ a.tx_gateway_frontend() } -> std::same_as<cluster::tx_gateway_frontend&>;
+    //{a.schema_registry()} -> std::same_as<const std::unique_ptr<pandaproxy::schema_registry::api>&>;
+    //{a.group_router()} -> std::same_as<kafka::group_router&>;
+    //{a.shard_table()} -> std::same_as<cluster::shard_table&>;
+};
+
+class network_request_context {
 public:
-    request_context(
-      ss::lw_shared_ptr<connection_context> conn,
-      request_header&& header,
-      iobuf&& request,
-      ss::lowres_clock::duration throttle_delay) noexcept
-      : _conn(std::move(conn))
-      , _request_size(request.size_bytes())
-      , _header(std::move(header))
-      , _reader(std::move(request))
-      , _throttle_delay(throttle_delay) {}
-
-    request_context(const request_context&) = delete;
-    request_context& operator=(const request_context&) = delete;
-    request_context(request_context&& o) noexcept = default;
-    request_context& operator=(request_context&& o) noexcept = default;
-    ~request_context() noexcept = default;
-
-    const request_header& header() const { return _header; }
-
-    ss::lw_shared_ptr<connection_context> connection() { return _conn; }
-
-    protocol::decoder& reader() { return _reader; }
-
-    latency_probe& probe() { return _conn->server().latency_probe(); }
-
-    kafka::usage_manager& usage_mgr() const {
-        return _conn->server().usage_mgr();
-    }
+    network_request_context(ss::lw_shared_ptr<connection_context> conn)
+      : _conn(std::move(conn)) {}
 
     const cluster::metadata_cache& metadata_cache() const {
         return _conn->server().metadata_cache();
@@ -120,7 +117,11 @@ public:
         return _conn->server().feature_table();
     }
 
-    cluster::id_allocator_frontend& id_allocator_frontend() const {
+    latency_probe& probe() { return _conn->server().latency_probe(); }
+
+    kafka::usage_manager& usage_mgr() const { return _conn->server().usage_mgr(); }
+
+    cluster::id_allocator_frontend & id_allocator_frontend() const {
         return _conn->server().id_allocator_frontend();
     }
 
@@ -136,9 +137,97 @@ public:
         return _conn->server().tx_gateway_frontend();
     }
 
+    const std::unique_ptr<pandaproxy::schema_registry::api> & schema_registry() {
+        return _conn->server().schema_registry();
+    }
+
+    kafka::group_router& group_router() {
+        return _conn->server().group_router();
+    }
+
+    cluster::shard_table& shard_table() {
+        return _conn->server().shard_table();
+    }
+
+private:
+    ss::lw_shared_ptr<connection_context> _conn;
+};
+
+class internal_request_context {};
+
+template<typename I>
+requires(request_context_impl<I>)
+class base_request_context<I> {
+public:
+    base_request_context(
+      I&& impl,
+      ss::lw_shared_ptr<connection_context> conn,
+      request_header&& header,
+      iobuf&& request,
+      ss::lowres_clock::duration throttle_delay) noexcept
+      : _impl(std::move(impl))
+      , _conn(std::move(conn))
+      , _request_size(request.size_bytes())
+      , _header(std::move(header))
+      , _reader(std::move(request))
+      , _throttle_delay(throttle_delay) {}
+
+    base_request_context(const base_request_context&) = delete;
+    base_request_context& operator=(const base_request_context&) = delete;
+    base_request_context(base_request_context&& o) noexcept = default;
+    base_request_context& operator=(base_request_context&& o) noexcept
+      = default;
+    ~base_request_context() noexcept = default;
+
+    const request_header& header() const { return _header; }
+
+    ss::lw_shared_ptr<connection_context> connection() { return _conn; }
+
+    protocol::decoder& reader() { return _reader; }
+
+    latency_probe& probe() { return _impl.latency_probe(); }
+
+    kafka::usage_manager& usage_mgr() const { return _impl.usage_mgr(); }
+
+    const cluster::metadata_cache& metadata_cache() const {
+        return _impl.metadata_cache();
+    }
+
+    cluster::metadata_cache& metadata_cache() { return _impl.metadata_cache(); }
+
+    cluster::topics_frontend& topics_frontend() const {
+        return _impl.topics_frontend();
+    }
+
+    quota_manager& quota_mgr() { return _impl.quota_mgr(); }
+
+    ss::sharded<cluster::config_frontend>& config_frontend() const {
+        return _impl.config_frontend();
+    }
+
+    ss::sharded<features::feature_table>& feature_table() const {
+        return _impl.feature_table();
+    }
+
+    cluster::id_allocator_frontend& id_allocator_frontend() const {
+        return _impl.id_allocator_frontend();
+    }
+
+    bool is_idempotence_enabled() {
+        return _impl.is_idempotence_enabled();
+    }
+
+    bool are_transactions_enabled() {
+        return _impl.are_transactions_enabled();
+    }
+
+    cluster::tx_gateway_frontend& tx_gateway_frontend() const {
+        return _impl.tx_gateway_frontend();
+    }
+
     const std::unique_ptr<pandaproxy::schema_registry::api>&
     schema_registry() const {
-        return _conn->server().schema_registry();
+        return _impl.schema_registry();
     }
 
     std::chrono::milliseconds throttle_delay_ms() const {
@@ -146,9 +235,9 @@ public:
           _throttle_delay);
     }
 
-    kafka::group_router& groups() { return _conn->server().group_router(); }
+    kafka::group_router& groups() { return _impl.group_router(); }
 
-    cluster::shard_table& shards() { return _conn->server().shard_table(); }
+    cluster::shard_table& shards() { return _impl.shard_table(); }
 
     ss::sharded<cluster::partition_manager>& partition_manager() {
         return _conn->server().partition_manager();
@@ -269,6 +358,7 @@ private:
     }
 
 private:
+    I _impl;
     ss::lw_shared_ptr<connection_context> _conn;
     size_t _request_size;
     request_header _header;
@@ -276,7 +366,22 @@ private:
     ss::lowres_clock::duration _throttle_delay;
 };
 
-// Executes the API call identified by the specified request_context.
+using request_context = base_request_context<network_request_context>;
+
+static inline request_context make_request_context(
+  const ss::lw_shared_ptr<connection_context>& conn,
+  request_header&& header,
+  iobuf&& request,
+  ss::lowres_clock::duration throttle_delay) {
+    return request_context{
+      network_request_context{conn},
+      conn,
+      std::move(header),
+      std::move(request),
+      throttle_delay};
+}
+
+// Executes the API call identified by the specified base_request_context.
 process_result_stages process_request(
   request_context&&, ss::smp_service_group, const session_resources&);
 

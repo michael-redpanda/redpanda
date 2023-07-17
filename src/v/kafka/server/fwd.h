@@ -21,10 +21,14 @@ class group_manager;
 class group_router;
 class quota_manager;
 class snc_quota_manager;
-class request_context;
+template<typename T>
+class base_request_context;
+class network_request_context;
 class rm_group_frontend;
 class rm_group_proxy_impl;
 class usage_manager;
 class snc_quota_context;
+
+using request_context = base_request_context<network_request_context>;
 
 } // namespace kafka

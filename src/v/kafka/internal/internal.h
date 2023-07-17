@@ -15,6 +15,7 @@
 #include "cluster/partition_manager.h"
 #include "cluster/topics_frontend.h"
 #include "kafka/protocol/types.h"
+#include "kafka/server/handlers/handler.h"
 #include "seastarx.h"
 
 #include <seastar/core/future.hh>
@@ -42,8 +43,15 @@ public:
         return _topics_frontend.local();
     }
 
-    ss::sharded<cluster::partition_manager> & partition_manager() {
+    ss::sharded<cluster::partition_manager>& partition_manager() {
         return _partition_manager;
+    }
+
+    template<KafkaApiHandler T>
+    ss::future<typename T::response_type>
+    handle([[maybe_unused]] T::request_type& t) {
+        return ss::make_ready_future<typename T::response_type>(
+          decltype(T::response_type){});
     }
 
 private:

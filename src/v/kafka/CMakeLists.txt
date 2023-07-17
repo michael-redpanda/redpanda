@@ -62,8 +62,18 @@ v_cc_library(
     absl::flat_hash_set
 )
 
+v_cc_library(
+    NAME kafka_internal
+    SRCS
+      internal/internal.cc
+    DEPS
+      Seastar::seastar
+      v::rpc
+      v::cluster
+      v::kafka_protocol
+)
+
 add_subdirectory(client)
-add_subdirectory(internal)
 add_subdirectory(server/tests)
 
 set_source_files_properties(

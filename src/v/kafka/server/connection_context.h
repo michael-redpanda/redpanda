@@ -49,7 +49,10 @@ public:
 using authz_quiet = ss::bool_class<struct authz_quiet_tag>;
 
 struct request_header;
-class request_context;
+template<typename T>
+class base_request_context;
+class network_request_context;
+using request_context = base_request_context<network_request_context>;
 
 // used to track number of pending requests
 class request_tracker {

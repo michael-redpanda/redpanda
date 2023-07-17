@@ -12,13 +12,11 @@
 #include "internal.h"
 
 namespace kafka::internal {
-    internal::internal(
+internal::internal(
   ss::sharded<cluster::metadata_cache>& metadata_cache,
   ss::sharded<cluster::topics_frontend>& topics_frontend,
   ss::sharded<cluster::partition_manager>& partition_manager) noexcept
   : _metadata_cache(metadata_cache)
   , _topics_frontend(topics_frontend)
-  , _partition_manager(partition_manager) {
-
-  }
+  , _partition_manager(partition_manager) {}
 } // namespace kafka::internal
