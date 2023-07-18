@@ -67,27 +67,48 @@ concept has_throttle_time_ms = requires(T a) {
     { a.data.throttle_time_ms };
 };
 
-template<typename T>
-concept request_context_impl = requires(T a) {
-    //{ a.metadata_cache() } -> std::same_as<const cluster::metadata_cache&>;
-    //{ a.metadata_cache()  } -> std::same_as<cluster::metadata_cache&>;
+template<typename T, typename N>
+concept request_context_impl = requires(
+  T a, security::acl_operation operation, const N& name, authz_quiet quiet) {
+    { a.metadata_cache() } -> std::same_as<const cluster::metadata_cache&>;
+    { a.metadata_cache() } -> std::same_as<cluster::metadata_cache&>;
     { a.topics_frontend() } -> std::same_as<cluster::topics_frontend&>;
-    //{ a.quota_mgr() } -> std::same_as<quota_manager&>;
-    //{
-    //    a.config_frontend()
-    //} -> std::same_as<ss::sharded<cluster::config_frontend>&>;
-    //{
-    //    a.feature_table()
-    //} -> std::same_as<ss::sharded<features::feature_table>&>;
-    //{ a.probe() } -> std::same_as<latency_probe&>;
-    //{ a.usage_mgr() } -> std::same_as<kafka::usage_manager&>;
-    //{ a.id_allocator_frontend() } -> std::same_as<cluster::id_allocator_frontend&>;
-    //{ a.is_idempotence_enabled() } -> std::same_as<bool>;
-    //{ a.are_transactions_enabled() } -> std::same_as<bool>;
-    //{ a.tx_gateway_frontend() } -> std::same_as<cluster::tx_gateway_frontend&>;
-    //{a.schema_registry()} -> std::same_as<const std::unique_ptr<pandaproxy::schema_registry::api>&>;
-    //{a.group_router()} -> std::same_as<kafka::group_router&>;
-    //{a.shard_table()} -> std::same_as<cluster::shard_table&>;
+    { a.quota_mgr() } -> std::same_as<quota_manager&>;
+    {
+        a.config_frontend()
+    } -> std::same_as<ss::sharded<cluster::config_frontend>&>;
+    {
+        a.feature_table()
+    } -> std::same_as<ss::sharded<features::feature_table>&>;
+    { a.latency_probe() } -> std::same_as<latency_probe&>;
+    { a.usage_mgr() } -> std::same_as<kafka::usage_manager&>;
+    {
+        a.id_allocator_frontend()
+    } -> std::same_as<cluster::id_allocator_frontend&>;
+    { a.is_idempotence_enabled() } -> std::same_as<bool>;
+    { a.are_transactions_enabled() } -> std::same_as<bool>;
+    { a.tx_gateway_frontend() } -> std::same_as<cluster::tx_gateway_frontend&>;
+    {
+        a.schema_registry()
+    } -> std::same_as<const std::unique_ptr<pandaproxy::schema_registry::api>&>;
+    { a.group_router() } -> std::same_as<kafka::group_router&>;
+    { a.shard_table() } -> std::same_as<cluster::shard_table&>;
+    {
+        a.partition_manager()
+    } -> std::same_as<ss::sharded<cluster::partition_manager>&>;
+    { a.fetch_sessions_cache() } -> std::same_as<fetch_session_cache&>;
+    { a.get_fetch_metadata_cache() } -> std::same_as<fetch_metadata_cache&>;
+    { a.coordinator_mapper() } -> std::same_as<coordinator_ntp_mapper&>;
+    {
+        a.tx_registry_frontend()
+    } -> std::same_as<cluster::tx_registry_frontend&>;
+    { a.listener() } -> std::same_as<const ss::sstring&>;
+    { a.sasl() } -> std::same_as<std::optional<security::sasl_server>&>;
+    { a.credentials() } -> std::same_as<security::credential_store&>;
+    { a.authorized(operation, name, quiet) } -> std::same_as<bool>;
+    { a.security_frontend() } -> std::same_as<cluster::security_frontend&>;
+    { a.authorizer() } -> std::same_as<security::authorizer&>;
+    { a.controller_api() } -> std::same_as<cluster::controller_api&>;
 };
 
 class network_request_context {
@@ -117,11 +138,13 @@ public:
         return _conn->server().feature_table();
     }
 
-    latency_probe& probe() { return _conn->server().latency_probe(); }
+    latency_probe& latency_probe() { return _conn->server().latency_probe(); }
 
-    kafka::usage_manager& usage_mgr() const { return _conn->server().usage_mgr(); }
+    kafka::usage_manager& usage_mgr() const {
+        return _conn->server().usage_mgr();
+    }
 
-    cluster::id_allocator_frontend & id_allocator_frontend() const {
+    cluster::id_allocator_frontend& id_allocator_frontend() const {
         return _conn->server().id_allocator_frontend();
     }
 
@@ -137,7 +160,8 @@ public:
         return _conn->server().tx_gateway_frontend();
     }
 
-    const std::unique_ptr<pandaproxy::schema_registry::api> & schema_registry() {
+    const std::unique_ptr<pandaproxy::schema_registry::api>&
+    schema_registry() const {
         return _conn->server().schema_registry();
     }
 
@@ -149,6 +173,52 @@ public:
         return _conn->server().shard_table();
     }
 
+    ss::sharded<cluster::partition_manager>& partition_manager() {
+        return _conn->server().partition_manager();
+    }
+
+    fetch_session_cache& fetch_sessions_cache() {
+        return _conn->server().fetch_sessions_cache();
+    }
+
+    fetch_metadata_cache& get_fetch_metadata_cache() {
+        return _conn->server().get_fetch_metadata_cache();
+    }
+
+    coordinator_ntp_mapper& coordinator_mapper() {
+        return _conn->server().coordinator_mapper();
+    }
+
+    cluster::tx_registry_frontend& tx_registry_frontend() {
+        return _conn->server().tx_registry_frontend();
+    }
+
+    const ss::sstring& listener() const { return _conn->listener(); }
+
+    std::optional<security::sasl_server>& sasl() { return _conn->sasl(); }
+
+    security::credential_store& credentials() {
+        return _conn->server().credentials();
+    }
+
+    template<typename T>
+    bool authorized(
+      security::acl_operation operation,
+      const T& name,
+      authz_quiet quiet = authz_quiet{false}) {
+        return _conn->authorized(operation, name, quiet);
+    }
+
+    cluster::security_frontend& security_frontend() const {
+        return _conn->server().security_frontend();
+    }
+
+    security::authorizer& authorizer() { return _conn->server().authorizer(); }
+
+    cluster::controller_api& controller_api() {
+        return _conn->server().controller_api();
+    }
+
 private:
     ss::lw_shared_ptr<connection_context> _conn;
 };
@@ -156,8 +226,7 @@ private:
 class internal_request_context {};
 
 template<typename I>
-requires(request_context_impl<I>)
-class base_request_context<I> {
+class base_request_context {
 public:
     base_request_context(
       I&& impl,
@@ -213,13 +282,9 @@ public:
         return _impl.id_allocator_frontend();
     }
 
-    bool is_idempotence_enabled() {
-        return _impl.is_idempotence_enabled();
-    }
+    bool is_idempotence_enabled() { return _impl.is_idempotence_enabled(); }
 
-    bool are_transactions_enabled() {
-        return _impl.are_transactions_enabled();
-    }
+    bool are_transactions_enabled() { return _impl.are_transactions_enabled(); }
 
     cluster::tx_gateway_frontend& tx_gateway_frontend() const {
         return _impl.tx_gateway_frontend();
@@ -240,15 +305,15 @@ public:
     cluster::shard_table& shards() { return _impl.shard_table(); }
 
     ss::sharded<cluster::partition_manager>& partition_manager() {
-        return _conn->server().partition_manager();
+        return _impl.partition_manager();
     }
 
     fetch_session_cache& fetch_sessions() {
-        return _conn->server().fetch_sessions_cache();
+        return _impl.fetch_sessions_cache();
     }
 
     fetch_metadata_cache& get_fetch_metadata_cache() {
-        return _conn->server().get_fetch_metadata_cache();
+        return _impl.get_fetch_metadata_cache();
     }
 
     template<typename ResponseType>
@@ -300,36 +365,32 @@ public:
     }
 
     coordinator_ntp_mapper& coordinator_mapper() {
-        return _conn->server().coordinator_mapper();
+        return _impl.coordinator_mapper();
     }
 
     cluster::tx_registry_frontend& tx_registry_frontend() {
-        return _conn->server().tx_registry_frontend();
+        return _impl.tx_registry_frontend();
     }
 
-    const ss::sstring& listener() const { return _conn->listener(); }
-    std::optional<security::sasl_server>& sasl() { return _conn->sasl(); }
-    security::credential_store& credentials() {
-        return _conn->server().credentials();
-    }
+    const ss::sstring& listener() const { return _impl.listener(); }
+    std::optional<security::sasl_server>& sasl() { return _impl.sasl(); }
+    security::credential_store& credentials() { return _impl.credentials(); }
 
     template<typename T>
     bool authorized(
       security::acl_operation operation,
       const T& name,
       authz_quiet quiet = authz_quiet{false}) {
-        return _conn->authorized(operation, name, quiet);
+        return _impl.authorized(operation, name, quiet);
     }
 
     cluster::security_frontend& security_frontend() const {
-        return _conn->server().security_frontend();
+        return _impl.security_frontend();
     }
 
-    security::authorizer& authorizer() { return _conn->server().authorizer(); }
+    security::authorizer& authorizer() { return _impl.authorizer(); }
 
-    cluster::controller_api& controller_api() {
-        return _conn->server().controller_api();
-    }
+    cluster::controller_api& controller_api() { return _impl.controller_api(); }
 
     ss::sharded<server>& server() { return _conn->server().container(); }
 
