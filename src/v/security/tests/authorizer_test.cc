@@ -8,6 +8,7 @@
 // by the Apache License, Version 2.0
 #include "config/mock_property.h"
 #include "random/generators.h"
+#include "security/acl.h"
 #include "security/authorizer.h"
 #include "utils/base64.h"
 
@@ -124,9 +125,15 @@ BOOST_AUTO_TEST_CASE(empty_resource_name) {
       resource_type::group, resource_pattern::wildcard, pattern_type::literal);
     bindings.emplace_back(resource, acl);
     auth.add_bindings(bindings);
-
-    BOOST_REQUIRE(
-      auth.authorized(kafka::group_id(""), acl_operation::read, user, host));
+    auto result = auth.authorized(
+      kafka::group_id(""), acl_operation::read, user, host);
+    BOOST_REQUIRE(result.authorized);
+    BOOST_REQUIRE_EQUAL(result.acl, acl);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
+    BOOST_REQUIRE_EQUAL(result.principal, user);
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE(!result.is_superuser);
+    BOOST_REQUIRE(!result.empty_matches);
 }
 
 static const model::topic default_topic("topic1");
@@ -152,8 +159,15 @@ BOOST_AUTO_TEST_CASE(deny_applies_first) {
     bindings.emplace_back(resource, deny);
     auth.add_bindings(bindings);
 
-    BOOST_REQUIRE(
-      !auth.authorized(default_topic, acl_operation::read, user, host));
+    auto result = auth.authorized(
+      default_topic, acl_operation::read, user, host);
+    BOOST_REQUIRE(!result.authorized);
+    BOOST_REQUIRE_EQUAL(result.acl, deny);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
+    BOOST_REQUIRE_EQUAL(result.principal, user);
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE(!result.is_superuser);
+    BOOST_REQUIRE(!result.empty_matches);
 }
 
 BOOST_AUTO_TEST_CASE(allow_all) {
@@ -174,8 +188,15 @@ BOOST_AUTO_TEST_CASE(allow_all) {
     bindings.emplace_back(resource, acl);
     auth.add_bindings(bindings);
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::read, user, host));
+    auto result = auth.authorized(
+      default_topic, acl_operation::read, user, host);
+    BOOST_REQUIRE(result.authorized);
+    BOOST_REQUIRE_EQUAL(result.acl, acl);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
+    BOOST_REQUIRE_EQUAL(result.principal, user);
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE(!result.is_superuser);
+    BOOST_REQUIRE(!result.empty_matches);
 }
 
 BOOST_AUTO_TEST_CASE(super_user_allow) {
@@ -203,29 +224,66 @@ BOOST_AUTO_TEST_CASE(super_user_allow) {
     bindings.emplace_back(resource, acl);
     auth.add_bindings(bindings);
 
-    BOOST_REQUIRE(
-      !auth.authorized(default_topic, acl_operation::read, user1, host));
+    auto result = auth.authorized(
+      default_topic, acl_operation::read, user1, host);
+    BOOST_REQUIRE(!result.authorized);
+    BOOST_REQUIRE_EQUAL(result.principal, user1);
+    BOOST_REQUIRE_EQUAL(result.acl, acl);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE(!result.is_superuser);
+    BOOST_REQUIRE(!result.empty_matches);
 
-    BOOST_REQUIRE(
-      !auth.authorized(default_topic, acl_operation::read, user2, host));
+    result = auth.authorized(default_topic, acl_operation::read, user2, host);
+    BOOST_REQUIRE(!result.authorized);
+    BOOST_REQUIRE_EQUAL(result.principal, user2);
+    BOOST_REQUIRE_EQUAL(result.acl, acl);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE(!result.is_superuser);
+    BOOST_REQUIRE(!result.empty_matches);
 
     // Adding superusers
     superuser_config_prop.update({"superuser1", "superuser2"});
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::read, user1, host));
+    result = auth.authorized(default_topic, acl_operation::read, user1, host);
+    BOOST_REQUIRE(result.authorized);
+    BOOST_REQUIRE_EQUAL(result.principal, user1);
+    BOOST_REQUIRE(!result.acl.has_value());
+    BOOST_REQUIRE(!result.resource_pattern.has_value());
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE(result.is_superuser);
+    BOOST_REQUIRE(!result.empty_matches);
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::read, user2, host));
+    result = auth.authorized(default_topic, acl_operation::read, user2, host);
+    BOOST_REQUIRE(result.authorized);
+    BOOST_REQUIRE_EQUAL(result.principal, user2);
+    BOOST_REQUIRE(!result.acl.has_value());
+    BOOST_REQUIRE(!result.resource_pattern.has_value());
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE(result.is_superuser);
+    BOOST_REQUIRE(!result.empty_matches);
 
     // Revoking a superuser
     superuser_config_prop.update({"superuser2"});
 
-    BOOST_REQUIRE(
-      !auth.authorized(default_topic, acl_operation::read, user1, host));
+    result = auth.authorized(default_topic, acl_operation::read, user1, host);
+    BOOST_REQUIRE(!result.authorized);
+    BOOST_REQUIRE_EQUAL(result.principal, user1);
+    BOOST_REQUIRE_EQUAL(result.acl, acl);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE(!result.is_superuser);
+    BOOST_REQUIRE(!result.empty_matches);
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::read, user2, host));
+    result = auth.authorized(default_topic, acl_operation::read, user2, host);
+    BOOST_REQUIRE(result.authorized);
+    BOOST_REQUIRE_EQUAL(result.principal, user2);
+    BOOST_REQUIRE(!result.acl.has_value());
+    BOOST_REQUIRE(!result.resource_pattern.has_value());
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE(result.is_superuser);
+    BOOST_REQUIRE(!result.empty_matches);
 }
 
 BOOST_AUTO_TEST_CASE(wildcards) {
@@ -249,8 +307,15 @@ BOOST_AUTO_TEST_CASE(wildcards) {
     bindings.emplace_back(wildcard_resource, read_acl);
     auth.add_bindings(bindings);
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::read, user1, host1));
+    auto result = auth.authorized(
+      default_topic, acl_operation::read, user1, host1);
+    BOOST_REQUIRE(result.authorized);
+    BOOST_REQUIRE_EQUAL(result.acl, read_acl);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, wildcard_resource);
+    BOOST_REQUIRE_EQUAL(result.principal, user1);
+    BOOST_REQUIRE_EQUAL(result.host, host1);
+    BOOST_REQUIRE(!result.is_superuser);
+    BOOST_REQUIRE(!result.empty_matches);
 
     acl_entry write_acl(
       user1, host1, acl_operation::write, acl_permission::allow);
@@ -268,8 +333,14 @@ BOOST_AUTO_TEST_CASE(wildcards) {
     bindings.emplace_back(wildcard_resource, deny_write_acl);
     auth.add_bindings(bindings);
 
-    BOOST_REQUIRE(
-      !auth.authorized(default_topic, acl_operation::write, user1, host1));
+    result = auth.authorized(default_topic, acl_operation::write, user1, host1);
+    BOOST_REQUIRE(!result.authorized);
+    BOOST_REQUIRE_EQUAL(result.principal, user1);
+    BOOST_REQUIRE_EQUAL(result.host, host1);
+    BOOST_REQUIRE_EQUAL(result.acl, deny_write_acl);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, wildcard_resource);
+    BOOST_REQUIRE(!result.is_superuser);
+    BOOST_REQUIRE(!result.empty_matches);
 }
 
 BOOST_AUTO_TEST_CASE(no_acls_deny) {
@@ -278,8 +349,15 @@ BOOST_AUTO_TEST_CASE(no_acls_deny) {
 
     auto auth = make_test_instance();
 
-    BOOST_REQUIRE(
-      !auth.authorized(default_topic, acl_operation::read, user, host));
+    auto result = auth.authorized(
+      default_topic, acl_operation::read, user, host);
+    BOOST_REQUIRE(!result.authorized);
+    BOOST_REQUIRE(!result.acl.has_value());
+    BOOST_REQUIRE(!result.resource_pattern.has_value());
+    BOOST_REQUIRE_EQUAL(result.principal, user);
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE(!result.is_superuser);
+    BOOST_REQUIRE(result.empty_matches);
 }
 
 BOOST_AUTO_TEST_CASE(no_acls_allow) {
@@ -288,8 +366,15 @@ BOOST_AUTO_TEST_CASE(no_acls_allow) {
 
     auto auth = make_test_instance(authorizer::allow_empty_matches::yes);
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::read, user, host));
+    auto result = auth.authorized(
+      default_topic, acl_operation::read, user, host);
+    BOOST_REQUIRE(result.authorized);
+    BOOST_REQUIRE(!result.acl.has_value());
+    BOOST_REQUIRE(!result.resource_pattern.has_value());
+    BOOST_REQUIRE_EQUAL(result.principal, user);
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE(!result.is_superuser);
+    BOOST_REQUIRE(result.empty_matches);
 }
 
 BOOST_AUTO_TEST_CASE(implied_acls) {
@@ -324,10 +409,18 @@ BOOST_AUTO_TEST_CASE(implied_acls) {
             auto ok = auth.authorized(
               default_cluster_name, test_op, user, host);
             if (allowed.contains(test_op) || test_op == op) {
-                BOOST_REQUIRE(ok);
+                BOOST_REQUIRE(ok.authorized);
+                BOOST_REQUIRE_EQUAL(ok.acl, acl);
+                BOOST_REQUIRE_EQUAL(ok.resource_pattern, resource);
             } else {
-                BOOST_REQUIRE(!ok);
+                BOOST_REQUIRE(!ok.authorized);
+                BOOST_REQUIRE(!ok.acl.has_value());
+                BOOST_REQUIRE(!ok.resource_pattern.has_value());
             }
+            BOOST_REQUIRE_EQUAL(ok.principal, user);
+            BOOST_REQUIRE_EQUAL(ok.host, host);
+            BOOST_REQUIRE(!ok.is_superuser);
+            BOOST_REQUIRE(!ok.empty_matches);
         }
     };
 
@@ -366,10 +459,17 @@ BOOST_AUTO_TEST_CASE(implied_acls) {
             auto ok = auth.authorized(
               default_cluster_name, test_op, user, host);
             if (denied.contains(test_op) || test_op == op) {
-                BOOST_REQUIRE(!ok);
+                BOOST_REQUIRE(!ok.authorized);
+                BOOST_REQUIRE_EQUAL(ok.acl, deny);
             } else {
-                BOOST_REQUIRE(ok);
+                BOOST_REQUIRE(ok.authorized);
+                BOOST_REQUIRE_EQUAL(ok.acl, allow);
             }
+            BOOST_REQUIRE_EQUAL(ok.resource_pattern, resource);
+            BOOST_REQUIRE_EQUAL(ok.principal, user);
+            BOOST_REQUIRE_EQUAL(ok.host, host);
+            BOOST_REQUIRE(!ok.is_superuser);
+            BOOST_REQUIRE(!ok.empty_matches);
         }
     };
 
@@ -431,8 +531,15 @@ BOOST_AUTO_TEST_CASE(allow_for_all_wildcard_resource) {
 
     auth.add_bindings(bindings);
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::read, user, host));
+    auto result = auth.authorized(
+      default_topic, acl_operation::read, user, host);
+    BOOST_REQUIRE(result.authorized);
+    BOOST_REQUIRE_EQUAL(result.principal, user);
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE_EQUAL(result.acl, acl);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
+    BOOST_REQUIRE(!result.is_superuser);
+    BOOST_REQUIRE(!result.empty_matches);
 }
 
 BOOST_AUTO_TEST_CASE(remove_acl_wildcard_resource) {
@@ -488,8 +595,15 @@ BOOST_AUTO_TEST_CASE(allow_for_all_prefixed_resource) {
 
     auth.add_bindings(bindings);
 
-    BOOST_REQUIRE(auth.authorized(
-      model::topic("foo-3uk3rlkj"), acl_operation::read, user, host));
+    auto result = auth.authorized(
+      model::topic("foo-3uk3rlkj"), acl_operation::read, user, host);
+    BOOST_REQUIRE(result.authorized);
+    BOOST_REQUIRE_EQUAL(result.principal, user);
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE_EQUAL(result.acl, acl);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
+    BOOST_REQUIRE(!result.is_superuser);
+    BOOST_REQUIRE(!result.empty_matches);
 }
 
 BOOST_AUTO_TEST_CASE(remove_acl_prefixed_resource) {
@@ -642,15 +756,29 @@ BOOST_AUTO_TEST_CASE(auth_prefix_resource) {
     add_pre("z_other");
     add_lit("z_other");
 
-    BOOST_REQUIRE(!auth.authorized(
-      model::topic(default_resource.name()), acl_operation::read, user, host));
+    auto result = auth.authorized(
+      model::topic(default_resource.name()), acl_operation::read, user, host);
+    BOOST_REQUIRE(!result.authorized);
+    BOOST_REQUIRE(!result.acl.has_value());
+    BOOST_REQUIRE(!result.resource_pattern.has_value());
+    BOOST_REQUIRE_EQUAL(result.principal, user);
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE(!result.is_superuser);
+    BOOST_REQUIRE(result.empty_matches);
 
     std::vector<acl_binding> bindings;
     bindings.emplace_back(prefixed_resource, allow_read_acl);
     auth.add_bindings(bindings);
 
-    BOOST_REQUIRE(auth.authorized(
-      model::topic(default_resource.name()), acl_operation::read, user, host));
+    result = auth.authorized(
+      model::topic(default_resource.name()), acl_operation::read, user, host);
+    BOOST_REQUIRE(result.authorized);
+    BOOST_REQUIRE_EQUAL(result.acl, allow_read_acl);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, prefixed_resource);
+    BOOST_REQUIRE_EQUAL(result.principal, user);
+    BOOST_REQUIRE_EQUAL(result.host, host);
+    BOOST_REQUIRE(!result.is_superuser);
+    BOOST_REQUIRE(!result.empty_matches);
 }
 
 BOOST_AUTO_TEST_CASE(single_char) {
@@ -660,31 +788,46 @@ BOOST_AUTO_TEST_CASE(single_char) {
     auto auth = make_test_instance();
 
     std::vector<acl_binding> bindings;
-    bindings.emplace_back(
-      resource_pattern(resource_type::topic, "f", pattern_type::literal),
-      allow_read_acl);
+    resource_pattern resource(resource_type::topic, "f", pattern_type::literal);
+    bindings.emplace_back(resource, allow_read_acl);
     auth.add_bindings(bindings);
 
-    BOOST_REQUIRE(
-      auth.authorized(model::topic("f"), acl_operation::read, user, host));
+    auto result = auth.authorized(
+      model::topic("f"), acl_operation::read, user, host);
+    BOOST_REQUIRE(bool(result));
+    BOOST_REQUIRE_EQUAL(result.acl, allow_read_acl);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
 
-    BOOST_REQUIRE(
-      !auth.authorized(model::topic("foo"), acl_operation::read, user, host));
+    result = auth.authorized(
+      model::topic("foo"), acl_operation::read, user, host);
+    BOOST_REQUIRE(!result);
+    BOOST_REQUIRE(!result.acl.has_value());
+    BOOST_REQUIRE(!result.resource_pattern.has_value());
 
     bindings.clear();
-    bindings.emplace_back(
-      resource_pattern(resource_type::topic, "_", pattern_type::prefixed),
-      allow_read_acl);
+    resource_pattern resource1(
+      resource_type::topic, "_", pattern_type::prefixed);
+    bindings.emplace_back(resource1, allow_read_acl);
     auth.add_bindings(bindings);
 
-    BOOST_REQUIRE(
-      auth.authorized(model::topic("_foo"), acl_operation::read, user, host));
+    result = auth.authorized(
+      model::topic("_foo"), acl_operation::read, user, host);
+    BOOST_REQUIRE(bool(result));
+    BOOST_REQUIRE_EQUAL(result.acl, allow_read_acl);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource1);
 
-    BOOST_REQUIRE(
-      auth.authorized(model::topic("_"), acl_operation::read, user, host));
+    result = auth.authorized(
+      model::topic("_"), acl_operation::read, user, host);
+    BOOST_REQUIRE(bool(result));
+    BOOST_REQUIRE_EQUAL(result.acl, allow_read_acl);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource1);
 
-    BOOST_REQUIRE(
-      !auth.authorized(model::topic("foo_"), acl_operation::read, user, host));
+    result = auth.authorized(
+      model::topic("foo_"), acl_operation::read, user, host);
+    BOOST_REQUIRE(!result);
+    BOOST_REQUIRE(!result.acl.has_value());
+    BOOST_REQUIRE(!result.resource_pattern.has_value());
+    BOOST_REQUIRE(result.empty_matches);
 }
 
 BOOST_AUTO_TEST_CASE(get_acls_principal) {
@@ -839,41 +982,70 @@ BOOST_AUTO_TEST_CASE(topic_acl) {
     auto auth = make_test_instance();
     auth.add_bindings(bindings);
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::read, user1, host2));
+    auto result = auth.authorized(
+      default_topic, acl_operation::read, user1, host2);
+    BOOST_REQUIRE(bool(result));
+    BOOST_REQUIRE_EQUAL(result.acl, acl2);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
 
-    BOOST_REQUIRE(
-      !auth.authorized(default_topic, acl_operation::read, user1, host1));
+    result = auth.authorized(default_topic, acl_operation::read, user1, host1);
+    BOOST_REQUIRE(!result);
+    BOOST_REQUIRE_EQUAL(result.acl, acl3);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::write, user1, host1));
+    result = auth.authorized(default_topic, acl_operation::write, user1, host1);
+    BOOST_REQUIRE(bool(result));
+    BOOST_REQUIRE_EQUAL(result.acl, acl4);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
 
-    BOOST_REQUIRE(
-      !auth.authorized(default_topic, acl_operation::write, user1, host2));
+    result = auth.authorized(default_topic, acl_operation::write, user1, host2);
+    BOOST_REQUIRE(!result);
+    BOOST_REQUIRE(!result.acl.has_value());
+    BOOST_REQUIRE(!result.resource_pattern.has_value());
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::describe, user1, host1));
+    result = auth.authorized(
+      default_topic, acl_operation::describe, user1, host1);
+    BOOST_REQUIRE(bool(result));
+    BOOST_REQUIRE_EQUAL(result.acl, acl5);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::describe, user1, host2));
+    result = auth.authorized(
+      default_topic, acl_operation::describe, user1, host2);
+    BOOST_REQUIRE(bool(result));
+    BOOST_REQUIRE_EQUAL(result.acl, acl5);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
 
-    BOOST_REQUIRE(
-      !auth.authorized(default_topic, acl_operation::alter, user1, host1));
+    result = auth.authorized(default_topic, acl_operation::alter, user1, host1);
+    BOOST_REQUIRE(!result);
+    BOOST_REQUIRE(!result.acl.has_value());
+    BOOST_REQUIRE(!result.resource_pattern.has_value());
 
-    BOOST_REQUIRE(
-      !auth.authorized(default_topic, acl_operation::alter, user1, host2));
+    result = auth.authorized(default_topic, acl_operation::alter, user1, host2);
+    BOOST_REQUIRE(!result);
+    BOOST_REQUIRE(!result.acl.has_value());
+    BOOST_REQUIRE(!result.resource_pattern.has_value());
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::describe, user2, host1));
+    result = auth.authorized(
+      default_topic, acl_operation::describe, user2, host1);
+    BOOST_REQUIRE(bool(result));
+    BOOST_REQUIRE_EQUAL(result.acl, acl6);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::describe, user3, host1));
+    result = auth.authorized(
+      default_topic, acl_operation::describe, user3, host1);
+    BOOST_REQUIRE(bool(result));
+    BOOST_REQUIRE_EQUAL(result.acl, acl7);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::read, user2, host1));
+    result = auth.authorized(default_topic, acl_operation::read, user2, host1);
+    BOOST_REQUIRE(bool(result));
+    BOOST_REQUIRE_EQUAL(result.acl, acl6);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
 
-    BOOST_REQUIRE(
-      auth.authorized(default_topic, acl_operation::write, user3, host1));
+    result = auth.authorized(default_topic, acl_operation::write, user3, host1);
+    BOOST_REQUIRE(bool(result));
+    BOOST_REQUIRE_EQUAL(result.acl, acl7);
+    BOOST_REQUIRE_EQUAL(result.resource_pattern, resource);
 }
 
 // a bug had allowed a topic with read permissions (prefix) to authorize a group

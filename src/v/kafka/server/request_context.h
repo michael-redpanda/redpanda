@@ -236,7 +236,8 @@ public:
       security::acl_operation operation,
       const T& name,
       authz_quiet quiet = authz_quiet{false}) {
-        return _conn->authorized(operation, name, quiet);
+        auto result = _conn->authorized(operation, name, quiet);
+        return bool(result);
     }
 
     cluster::security_frontend& security_frontend() const {

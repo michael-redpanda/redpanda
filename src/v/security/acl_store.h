@@ -73,7 +73,36 @@ private:
  */
 class acl_matches {
 public:
-    using entry_set_ref = std::reference_wrapper<const acl_entry_set>;
+    // Used to hold the resource_pattern and the ACLs associated with it
+    struct acl_entry_set_match {
+        std::reference_wrapper<const resource_pattern> resource_pattern;
+        std::reference_wrapper<const acl_entry_set> acl_entry_set;
+
+        acl_entry_set_match() = delete;
+
+        acl_entry_set_match(
+          const class resource_pattern& resource_pattern,
+          const class acl_entry_set& acl_entry_set)
+          : resource_pattern(resource_pattern)
+          , acl_entry_set(acl_entry_set) {}
+
+        acl_entry_set_match(const acl_entry_set_match&) = default;
+        acl_entry_set_match& operator=(const acl_entry_set_match&) = default;
+    };
+    using entry_set_ref = acl_entry_set_match;
+
+    // Match of ACL and resource_pattern
+    struct acl_match {
+        std::reference_wrapper<const resource_pattern> resource_pattern;
+        acl_entry_set::const_reference acl;
+
+        acl_match() = delete;
+        acl_match(
+          std::reference_wrapper<const class resource_pattern> resource_pattern,
+          acl_entry_set::const_reference acl)
+          : resource_pattern(resource_pattern)
+          , acl(acl) {}
+    };
 
     acl_matches(
       std::optional<entry_set_ref> wildcards,
@@ -91,7 +120,7 @@ public:
 
     bool empty() const;
 
-    bool contains(
+    std::optional<acl_match> contains(
       acl_operation operation,
       const acl_principal& principal,
       const acl_host& host,
