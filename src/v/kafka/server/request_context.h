@@ -12,6 +12,7 @@
 #pragma once
 #include "bytes/iobuf.h"
 #include "cluster/security_frontend.h"
+#include "json/stringbuffer.h"
 #include "kafka/protocol/fetch.h"
 #include "kafka/protocol/fwd.h"
 #include "kafka/protocol/types.h"
@@ -26,6 +27,8 @@
 #include "kafka/types.h"
 #include "pandaproxy/schema_registry/fwd.h"
 #include "seastarx.h"
+#include "security/acl.h"
+#include "security/audit/schemas/application_activity.h"
 #include "security/fwd.h"
 #include "ssx/abort_source.h"
 #include "vlog.h"
@@ -237,6 +240,28 @@ public:
       const T& name,
       authz_quiet quiet = authz_quiet{false}) {
         auto result = _conn->authorized(operation, name, quiet);
+        vlog(
+          klog.warn,
+          "authorized: {}, is_superuser: {}, empty_set: {}, acl: {}, "
+          "resource_pattern: {}, principal: {}, host: {}",
+          result.authorized,
+          result.is_superuser,
+          result.empty_matches,
+          result.acl,
+          result.resource_pattern,
+          result.principal,
+          result.host);
+        fragmented_vector<T> resources;
+        resources.push_back(name);
+        auto api_act = security::audit::create_api_activity(
+          "poop", operation, result, _conn->local_address(), resources);
+        ::json::StringBuffer str_buf;
+        ::json::Writer<::json::StringBuffer> wrt(str_buf);
+        security::audit::rjson_serialize(wrt, api_act);
+
+        vlog(
+          klog.warn, "{}", ss::sstring(str_buf.GetString(), str_buf.GetSize()));
+
         return bool(result);
     }
 

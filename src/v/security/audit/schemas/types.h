@@ -10,6 +10,8 @@
 #include "json/json.h"
 #include "json/stringbuffer.h"
 #include "seastarx.h"
+#include "security/authorizer.h"
+#include "version.h"
 
 #pragma once
 
@@ -65,20 +67,26 @@ struct product {
     ss::sstring name;
     ss::sstring vendor_name;
     ss::sstring version;
+
+    friend bool operator==(const product&, const product&) = default;
 };
 
 static const product redpanda_product = {
   .name = "Redpanda",
   .vendor_name = "Redpanda Data, Inc",
-  .version = "FILL THIS IN"};
+  .version = ss::sstring{redpanda_git_version()}};
 
 struct api {
     ss::sstring operation;
+
+    friend bool operator==(const api&, const api&) = default;
 };
 
 struct metadata {
     ss::sstring version;
     product product;
+
+    friend bool operator==(const metadata&, const metadata&) = default;
 };
 
 static const metadata ocsf_metadata = {
@@ -91,16 +99,25 @@ struct network_endpoint {
     ss::sstring name;
     uint16_t port;
     ss::sstring uid;
+
+    friend bool operator==(const network_endpoint&, const network_endpoint&)
+      = default;
 };
 
 struct policy {
     ss::sstring name;
     ss::sstring desc;
+
+    friend bool operator==(const policy&, const policy&) = default;
 };
 
 struct authorization_result {
     ss::sstring decision;
     policy policy;
+
+    friend bool
+    operator==(const authorization_result&, const authorization_result&)
+      = default;
 };
 
 struct user {
@@ -116,45 +133,98 @@ struct user {
     ss::sstring domain;
     ss::sstring name;
     type type_id;
+
+    friend bool operator==(const user&, const user&) = default;
 };
 
 struct actor {
     std::vector<authorization_result> authorizations;
     user user;
+
+    friend bool operator==(const actor&, const actor&);
 };
+
+inline bool operator==(const actor& lhs, const actor& rhs) {
+    return lhs.authorizations == rhs.authorizations && lhs.user == rhs.user;
+}
 
 struct resource_detail {
     ss::sstring name;
     ss::sstring type;
+
+    friend bool operator==(const resource_detail&, const resource_detail&)
+      = default;
 };
 
-inline void rjson_serialize(
-  ::json::Writer<::json::StringBuffer>& w, const security::audit::api& api) {
+static inline actor result_to_actor(const security::auth_result& result) {
+    user user{
+      .name = result.principal.name(),
+      .type_id = result.is_superuser ? user::type::admin : user::type::user,
+    };
+
+    policy policy;
+    policy.name = "aclAuthorization";
+
+    if (result.authorization_disabled) {
+        policy.desc = "authorization disabled";
+    } else if (result.is_superuser) {
+        policy.desc = "superuser";
+    } else if (result.empty_matches) {
+        policy.desc = "no matches";
+    } else if (result.acl || result.resource_pattern) {
+        ss::sstring desc;
+        if (result.acl) {
+            desc += fmt::format("acl: {}", *result.acl);
+        }
+        if (result.resource_pattern) {
+            if (!desc.empty()) {
+                desc += ", ";
+            }
+            desc += fmt::format("resource: {}", *result.resource_pattern);
+        }
+
+        policy.desc = std::move(desc);
+    }
+
+    std::vector<authorization_result> auths;
+    auths.reserve(1);
+    auths.emplace_back(authorization_result{
+      .decision = result.authorized ? "authorized" : "denied",
+      .policy = std::move(policy)});
+
+    return {
+      .authorizations = std::move(auths),
+      .user = std::move(user),
+    };
+}
+} // namespace security::audit
+
+namespace json {
+inline void
+rjson_serialize(Writer<StringBuffer>& w, const security::audit::api& api) {
     w.StartObject();
     w.Key("operation");
-    ::json::rjson_serialize(w, api.operation);
+    rjson_serialize(w, api.operation);
     w.EndObject();
 }
 
 inline void rjson_serialize(
-  ::json::Writer<::json::StringBuffer>& w,
-  const security::audit::product& product) {
+  Writer<StringBuffer>& w, const security::audit::product& product) {
     w.StartObject();
     w.Key("name");
-    ::json::rjson_serialize(w, product.name);
+    rjson_serialize(w, product.name);
     w.Key("vendor_name");
-    ::json::rjson_serialize(w, product.vendor_name);
+    rjson_serialize(w, product.vendor_name);
     w.Key("version");
-    ::json::rjson_serialize(w, product.version);
+    rjson_serialize(w, product.version);
     w.EndObject();
 }
 
 inline void rjson_serialize(
-  ::json::Writer<::json::StringBuffer>& w,
-  const security::audit::metadata& metadata) {
+  Writer<StringBuffer>& w, const security::audit::metadata& metadata) {
     w.StartObject();
     w.Key("version");
-    ::json::rjson_serialize(w, metadata.version);
+    rjson_serialize(w, metadata.version);
     w.Key("product");
     rjson_serialize(w, metadata.product);
     w.EndObject();
@@ -162,87 +232,83 @@ inline void rjson_serialize(
 }
 
 inline void rjson_serialize(
-  ::json::Writer<::json::StringBuffer>& w,
-  const security::audit::network_endpoint& endpoint) {
+  Writer<StringBuffer>& w, const security::audit::network_endpoint& endpoint) {
     w.StartObject();
     if (!endpoint.intermediate_ips.empty()) {
         w.Key("intermediate_ips");
-        ::json::rjson_serialize(w, endpoint.intermediate_ips);
+        rjson_serialize(w, endpoint.intermediate_ips);
     }
     w.Key("ip");
-    ::json::rjson_serialize(w, endpoint.ip);
+    rjson_serialize(w, endpoint.ip);
     if (!endpoint.name.empty()) {
         w.Key("name");
-        ::json::rjson_serialize(w, endpoint.name);
+        rjson_serialize(w, endpoint.name);
     }
     w.Key("port");
-    ::json::rjson_serialize(w, endpoint.port);
+    rjson_serialize(w, endpoint.port);
     if (!endpoint.uid.empty()) {
         w.Key("uid");
-        ::json::rjson_serialize(w, endpoint.uid);
+        rjson_serialize(w, endpoint.uid);
     }
     w.EndObject();
 }
 
-inline void rjson_serialize(
-  ::json::Writer<::json::StringBuffer>& w, const security::audit::policy& p) {
+inline void
+rjson_serialize(Writer<StringBuffer>& w, const security::audit::policy& p) {
     w.StartObject();
     w.Key("name");
-    ::json::rjson_serialize(w, p.name);
+    rjson_serialize(w, p.name);
     w.Key("desc");
-    ::json::rjson_serialize(w, p.desc);
+    rjson_serialize(w, p.desc);
     w.EndObject();
 }
 
 inline void rjson_serialize(
-  ::json::Writer<::json::StringBuffer>& w,
-  const security::audit::authorization_result& authz) {
+  Writer<StringBuffer>& w, const security::audit::authorization_result& authz) {
     w.StartObject();
     w.Key("decision");
-    ::json::rjson_serialize(w, authz.decision);
+    rjson_serialize(w, authz.decision);
     w.Key("policy");
     rjson_serialize(w, authz.policy);
     w.EndObject();
 }
 
-inline void rjson_serialize(
-  ::json::Writer<::json::StringBuffer>& w, const security::audit::user& user) {
+inline void
+rjson_serialize(Writer<StringBuffer>& w, const security::audit::user& user) {
     w.StartObject();
     if (!user.credential_uid.empty()) {
         w.Key("credential_uid");
-        ::json::rjson_serialize(w, user.credential_uid);
+        rjson_serialize(w, user.credential_uid);
     }
     if (!user.domain.empty()) {
         w.Key("domain");
-        ::json::rjson_serialize(w, user.domain);
+        rjson_serialize(w, user.domain);
     }
     w.Key("type_id");
-    ::json::rjson_serialize(w, user.type_id);
+    rjson_serialize(w, user.type_id);
     w.Key("name");
-    ::json::rjson_serialize(w, user.name);
+    rjson_serialize(w, user.name);
     w.EndObject();
 }
 
-inline void rjson_serialize(
-  ::json::Writer<::json::StringBuffer>& w,
-  const security::audit::actor& actor) {
+inline void
+rjson_serialize(Writer<StringBuffer>& w, const security::audit::actor& actor) {
     w.StartObject();
     w.Key("authorizations");
-    ::json::rjson_serialize(w, actor.authorizations);
+    rjson_serialize(w, actor.authorizations);
     w.Key("user");
     rjson_serialize(w, actor.user);
     w.EndObject();
 }
 
 inline void rjson_serialize(
-  ::json::Writer<::json::StringBuffer>& w,
-  const security::audit::resource_detail& resource) {
+  Writer<StringBuffer>& w, const security::audit::resource_detail& resource) {
     w.StartObject();
     w.Key("name");
-    ::json::rjson_serialize(w, resource.name);
+    rjson_serialize(w, resource.name);
     w.Key("type");
-    ::json::rjson_serialize(w, resource.type);
+    rjson_serialize(w, resource.type);
     w.EndObject();
 }
 
-} // namespace security::audit
+} // namespace json

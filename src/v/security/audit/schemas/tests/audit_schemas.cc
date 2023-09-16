@@ -11,12 +11,24 @@
 #include "json/stream.h"
 #include "json/stringbuffer.h"
 #include "seastarx.h"
+#include "security/acl.h"
 #include "security/audit/schemas/application_activity.h"
 #include "security/audit/schemas/iam.h"
 #include "security/audit/schemas/types.h"
+#include "security/authorizer.h"
 #include "utils/fragmented_vector.h"
+#include "version.h"
 
+#include <seastar/net/socket_defs.hh>
 #include <seastar/testing/thread_test_case.hh>
+
+#include <boost/multi_index/composite_key.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index/sequenced_index.hpp>
+#include <boost/multi_index_container.hpp>
+
+#include <optional>
 
 namespace sa = security::audit;
 
@@ -53,7 +65,8 @@ static const ss::sstring metadata_object{
         "product": {
             "name": "Redpanda",
             "vendor_name": "Redpanda Data, Inc",
-            "version": "FILL THIS IN"
+            "version": ")"
+  + ss::sstring{redpanda_git_version()} + R"("
         }
     }
     )"};
@@ -81,6 +94,7 @@ SEASTAR_THREAD_TEST_CASE(test_application_activity) {
     resources.emplace_back(
       sa::resource_detail{.name = "topic1", .type = "topic"});
     sa::api_activity api_activity{
+      std::nullopt,
       sa::api_activity::activity_id::create,
       sa::actor{
         .authorizations = {sa::authorization_result{
@@ -89,6 +103,7 @@ SEASTAR_THREAD_TEST_CASE(test_application_activity) {
         .user = {.name = "User:mboquard", .type_id = sa::user::type::user}},
       sa::api{.operation = "create_topic"},
       dst_endpoint,
+      std::nullopt,
       std::move(resources),
       sa::api_activity::severity::informational,
       src_endpoint,
@@ -244,4 +259,55 @@ SEASTAR_THREAD_TEST_CASE(test_authentication_sasl) {
 }
     )";
     BOOST_REQUIRE_EQUAL(minify(expected), result);
+}
+
+SEASTAR_THREAD_TEST_CASE(test_container) {
+    struct underlying_list {};
+    struct underlying_unordered_map {};
+
+    //    using underlying_t = boost::multi_index::multi_index_container<
+    //      security::audit::api_activity,
+    //      boost::multi_index::indexed_by<
+    //        boost::multi_index::sequenced<boost::multi_index::tag<underlying_list>>,
+    //        boost::multi_index::hashed_unique<
+    //          boost::multi_index::tag<underlying_unordered_map>,
+    //          boost::multi_index::identity<security::audit::api_activity>,
+    //          security::audit::api_activity::equal>>>;
+
+//    using underlying_t = boost::multi_index::multi_index_container<
+//      security::audit::api_activity,
+//      boost::multi_index::indexed_by<
+//        boost::multi_index::sequenced<boost::multi_index::tag<underlying_list>>,
+//        boost::multi_index::hashed_unique<boost::multi_index::composite_key<
+//          security::audit::api_activity,
+//          boost::multi_index::member<
+//            security::audit::api_activity,
+//            long,
+//            &security::audit::api_activity::time>>>>>;
+
+
+        using underlying_t = boost::multi_index::multi_index_container<
+          security::audit::api_activity,
+          boost::multi_index::indexed_by<
+            boost::multi_index::sequenced<boost::multi_index::tag<underlying_list>>,
+            boost::multi_index::hashed_unique<security::audit::api_activity>>>;
+    underlying_t item;
+
+    auto& list = item.get<underlying_list>();
+
+    auto result = security::auth_result::superuser_authorized(
+      security::acl_principal{security::principal_type::user, "User:mboquard"},
+      security::acl_wildcard_host);
+
+    auto api_item = security::audit::create_api_activity(
+      "test",
+      security::acl_operation::create,
+      result,
+      ss::socket_address{},
+      fragmented_vector<model::topic>{});
+
+    list.emplace_back(std::move(api_item));
+    list.emplace_back(std::move(api_item));
+
+    std::cout << item.size() << std::endl;
 }

@@ -111,43 +111,42 @@ private:
     int type_uid;
     user user;
 };
-
 inline void rjson_serialize(
   ::json::Writer<::json::StringBuffer>& w,
-  const authentication& authentication) {
+  const security::audit::authentication& authentication) {
     w.StartObject();
 
     w.Key("activity_id");
-    ::json::rjson_serialize(w, authentication.activity_id);
+    rjson_serialize(w, authentication.activity_id);
     if (!authentication.auth_protocol.empty()) {
         w.Key("auth_protocol");
-        ::json::rjson_serialize(w, authentication.auth_protocol);
+        rjson_serialize(w, authentication.auth_protocol);
     }
 
     w.Key("auth_protocol_id");
-    ::json::rjson_serialize(w, authentication.auth_protocol_id);
+    rjson_serialize(w, authentication.auth_protocol_id);
     w.Key("category_uid");
-    ::json::rjson_serialize(w, authentication.category_uid);
+    rjson_serialize(w, authentication.category_uid);
     w.Key("class_uid");
-    ::json::rjson_serialize(w, authentication.class_uid);
+    rjson_serialize(w, authentication.class_uid);
     w.Key("dst_endpoint");
     rjson_serialize(w, authentication.dst_endpoint);
     w.Key("is_cleartext");
-    ::json::rjson_serialize(w, authentication.is_cleartext);
+    rjson_serialize(w, authentication.is_cleartext);
     w.Key("metadata");
     rjson_serialize(w, authentication.metadata);
     w.Key("mfa");
-    ::json::rjson_serialize(w, authentication.mfa);
+    rjson_serialize(w, authentication.mfa);
     w.Key("severity_id");
-    ::json::rjson_serialize(w, authentication.severity_id);
+    rjson_serialize(w, authentication.severity_id);
     w.Key("src_endpoint");
     rjson_serialize(w, authentication.src_endpoint);
     w.Key("status_id");
-    ::json::rjson_serialize(w, authentication.status_id);
+    rjson_serialize(w, authentication.status_id);
     w.Key("time");
-    ::json::rjson_serialize(w, authentication.time);
+    rjson_serialize(w, authentication.time);
     w.Key("type_uid");
-    ::json::rjson_serialize(w, authentication.type_uid);
+    rjson_serialize(w, authentication.type_uid);
     w.Key("user");
     rjson_serialize(w, authentication.user);
 

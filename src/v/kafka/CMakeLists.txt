@@ -53,6 +53,7 @@ v_cc_library(
     server/group_metadata.cc
  DEPS
     Seastar::seastar
+    v::audit
     v::bytes
     v::rpc
     v::cluster
