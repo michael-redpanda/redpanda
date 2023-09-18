@@ -13,6 +13,7 @@
 
 namespace security {
 
+struct auth_result;
 class authorizer;
 class credential_store;
 class ephemeral_credential_store;

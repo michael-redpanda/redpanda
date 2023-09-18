@@ -80,6 +80,13 @@ struct api {
     ss::sstring operation;
 
     friend bool operator==(const api&, const api&) = default;
+
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& hash,
+      const api& a) {
+        hash.update(a.operation);
+    }
 };
 
 struct metadata {
@@ -109,6 +116,14 @@ struct policy {
     ss::sstring desc;
 
     friend bool operator==(const policy&, const policy&) = default;
+
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& hash,
+      const policy& p) {
+        hash.update(p.name);
+        hash.update(p.desc);
+    }
 };
 
 struct authorization_result {
@@ -118,6 +133,14 @@ struct authorization_result {
     friend bool
     operator==(const authorization_result&, const authorization_result&)
       = default;
+
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& hash,
+      const authorization_result& result) {
+        hash.update(result.decision);
+        hash.update(result.policy);
+    }
 };
 
 struct user {
@@ -135,6 +158,16 @@ struct user {
     type type_id;
 
     friend bool operator==(const user&, const user&) = default;
+
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& hash,
+      const user& u) {
+        hash.update(u.credential_uid);
+        hash.update(u.domain);
+        hash.update(u.name);
+        hash.update(u.type_id);
+    }
 };
 
 struct actor {
@@ -142,6 +175,17 @@ struct actor {
     user user;
 
     friend bool operator==(const actor&, const actor&);
+
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& hash,
+      const actor& a) {
+        for (const auto& authzs : a.authorizations) {
+            hash.update(authzs);
+        }
+
+        hash.update(a.user);
+    }
 };
 
 inline bool operator==(const actor& lhs, const actor& rhs) {
@@ -154,6 +198,14 @@ struct resource_detail {
 
     friend bool operator==(const resource_detail&, const resource_detail&)
       = default;
+
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& h,
+      const resource_detail& r) {
+        h.update(r.name);
+        h.update(r.type);
+    }
 };
 
 static inline actor result_to_actor(const security::auth_result& result) {
