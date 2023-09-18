@@ -9,18 +9,16 @@
 
 #pragma once
 
-#include "security/acl.h"
-#include "security/audit/schemas/types.h"
-#include "security/authorizer.h"
-
-#include <absl/container/flat_hash_map.h>
-
-#include <chrono>
+#include "hashing/xx.h"
+#include "types.h"
+#include "utils/named_type.h"
 
 namespace security::audit {
 
+using timestamp_t = named_type<long, struct timestamp_t_type>;
+using type_uid = named_type<long, struct type_uid_type>;
+
 struct api_activity {
-    using timestamp_clock = std::chrono::system_clock;
     enum class activity_id : int {
         unknown = 0,
         create = 1,
@@ -48,94 +46,124 @@ struct api_activity {
         other = 99,
     };
 
+    struct unmapped {
+        struct acl_authorization {
+            ss::sstring host;
+            ss::sstring op;
+            ss::sstring permission_type;
+            ss::sstring principal;
+        } acl_authorization;
+
+        struct resource {
+            ss::sstring name;
+            ss::sstring pattern;
+            ss::sstring type;
+        } resource;
+
+        friend void tag_invoke(
+          tag_t<incremental_xxhash64_tag>,
+          incremental_xxhash64& h,
+          const unmapped& u) {
+            h.update(u.acl_authorization.host);
+            h.update(u.acl_authorization.op);
+            h.update(u.acl_authorization.permission_type);
+            h.update(u.acl_authorization.principal);
+            h.update(u.resource.name);
+            h.update(u.resource.pattern);
+            h.update(u.resource.type);
+        }
+    };
+
     api_activity() = delete;
 
     api_activity(
-      std::optional<security::acl_entry>&& acl,
       activity_id activity_id,
       actor actor,
       api api,
       network_endpoint dst_endpoint,
-      std::optional<security::resource_pattern>&& resource_pattern,
-      fragmented_vector<resource_detail>&& resources,
-      api_activity::severity severity_id,
+      fragmented_vector<resource_detail> resources,
+      severity severity_id,
       network_endpoint src_endpoint,
       status_id status_id,
-      ::time_t time)
-      : acl(std::move(acl))
-      , activity_id(activity_id)
+      timestamp_t time,
+      unmapped unmapped)
+      : activity_id(std::move(activity_id))
       , actor(std::move(actor))
       , api(std::move(api))
-      , category_uid(category_uid::application_activity)
-      , class_uid(class_uid::api_activity)
       , dst_endpoint(std::move(dst_endpoint))
+      , end_time(time)
       , metadata(ocsf_metadata)
-      , resource_pattern(std::move(resource_pattern))
       , resources(std::move(resources))
-      , src_endpoint(std::move(src_endpoint))
       , severity_id(severity_id)
+      , src_endpoint(src_endpoint)
       , start_time(time)
       , status_id(status_id)
       , time(time)
-      , type_uid(int(this->class_uid) * 100 + int(this->activity_id)) {}
+      , type_uid(
+          type_uid::type(this->class_uid) * 100L
+          + type_uid::type(this->activity_id))
+      , unmapped(std::move(unmapped)) {}
 
-    friend void rjson_serialize(
-      ::json::Writer<::json::StringBuffer>& w,
-      const api_activity& api_activity);
+    uint64_t hash() const noexcept {
+        incremental_xxhash64 hash{};
+        hash.update(*this);
+        auto val = hash.digest();
+        return val;
+    }
 
-    friend bool operator==(const api_activity&, const api_activity&);
-
-    struct equal {
-        using is_transparant = void;
-        bool operator()(const api_activity& lhs, const api_activity& rhs) {
-            return lhs == rhs;
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& hash,
+      const api_activity& api_activity) {
+        hash.update(api_activity.activity_id);
+        hash.update(api_activity.actor);
+        hash.update(api_activity.api);
+        hash.update(api_activity.category_uid);
+        hash.update(api_activity.class_uid);
+        hash.update(api_activity.dst_endpoint.ip);
+        for (const auto& r : api_activity.resources) {
+            hash.update(r);
         }
-    };
+        hash.update(api_activity.src_endpoint.ip);
+        hash.update(api_activity.status_id);
+        hash.update(api_activity.type_uid);
+        hash.update(api_activity.unmapped);
+    }
 
-    void increment(long time) noexcept {
+    void increment(timestamp_t time) const noexcept {
         this->count++;
         this->end_time = time;
     }
 
-    size_t get_count() const noexcept { return this->count; }
-
-    std::optional<security::acl_entry> acl;
     activity_id activity_id;
     actor actor;
     api api;
-    category_uid category_uid;
-    class_uid class_uid;
-    size_t count{1};
+    category_uid category_uid{category_uid::application_activity};
+    class_uid class_uid{class_uid::api_activity};
+    // Count and end_time are mutable because they are not part of the
+    // hash of the item
+    mutable long count{1};
     network_endpoint dst_endpoint;
-    long end_time{0};
+    mutable timestamp_t end_time;
     metadata metadata;
-    std::optional<security::resource_pattern> resource_pattern;
     fragmented_vector<resource_detail> resources;
-    network_endpoint src_endpoint;
     severity severity_id;
-    long start_time{0};
-    status_id status_id;
-    long time;
-    int type_uid;
-};
 
-inline bool operator==(const api_activity& lhs, const api_activity& rhs) {
-    return lhs.acl == rhs.acl && lhs.activity_id == rhs.activity_id
-           && lhs.actor == rhs.actor && lhs.api == rhs.api
-           && lhs.category_uid == rhs.category_uid
-           && lhs.class_uid == rhs.class_uid
-           && lhs.dst_endpoint == rhs.dst_endpoint
-           && lhs.metadata == rhs.metadata
-           && lhs.resource_pattern == rhs.resource_pattern
-           && lhs.resources == rhs.resources
-           && lhs.src_endpoint.ip == rhs.src_endpoint.ip
-           && lhs.severity_id == rhs.severity_id
-           && lhs.status_id == rhs.status_id && lhs.type_uid == rhs.type_uid;
-}
+    network_endpoint src_endpoint;
+    timestamp_t start_time;
+    status_id status_id;
+    timestamp_t time;
+    type_uid type_uid;
+    unmapped unmapped;
+
+    friend void rjson_serialize(
+      ::json::Writer<::json::StringBuffer>& w,
+      const api_activity& api_activity);
+};
 
 inline void rjson_serialize(
   ::json::Writer<::json::StringBuffer>& w,
-  const struct security::audit::api_activity& api_activity) {
+  const struct api_activity& api_activity) {
     w.StartObject();
     w.Key("activity_id");
     rjson_serialize(w, api_activity.activity_id);
@@ -175,6 +203,31 @@ inline void rjson_serialize(
     rjson_serialize(w, api_activity.time);
     w.Key("type_uid");
     rjson_serialize(w, api_activity.type_uid);
+    w.Key("unmapped");
+    w.StartObject();
+    w.Key("acl_authorization");
+    w.StartObject();
+    w.Key("host");
+    ::json::rjson_serialize(w, api_activity.unmapped.acl_authorization.host);
+    w.Key("op");
+    ::json::rjson_serialize(w, api_activity.unmapped.acl_authorization.op);
+    w.Key("permission_type");
+    ::json::rjson_serialize(
+      w, api_activity.unmapped.acl_authorization.permission_type);
+    w.Key("principal");
+    ::json::rjson_serialize(
+      w, api_activity.unmapped.acl_authorization.principal);
+    w.EndObject();
+    w.Key("resource");
+    w.StartObject();
+    w.Key("name");
+    ::json::rjson_serialize(w, api_activity.unmapped.resource.name);
+    w.Key("pattern");
+    ::json::rjson_serialize(w, api_activity.unmapped.resource.pattern);
+    w.Key("type");
+    ::json::rjson_serialize(w, api_activity.unmapped.resource.type);
+    w.EndObject();
+    w.EndObject();
     w.EndObject();
 }
 
@@ -201,6 +254,32 @@ op_to_crud(security::acl_operation op) {
     vassert(result != op_to_crud_map.end(), "Invalid operation {}", op);
     return result->second;
 }
+
+static inline struct api_activity::unmapped
+result_to_unmapped(const security::auth_result& result) {
+    struct api_activity::unmapped rv;
+
+    if (result.acl) {
+        rv.acl_authorization.principal = fmt::format(
+          "{}", result.acl->get().principal());
+        rv.acl_authorization.host = fmt::format("{}", result.acl->get().host());
+        rv.acl_authorization.op = fmt::format(
+          "{}", result.acl->get().operation());
+    }
+    rv.acl_authorization.permission_type = result.authorized ? "AUTHORIZED"
+                                                             : "DENIED";
+
+    if (result.resource_pattern) {
+        rv.resource.name = result.resource_pattern->get().name();
+        rv.resource.pattern = fmt::format(
+          "{}", result.resource_pattern->get().pattern());
+        rv.resource.type = fmt::format(
+          "{}", result.resource_pattern->get().resource());
+    }
+
+    return rv;
+};
+
 template<typename T>
 api_activity create_api_activity(
   const std::string_view& op_name,
@@ -209,6 +288,7 @@ api_activity create_api_activity(
   const ss::socket_address& local_address,
   const fragmented_vector<T>& resources) {
     auto crud = op_to_crud(op);
+
     fragmented_vector<resource_detail> resource_details;
     std::transform(
       resources.begin(),
@@ -217,19 +297,17 @@ api_activity create_api_activity(
       [](auto&& item) -> resource_detail {
           return {
             .name = fmt::format("{}", item()),
-            .type = fmt::format("{}", security::get_resource_type<T>()),
-          };
+            .type = fmt::format("{}", security::get_resource_type<T>())};
       });
 
     return {
-      result.acl,
       crud,
       result_to_actor(result),
       api{.operation = ss::sstring{op_name.data(), op_name.size()}},
       network_endpoint{
         .ip = fmt::format("{}", local_address.addr()),
-        .port = local_address.port()},
-      result.resource_pattern,
+        .port = local_address.port(),
+      },
       std::move(resource_details),
       api_activity::severity::informational,
       network_endpoint{
@@ -237,53 +315,10 @@ api_activity create_api_activity(
       },
       result.authorized ? api_activity::status_id::success
                         : api_activity::status_id::failure,
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-        api_activity::timestamp_clock::now().time_since_epoch())
-        .count()};
+      timestamp_t{std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                    .count()},
+      result_to_unmapped(result)};
 }
 
 } // namespace security::audit
-
-namespace json {
-inline void rjson_serialize(
-  Writer<StringBuffer>& w, const security::acl_principal& principal) {
-    rjson_serialize(
-      w,
-      std::string_view{
-        fmt::format("{}:{}", principal.type(), principal.name())});
-}
-
-inline void
-rjson_serialize(Writer<StringBuffer>& w, const security::acl_host& host) {
-    if (!host.address().has_value()) {
-        rjson_serialize(w, "*");
-    } else {
-        rjson_serialize(
-          w, std::string_view{fmt::format("{}", host.address().value())});
-    }
-}
-
-inline void
-rjson_serialize(Writer<StringBuffer>& w, const security::acl_operation& op) {
-    rjson_serialize(w, std::string_view{fmt::format("{}", op)});
-}
-
-inline void rjson_serialize(
-  Writer<StringBuffer>& w, const security::acl_permission& permission) {
-    rjson_serialize(w, std::string_view{fmt::format("{}", permission)});
-}
-
-inline void
-rjson_serialize(Writer<StringBuffer>& w, const security::acl_entry& acl) {
-    w.StartObject();
-    w.Key("principal");
-    rjson_serialize(w, acl.principal());
-    w.Key("host");
-    rjson_serialize(w, acl.host());
-    w.Key("op");
-    rjson_serialize(w, acl.operation());
-    w.Key("permission_type");
-    rjson_serialize(w, acl.permission());
-    w.EndObject();
-}
-} // namespace json

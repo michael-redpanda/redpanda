@@ -24,6 +24,7 @@
 
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/sequenced_index.hpp>
 #include <boost/multi_index_container.hpp>
@@ -93,8 +94,8 @@ SEASTAR_THREAD_TEST_CASE(test_application_activity) {
     fragmented_vector<sa::resource_detail> resources;
     resources.emplace_back(
       sa::resource_detail{.name = "topic1", .type = "topic"});
+    struct sa::api_activity::unmapped unmapped {};
     sa::api_activity api_activity{
-      std::nullopt,
       sa::api_activity::activity_id::create,
       sa::actor{
         .authorizations = {sa::authorization_result{
@@ -103,12 +104,12 @@ SEASTAR_THREAD_TEST_CASE(test_application_activity) {
         .user = {.name = "User:mboquard", .type_id = sa::user::type::user}},
       sa::api{.operation = "create_topic"},
       dst_endpoint,
-      std::nullopt,
       std::move(resources),
       sa::api_activity::severity::informational,
       src_endpoint,
       sa::api_activity::status_id::failure,
-      12345};
+      sa::timestamp_t{12345},
+      unmapped};
 
     ::json::StringBuffer str_buf;
     ::json::Writer<::json::StringBuffer> wrt(str_buf);
@@ -153,7 +154,20 @@ SEASTAR_THREAD_TEST_CASE(test_application_activity) {
       + src_endpoint_json + R"(,
     "status_id": 2,
     "time": 12345,
-    "type_uid": 600301
+    "type_uid": 600301,
+"unmapped": {
+"acl_authorization": {
+"host": "",
+"op": "",
+"permission_type": "",
+"principal": ""
+},
+"resource": {
+"name": "",
+"pattern": "",
+"type": ""
+}
+}
 })"};
     BOOST_REQUIRE_EQUAL(minify(expected), result);
 }
@@ -265,35 +279,21 @@ SEASTAR_THREAD_TEST_CASE(test_container) {
     struct underlying_list {};
     struct underlying_unordered_map {};
 
-    //    using underlying_t = boost::multi_index::multi_index_container<
-    //      security::audit::api_activity,
-    //      boost::multi_index::indexed_by<
-    //        boost::multi_index::sequenced<boost::multi_index::tag<underlying_list>>,
-    //        boost::multi_index::hashed_unique<
-    //          boost::multi_index::tag<underlying_unordered_map>,
-    //          boost::multi_index::identity<security::audit::api_activity>,
-    //          security::audit::api_activity::equal>>>;
+    using underlying_t = boost::multi_index_container<
+      security::audit::api_activity,
+      boost::multi_index::indexed_by<
+        boost::multi_index::sequenced<boost::multi_index::tag<underlying_list>>,
+        boost::multi_index::hashed_unique<
+          boost::multi_index::tag<underlying_unordered_map>,
+          boost::multi_index::const_mem_fun<
+            security::audit::api_activity,
+            uint64_t,
+            &security::audit::api_activity::hash>>>>;
 
-//    using underlying_t = boost::multi_index::multi_index_container<
-//      security::audit::api_activity,
-//      boost::multi_index::indexed_by<
-//        boost::multi_index::sequenced<boost::multi_index::tag<underlying_list>>,
-//        boost::multi_index::hashed_unique<boost::multi_index::composite_key<
-//          security::audit::api_activity,
-//          boost::multi_index::member<
-//            security::audit::api_activity,
-//            long,
-//            &security::audit::api_activity::time>>>>>;
-
-
-        using underlying_t = boost::multi_index::multi_index_container<
-          security::audit::api_activity,
-          boost::multi_index::indexed_by<
-            boost::multi_index::sequenced<boost::multi_index::tag<underlying_list>>,
-            boost::multi_index::hashed_unique<security::audit::api_activity>>>;
     underlying_t item;
 
     auto& list = item.get<underlying_list>();
+    auto& map = item.get<underlying_unordered_map>();
 
     auto result = security::auth_result::superuser_authorized(
       security::acl_principal{security::principal_type::user, "User:mboquard"},
@@ -306,8 +306,26 @@ SEASTAR_THREAD_TEST_CASE(test_container) {
       ss::socket_address{},
       fragmented_vector<model::topic>{});
 
-    list.emplace_back(std::move(api_item));
-    list.emplace_back(std::move(api_item));
+    list.emplace_back(security::audit::create_api_activity(
+      "test",
+      security::acl_operation::create,
+      result,
+      ss::socket_address{},
+      fragmented_vector<model::topic>{}));
+    list.emplace_back(security::audit::create_api_activity(
+      "test",
+      security::acl_operation::create,
+      result,
+      ss::socket_address{},
+      fragmented_vector<model::topic>{}));
 
-    std::cout << item.size() << std::endl;
+    BOOST_REQUIRE_EQUAL(item.size(), 1);
+
+    auto find_res = map.find(api_item.hash());
+    BOOST_REQUIRE(find_res != map.end());
+    find_res->increment(security::audit::timestamp_t{
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch())
+        .count()});
+    BOOST_REQUIRE_EQUAL(find_res->count, 2);
 }
