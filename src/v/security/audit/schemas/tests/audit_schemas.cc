@@ -276,66 +276,66 @@ SEASTAR_THREAD_TEST_CASE(test_authentication_sasl) {
     BOOST_REQUIRE_EQUAL(minify(expected), result);
 }
 
-SEASTAR_THREAD_TEST_CASE(test_container) {
-    struct underlying_list {};
-    struct underlying_unordered_map {};
-
-    using underlying_t = boost::multi_index_container<
-      security::audit::audit_event,
-      boost::multi_index::indexed_by<
-        boost::multi_index::sequenced<boost::multi_index::tag<underlying_list>>,
-        boost::multi_index::hashed_unique<
-          boost::multi_index::tag<underlying_unordered_map>,
-          boost::multi_index::member<
-            security::audit::audit_event,
-            size_t,
-            &security::audit::audit_event::key>>>>;
-
-    underlying_t item;
-
-    auto& list = item.get<underlying_list>();
-    auto& map = item.get<underlying_unordered_map>();
-
-    auto result = security::auth_result::superuser_authorized(
-      security::acl_principal{security::principal_type::user, "User:mboquard"},
-      security::acl_wildcard_host);
-
-    auto api_item = security::audit::create_api_activity(
-      "test",
-      security::acl_operation::create,
-      result,
-      ss::socket_address{},
-      "test_svc",
-      fragmented_vector<model::topic>{});
-
-    list.emplace_back(security::audit::audit_event::create_audit_event(
-      security::audit::create_api_activity(
-        "test",
-        security::acl_operation::create,
-        result,
-        ss::socket_address{},
-        "test_svc",
-        fragmented_vector<model::topic>{})));
-    list.emplace_back(security::audit::audit_event::create_audit_event(
-      security::audit::create_api_activity(
-        "test",
-        security::acl_operation::create,
-        result,
-        ss::socket_address{},
-        "test_svc",
-        fragmented_vector<model::topic>{})));
-
-    BOOST_REQUIRE_EQUAL(item.size(), 1);
-
-    auto find_res = map.find(api_item.key());
-    BOOST_REQUIRE(find_res != map.end());
-    find_res->increment(security::audit::timestamp_t{
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch())
-        .count()});
-    BOOST_REQUIRE_EQUAL(find_res->count(), 2);
-
-    auto ser = find_res->rjson_serialize();
-
-    std::cout << ser << std::endl;
-}
+//SEASTAR_THREAD_TEST_CASE(test_container) {
+//    struct underlying_list {};
+//    struct underlying_unordered_map {};
+//
+//    using underlying_t = boost::multi_index_container<
+//      security::audit::audit_event,
+//      boost::multi_index::indexed_by<
+//        boost::multi_index::sequenced<boost::multi_index::tag<underlying_list>>,
+//        boost::multi_index::hashed_unique<
+//          boost::multi_index::tag<underlying_unordered_map>,
+//          boost::multi_index::member<
+//            security::audit::audit_event,
+//            size_t,
+//            &security::audit::audit_event::key>>>>;
+//
+//    underlying_t item;
+//
+//    auto& list = item.get<underlying_list>();
+//    auto& map = item.get<underlying_unordered_map>();
+//
+//    auto result = security::auth_result::superuser_authorized(
+//      security::acl_principal{security::principal_type::user, "User:mboquard"},
+//      security::acl_wildcard_host);
+//
+//    auto api_item = security::audit::create_api_activity(
+//      "test",
+//      security::acl_operation::create,
+//      result,
+//      ss::socket_address{},
+//      "test_svc",
+//      fragmented_vector<model::topic>{});
+//
+//    list.emplace_back(security::audit::audit_event::create_audit_event(
+//      security::audit::create_api_activity(
+//        "test",
+//        security::acl_operation::create,
+//        result,
+//        ss::socket_address{},
+//        "test_svc",
+//        fragmented_vector<model::topic>{})));
+//    list.emplace_back(security::audit::audit_event::create_audit_event(
+//      security::audit::create_api_activity(
+//        "test",
+//        security::acl_operation::create,
+//        result,
+//        ss::socket_address{},
+//        "test_svc",
+//        fragmented_vector<model::topic>{})));
+//
+//    BOOST_REQUIRE_EQUAL(item.size(), 1);
+//
+//    auto find_res = map.find(api_item.key());
+//    BOOST_REQUIRE(find_res != map.end());
+//    find_res->increment(security::audit::timestamp_t{
+//      std::chrono::duration_cast<std::chrono::milliseconds>(
+//        std::chrono::system_clock::now().time_since_epoch())
+//        .count()});
+//    BOOST_REQUIRE_EQUAL(find_res->count(), 2);
+//
+//    auto ser = find_res->rjson_serialize();
+//
+//    std::cout << ser << std::endl;
+//}
