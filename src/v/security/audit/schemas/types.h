@@ -19,6 +19,9 @@ namespace security::audit {
 
 static constexpr std::string_view ocsf_api_version = "1.0.0";
 
+using timestamp_t = named_type<long, struct timestamp_t_type>;
+using type_uid = named_type<long, struct type_uid_type>;
+
 enum class category_uid : int {
     system_activity = 1,
     findings = 2,
@@ -208,6 +211,34 @@ struct resource_detail {
     }
 };
 
+struct api_activity_unmapped {
+    struct acl_authorization {
+        ss::sstring host;
+        ss::sstring op;
+        ss::sstring permission_type;
+        ss::sstring principal;
+    } acl_authorization;
+
+    struct resource {
+        ss::sstring name;
+        ss::sstring pattern;
+        ss::sstring type;
+    } resource;
+
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& h,
+      const api_activity_unmapped& u) {
+        h.update(u.acl_authorization.host);
+        h.update(u.acl_authorization.op);
+        h.update(u.acl_authorization.permission_type);
+        h.update(u.acl_authorization.principal);
+        h.update(u.resource.name);
+        h.update(u.resource.pattern);
+        h.update(u.resource.type);
+    }
+};
+
 static inline actor result_to_actor(const security::auth_result& result) {
     user user{
       .name = result.principal.name(),
@@ -364,3 +395,92 @@ inline void rjson_serialize(
 }
 
 } // namespace json
+
+namespace std {
+template<>
+struct hash<security::audit::api_activity_unmapped> {
+    size_t operator()(const security::audit::api_activity_unmapped& u) {
+        size_t h = 0;
+        boost::hash_combine(h, u.acl_authorization.host);
+        boost::hash_combine(h, u.acl_authorization.op);
+        boost::hash_combine(h, u.acl_authorization.permission_type);
+        boost::hash_combine(h, u.acl_authorization.principal);
+        boost::hash_combine(h, u.resource.name);
+        boost::hash_combine(h, u.resource.pattern);
+        boost::hash_combine(h, u.resource.type);
+
+        return h;
+    }
+};
+template<>
+struct hash<security::audit::resource_detail> {
+    size_t operator()(const security::audit::resource_detail& r) {
+        size_t h = 0;
+        boost::hash_combine(h, std::hash<ss::sstring>()(r.name));
+        boost::hash_combine(h, std::hash<ss::sstring>()(r.type));
+        return h;
+    }
+};
+
+template<>
+struct hash<security::audit::user> {
+    size_t operator()(const security::audit::user& u) {
+        size_t h = 0;
+        boost::hash_combine(h, std::hash<ss::sstring>()(u.credential_uid));
+        boost::hash_combine(h, std::hash<ss::sstring>()(u.domain));
+        boost::hash_combine(h, std::hash<ss::sstring>()(u.name));
+        boost::hash_combine(h, std::hash<int>()(int(u.type_id)));
+        return h;
+    }
+};
+
+template<>
+struct hash<security::audit::policy> {
+    size_t operator()(const security::audit::policy& p) {
+        size_t h = 0;
+
+        boost::hash_combine(h, std::hash<ss::sstring>()(p.name));
+        boost::hash_combine(h, std::hash<ss::sstring>()(p.desc));
+
+        return h;
+    }
+};
+
+template<>
+struct hash<security::audit::authorization_result> {
+    size_t operator()(const security::audit::authorization_result& r) {
+        size_t h = 0;
+        boost::hash_combine(h, std::hash<ss::sstring>()(r.decision));
+        boost::hash_combine(h, std::hash<security::audit::policy>()(r.policy));
+
+        return h;
+    }
+};
+
+template<>
+struct hash<security::audit::actor> {
+    size_t operator()(const security::audit::actor& a) {
+        size_t h = 0;
+
+        for (const auto& authzs : a.authorizations) {
+            boost::hash_combine(
+              h, std::hash<security::audit::authorization_result>()(authzs));
+        }
+
+        boost::hash_combine(h, std::hash<security::audit::user>()(a.user));
+
+        return h;
+    }
+};
+
+template<>
+struct hash<security::audit::api> {
+    size_t operator()(const security::audit::api& a) {
+        size_t h = 0;
+
+        boost::hash_combine(h, std::hash<ss::sstring>()(a.operation));
+
+        return h;
+    }
+};
+} // namespace std

@@ -94,7 +94,7 @@ SEASTAR_THREAD_TEST_CASE(test_application_activity) {
     fragmented_vector<sa::resource_detail> resources;
     resources.emplace_back(
       sa::resource_detail{.name = "topic1", .type = "topic"});
-    struct sa::api_activity::unmapped unmapped {};
+    struct sa::api_activity_unmapped unmapped {};
     sa::api_activity api_activity{
       sa::api_activity::activity_id::create,
       sa::actor{

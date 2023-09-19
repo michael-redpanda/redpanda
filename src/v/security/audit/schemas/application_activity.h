@@ -13,10 +13,9 @@
 #include "types.h"
 #include "utils/named_type.h"
 
-namespace security::audit {
+#include <boost/container_hash/hash_fwd.hpp>
 
-using timestamp_t = named_type<long, struct timestamp_t_type>;
-using type_uid = named_type<long, struct type_uid_type>;
+namespace security::audit {
 
 struct api_activity {
     enum class activity_id : int {
@@ -46,34 +45,6 @@ struct api_activity {
         other = 99,
     };
 
-    struct unmapped {
-        struct acl_authorization {
-            ss::sstring host;
-            ss::sstring op;
-            ss::sstring permission_type;
-            ss::sstring principal;
-        } acl_authorization;
-
-        struct resource {
-            ss::sstring name;
-            ss::sstring pattern;
-            ss::sstring type;
-        } resource;
-
-        friend void tag_invoke(
-          tag_t<incremental_xxhash64_tag>,
-          incremental_xxhash64& h,
-          const unmapped& u) {
-            h.update(u.acl_authorization.host);
-            h.update(u.acl_authorization.op);
-            h.update(u.acl_authorization.permission_type);
-            h.update(u.acl_authorization.principal);
-            h.update(u.resource.name);
-            h.update(u.resource.pattern);
-            h.update(u.resource.type);
-        }
-    };
-
     api_activity() = delete;
 
     api_activity(
@@ -86,7 +57,7 @@ struct api_activity {
       network_endpoint src_endpoint,
       status_id status_id,
       timestamp_t time,
-      unmapped unmapped)
+      api_activity_unmapped unmapped)
       : activity_id(std::move(activity_id))
       , actor(std::move(actor))
       , api(std::move(api))
@@ -150,16 +121,30 @@ struct api_activity {
     status_id status_id;
     timestamp_t time;
     type_uid type_uid;
-    unmapped unmapped;
+    api_activity_unmapped unmapped;
 
 private:
     size_t _key;
 
-    uint64_t hash() const noexcept {
-        incremental_xxhash64 hash{};
-        hash.update(*this);
-        auto val = hash.digest();
-        return val;
+    size_t hash() const noexcept {
+        size_t h = 0;
+        boost::hash_combine(h, std::hash<int>()(int(activity_id)));
+        boost::hash_combine(h, std::hash<struct actor>()(actor));
+        boost::hash_combine(h, std::hash<struct api>()(api));
+        boost::hash_combine(h, std::hash<int>()(int(category_uid)));
+        boost::hash_combine(h, std::hash<int>()(int(class_uid)));
+        boost::hash_combine(h, std::hash<ss::sstring>()(dst_endpoint.ip));
+        for (const auto& r : resources) {
+            boost::hash_combine(h, std::hash<resource_detail>()(r));
+        }
+        boost::hash_combine(h, std::hash<ss::sstring>()(src_endpoint.ip));
+        boost::hash_combine(h, std::hash<int>()(int(status_id)));
+        boost::hash_combine(
+          h,
+          std::hash<typename type_uid::type>()(
+            typename type_uid::type(type_uid)));
+        boost::hash_combine(h, std::hash<api_activity_unmapped>()(unmapped));
+        return h;
     }
 
     friend void rjson_serialize(
@@ -261,9 +246,9 @@ op_to_crud(security::acl_operation op) {
     return result->second;
 }
 
-static inline struct api_activity::unmapped
+static inline struct api_activity_unmapped
 result_to_unmapped(const security::auth_result& result) {
-    struct api_activity::unmapped rv;
+    struct api_activity_unmapped rv;
 
     if (result.acl) {
         rv.acl_authorization.principal = fmt::format(

@@ -78,7 +78,8 @@ struct authentication {
       , status_id(status_id)
       , time(time)
       , type_uid(int(this->class_uid) * 100 + int(this->activity_id))
-      , user(std::move(user)) {
+      , user(std::move(user))
+      , _key(hash()) {
         ss::visit(
           auth_protocol,
           [this](enum auth_protocol_id auth_protocol_id) {
@@ -93,6 +94,25 @@ struct authentication {
 
     friend void rjson_serialize(
       ::json::Writer<::json::StringBuffer>&, const authentication&);
+
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& h,
+      const authentication& a) {
+        h.update(a.activity_id);
+        h.update(a.auth_protocol);
+        h.update(a.auth_protocol_id);
+        h.update(a.category_uid);
+        h.update(a.class_uid);
+        h.update(a.dst_endpoint.ip);
+        h.update(a.is_cleartext);
+        h.update(a.mfa);
+        h.update(a.severity_id);
+        h.update(a.src_endpoint.ip);
+        h.update(a.status_id);
+        h.update(a.type_uid);
+        h.update(a.user);
+    }
 
 private:
     activity_id activity_id;
@@ -110,6 +130,27 @@ private:
     long time;
     int type_uid;
     user user;
+    size_t _key;
+
+    size_t hash() const noexcept {
+        size_t h = 0;
+
+        boost::hash_combine(h, std::hash<int>()(int(activity_id)));
+        boost::hash_combine(h, std::hash<ss::sstring>()(auth_protocol));
+        boost::hash_combine(h, std::hash<int>()(int(auth_protocol_id)));
+        boost::hash_combine(h, std::hash<int>()(int(category_uid)));
+        boost::hash_combine(h, std::hash<int>()(int(class_uid)));
+        boost::hash_combine(h, std::hash<ss::sstring>()(dst_endpoint.ip));
+        boost::hash_combine(h, std::hash<bool>()(is_cleartext));
+        boost::hash_combine(h, std::hash<bool>()(mfa));
+        boost::hash_combine(h, std::hash<int>()(int(severity_id)));
+        boost::hash_combine(h, std::hash<ss::sstring>()(src_endpoint.ip));
+        boost::hash_combine(h, std::hash<int>()(int(status_id)));
+        boost::hash_combine(h, std::hash<int>()(int(type_uid)));
+        boost::hash_combine(h, std::hash<struct user>()(user));
+
+        return h;
+    }
 };
 inline void rjson_serialize(
   ::json::Writer<::json::StringBuffer>& w,
