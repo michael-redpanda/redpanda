@@ -98,7 +98,7 @@ struct auth_result {
         return {
           .authorized = match.has_value(),
           .is_superuser = false,
-          .empty_matches = false,
+          .empty_matches = !match.has_value(),
           .resource_pattern = match.has_value()
                                 ? std::make_optional(match->resource_pattern)
                                 : std::nullopt,

@@ -108,6 +108,7 @@ struct network_endpoint {
     ss::sstring ip;
     ss::sstring name;
     uint16_t port;
+    ss::sstring svc_name;
     ss::sstring uid;
 
     friend bool operator==(const network_endpoint&, const network_endpoint&)
@@ -311,7 +312,6 @@ inline void rjson_serialize(
     w.Key("product");
     rjson_serialize(w, metadata.product);
     w.EndObject();
-    ;
 }
 
 inline void rjson_serialize(
@@ -329,6 +329,10 @@ inline void rjson_serialize(
     }
     w.Key("port");
     rjson_serialize(w, endpoint.port);
+    if (!endpoint.svc_name.empty()) {
+        w.Key("svc_name");
+        rjson_serialize(w, endpoint.svc_name);
+    }
     if (!endpoint.uid.empty()) {
         w.Key("uid");
         rjson_serialize(w, endpoint.uid);

@@ -15,6 +15,8 @@
 
 #include <boost/container_hash/hash_fwd.hpp>
 
+#include <utility>
+
 namespace security::audit {
 
 struct api_activity {
@@ -57,8 +59,8 @@ struct api_activity {
       network_endpoint src_endpoint,
       status_id status_id,
       timestamp_t time,
-      api_activity_unmapped unmapped)
-      : activity_id(std::move(activity_id))
+      std::optional<api_activity_unmapped> unmapped)
+      : activity_id(activity_id)
       , actor(std::move(actor))
       , api(std::move(api))
       , dst_endpoint(std::move(dst_endpoint))
@@ -66,7 +68,7 @@ struct api_activity {
       , metadata(ocsf_metadata)
       , resources(std::move(resources))
       , severity_id(severity_id)
-      , src_endpoint(src_endpoint)
+      , src_endpoint(std::move(src_endpoint))
       , start_time(time)
       , status_id(status_id)
       , time(time)
@@ -121,7 +123,7 @@ struct api_activity {
     status_id status_id;
     timestamp_t time;
     type_uid type_uid;
-    api_activity_unmapped unmapped;
+    std::optional<api_activity_unmapped> unmapped;
 
 private:
     size_t _key;
@@ -143,7 +145,11 @@ private:
           h,
           std::hash<typename type_uid::type>()(
             typename type_uid::type(type_uid)));
-        boost::hash_combine(h, std::hash<api_activity_unmapped>()(unmapped));
+        if (unmapped) {
+            boost::hash_combine(
+              h, std::hash<api_activity_unmapped>()(unmapped.value()));
+        }
+
         return h;
     }
 
@@ -194,31 +200,35 @@ inline void rjson_serialize(
     rjson_serialize(w, api_activity.time);
     w.Key("type_uid");
     rjson_serialize(w, api_activity.type_uid);
-    w.Key("unmapped");
-    w.StartObject();
-    w.Key("acl_authorization");
-    w.StartObject();
-    w.Key("host");
-    ::json::rjson_serialize(w, api_activity.unmapped.acl_authorization.host);
-    w.Key("op");
-    ::json::rjson_serialize(w, api_activity.unmapped.acl_authorization.op);
-    w.Key("permission_type");
-    ::json::rjson_serialize(
-      w, api_activity.unmapped.acl_authorization.permission_type);
-    w.Key("principal");
-    ::json::rjson_serialize(
-      w, api_activity.unmapped.acl_authorization.principal);
-    w.EndObject();
-    w.Key("resource");
-    w.StartObject();
-    w.Key("name");
-    ::json::rjson_serialize(w, api_activity.unmapped.resource.name);
-    w.Key("pattern");
-    ::json::rjson_serialize(w, api_activity.unmapped.resource.pattern);
-    w.Key("type");
-    ::json::rjson_serialize(w, api_activity.unmapped.resource.type);
-    w.EndObject();
-    w.EndObject();
+    if (api_activity.unmapped) {
+        w.Key("unmapped");
+        w.StartObject();
+        w.Key("acl_authorization");
+        w.StartObject();
+        w.Key("host");
+        ::json::rjson_serialize(
+          w, api_activity.unmapped->acl_authorization.host);
+        w.Key("op");
+        ::json::rjson_serialize(w, api_activity.unmapped->acl_authorization.op);
+        w.Key("permission_type");
+        ::json::rjson_serialize(
+          w, api_activity.unmapped->acl_authorization.permission_type);
+        w.Key("principal");
+        ::json::rjson_serialize(
+          w, api_activity.unmapped->acl_authorization.principal);
+        w.EndObject();
+        w.Key("resource");
+        w.StartObject();
+        w.Key("name");
+        ::json::rjson_serialize(w, api_activity.unmapped->resource.name);
+        w.Key("pattern");
+        ::json::rjson_serialize(w, api_activity.unmapped->resource.pattern);
+        w.Key("type");
+        ::json::rjson_serialize(w, api_activity.unmapped->resource.type);
+        w.EndObject();
+        w.EndObject();
+    }
+
     w.EndObject();
 }
 
@@ -246,9 +256,13 @@ op_to_crud(security::acl_operation op) {
     return result->second;
 }
 
-static inline struct api_activity_unmapped
+static inline struct std::optional<api_activity_unmapped>
 result_to_unmapped(const security::auth_result& result) {
     struct api_activity_unmapped rv;
+
+    if (!result.acl && !result.resource_pattern) {
+        return {};
+    }
 
     if (result.acl) {
         rv.acl_authorization.principal = fmt::format(
@@ -273,10 +287,14 @@ result_to_unmapped(const security::auth_result& result) {
 
 template<typename T>
 api_activity create_api_activity(
-  const std::string_view& op_name,
+  std::string_view op_name,
   security::acl_operation op,
   const security::auth_result& result,
   const ss::socket_address& local_address,
+  std::string_view service_name,
+  ss::net::inet_address client_addr,
+  uint16_t client_port,
+  std::optional<std::string_view> client_id,
   const fragmented_vector<T>& resources) {
     auto crud = op_to_crud(op);
 
@@ -298,12 +316,14 @@ api_activity create_api_activity(
       network_endpoint{
         .ip = fmt::format("{}", local_address.addr()),
         .port = local_address.port(),
+        .svc_name = ss::sstring{service_name},
       },
       std::move(resource_details),
       api_activity::severity::informational,
       network_endpoint{
-        .ip = fmt::format("{}", result.host.address()),
-      },
+        .ip = fmt::format("{}", client_addr),
+        .name = ss::sstring{client_id.value_or("")},
+        .port = client_port},
       result.authorized ? api_activity::status_id::success
                         : api_activity::status_id::failure,
       timestamp_t{std::chrono::duration_cast<std::chrono::milliseconds>(

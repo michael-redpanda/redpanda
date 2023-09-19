@@ -20,6 +20,7 @@
 #include "kafka/server/connection_context.h"
 #include "kafka/server/fetch_session_cache.h"
 #include "kafka/server/handlers/fetch/replica_selector.h"
+#include "kafka/server/handlers/handler_interface.h"
 #include "kafka/server/logger.h"
 #include "kafka/server/response.h"
 #include "kafka/server/server.h"
@@ -28,7 +29,7 @@
 #include "pandaproxy/schema_registry/fwd.h"
 #include "seastarx.h"
 #include "security/acl.h"
-#include "security/audit/schemas/application_activity.h"
+#include "security/audit/schemas/schemas.h"
 #include "security/fwd.h"
 #include "ssx/abort_source.h"
 #include "vlog.h"
@@ -240,27 +241,32 @@ public:
       const T& name,
       authz_quiet quiet = authz_quiet{false}) {
         auto result = _conn->authorized(operation, name, quiet);
-        vlog(
-          klog.warn,
-          "authorized: {}, is_superuser: {}, empty_set: {}, acl: {}, "
-          "resource_pattern: {}, principal: {}, host: {}",
-          result.authorized,
-          result.is_superuser,
-          result.empty_matches,
-          result.acl,
-          result.resource_pattern,
-          result.principal,
-          result.host);
+        //        vlog(
+        //          klog.warn,
+        //          "authorized: {}, is_superuser: {}, empty_set: {}, acl: {}, "
+        //          "resource_pattern: {}, principal: {}, host: {}",
+        //          result.authorized,
+        //          result.is_superuser,
+        //          result.empty_matches,
+        //          result.acl,
+        //          result.resource_pattern,
+        //          result.principal,
+        //          result.host);
         fragmented_vector<T> resources;
         resources.push_back(name);
         auto api_act = security::audit::create_api_activity(
-          "poop", operation, result, _conn->local_address(), resources);
-        ::json::StringBuffer str_buf;
-        ::json::Writer<::json::StringBuffer> wrt(str_buf);
-        security::audit::rjson_serialize(wrt, api_act);
+          handler_for_key(_header.key).value()->name(),
+          operation,
+          result,
+          _conn->local_address(),
+          _conn->server().name(),
+          _conn->client_host(),
+          _conn->client_port(),
+          _header.client_id,
+          resources);
 
-        vlog(
-          klog.warn, "{}", ss::sstring(str_buf.GetString(), str_buf.GetSize()));
+        if (_header.key == api_key(19))
+            vlog(klog.warn, "{}", security::audit::rjson_serialize(api_act));
 
         return bool(result);
     }
