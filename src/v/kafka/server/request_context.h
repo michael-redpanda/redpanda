@@ -241,17 +241,6 @@ public:
       const T& name,
       authz_quiet quiet = authz_quiet{false}) {
         auto result = _conn->authorized(operation, name, quiet);
-        //        vlog(
-        //          klog.warn,
-        //          "authorized: {}, is_superuser: {}, empty_set: {}, acl: {}, "
-        //          "resource_pattern: {}, principal: {}, host: {}",
-        //          result.authorized,
-        //          result.is_superuser,
-        //          result.empty_matches,
-        //          result.acl,
-        //          result.resource_pattern,
-        //          result.principal,
-        //          result.host);
         fragmented_vector<T> resources;
         resources.push_back(name);
         auto api_act = security::audit::create_api_activity(
@@ -265,8 +254,7 @@ public:
           _header.client_id,
           resources);
 
-        if (_header.key == api_key(19))
-            vlog(klog.warn, "{}", security::audit::rjson_serialize(api_act));
+        vlog(klog.warn, "{}", security::audit::rjson_serialize(api_act));
 
         return bool(result);
     }
