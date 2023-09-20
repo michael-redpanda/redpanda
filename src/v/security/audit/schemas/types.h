@@ -18,6 +18,7 @@
 namespace security::audit {
 
 static constexpr std::string_view ocsf_api_version = "1.0.0";
+static constexpr std::string_view vendor_name = "Redpanda Data, Inc.";
 
 using timestamp_t = named_type<long, struct timestamp_t_type>;
 using type_uid = named_type<long, struct type_uid_type>;
@@ -66,17 +67,37 @@ enum class class_uid : int {
     web_resource_access_activity = 6004
 };
 
+enum class severity : int {
+    unknown = 0,
+    informational = 1,
+    low = 2,
+    medium = 3,
+    high = 4,
+    critical = 5,
+    fatal = 6,
+    other = 99,
+};
+
 struct product {
     ss::sstring name;
     ss::sstring vendor_name;
     ss::sstring version;
 
     friend bool operator==(const product&, const product&) = default;
+
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& h,
+      const product& p) {
+        h.update(p.name);
+        h.update(p.vendor_name);
+        h.update(p.version);
+    }
 };
 
 static const product redpanda_product = {
   .name = "Redpanda",
-  .vendor_name = "Redpanda Data, Inc",
+  .vendor_name = ss::sstring{vendor_name},
   .version = ss::sstring{redpanda_git_version()}};
 
 struct api {
@@ -557,6 +578,19 @@ struct hash<security::audit::api> {
         size_t h = 0;
 
         boost::hash_combine(h, std::hash<ss::sstring>()(a.operation));
+
+        return h;
+    }
+};
+
+template<>
+struct hash<security::audit::product> {
+    size_t operator()(const security::audit::product& p) {
+        size_t h = 0;
+
+        boost::hash_combine(h, std::hash<ss::sstring>()(p.name));
+        boost::hash_combine(h, std::hash<ss::sstring>()(p.version));
+        boost::hash_combine(h, std::hash<ss::sstring>()(p.vendor_name));
 
         return h;
     }

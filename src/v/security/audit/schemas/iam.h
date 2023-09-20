@@ -38,16 +38,6 @@ struct authentication {
         radius = 10,
         other = 99
     };
-    enum class severity : int {
-        unknown = 0,
-        informational = 1,
-        low = 2,
-        medium = 3,
-        high = 4,
-        critical = 5,
-        fatal = 6,
-        other = 99,
-    };
     enum class status_id : int {
         unknown = 0,
         success = 1,
@@ -92,6 +82,13 @@ struct authentication {
           });
     }
 
+    size_t key() const noexcept { return _key; }
+
+    void increment(timestamp_t time) const noexcept {
+        this->count++;
+        this->end_time = time;
+    }
+
     friend void rjson_serialize(
       ::json::Writer<::json::StringBuffer>&, const authentication&);
 
@@ -120,14 +117,17 @@ private:
     auth_protocol_id auth_protocol_id;
     category_uid category_uid;
     class_uid class_uid;
+    mutable long count;
     network_endpoint dst_endpoint;
+    mutable timestamp_t end_time;
     bool is_cleartext;
     metadata metadata;
     bool mfa;
     severity severity_id;
     network_endpoint src_endpoint;
+    timestamp_t start_time;
     status_id status_id;
-    long time;
+    timestamp_t time;
     int type_uid;
     user user;
     size_t _key;
@@ -170,8 +170,16 @@ inline void rjson_serialize(
     rjson_serialize(w, authentication.category_uid);
     w.Key("class_uid");
     rjson_serialize(w, authentication.class_uid);
+    if (authentication.count > 1) {
+        w.Key("count");
+        rjson_serialize(w, authentication.count);
+    }
     w.Key("dst_endpoint");
     rjson_serialize(w, authentication.dst_endpoint);
+    if (authentication.count > 1) {
+        w.Key("end_time");
+        rjson_serialize(w, authentication.end_time);
+    }
     w.Key("is_cleartext");
     rjson_serialize(w, authentication.is_cleartext);
     w.Key("metadata");
@@ -182,6 +190,10 @@ inline void rjson_serialize(
     rjson_serialize(w, authentication.severity_id);
     w.Key("src_endpoint");
     rjson_serialize(w, authentication.src_endpoint);
+    if (authentication.count > 1) {
+        w.Key("start_time");
+        rjson_serialize(w, authentication.start_time);
+    }
     w.Key("status_id");
     rjson_serialize(w, authentication.status_id);
     w.Key("time");

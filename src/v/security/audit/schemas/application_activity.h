@@ -29,17 +29,6 @@ struct api_activity {
         other = 99,
     };
 
-    enum class severity : int {
-        unknown = 0,
-        informational = 1,
-        low = 2,
-        medium = 3,
-        high = 4,
-        critical = 5,
-        fatal = 6,
-        other = 99,
-    };
-
     enum class status_id : int {
         unknown = 0,
         success = 1,
@@ -104,6 +93,7 @@ struct api_activity {
         this->end_time = time;
     }
 
+private:
     activity_id activity_id;
     actor actor;
     api api;
@@ -125,7 +115,6 @@ struct api_activity {
     type_uid type_uid;
     api_activity_unmapped unmapped;
 
-private:
     size_t _key;
 
     size_t hash() const noexcept {
@@ -153,6 +142,79 @@ private:
     friend void rjson_serialize(
       ::json::Writer<::json::StringBuffer>& w,
       const api_activity& api_activity);
+};
+
+struct application_lifecycle {
+    enum class activity_id : int {
+        unknown = 0,
+        install = 1,
+        remove = 2,
+        start = 3,
+        stop = 4,
+        other = 99
+    };
+
+    application_lifecycle(
+      activity_id activity_id,
+      product app,
+      severity severity_id,
+      timestamp_t time)
+      : activity_id(activity_id)
+      , app(std::move(app))
+      , metadata(ocsf_metadata)
+      , severity_id(severity_id)
+      , start_time(time)
+      , time(time)
+      , type_uid(
+          type_uid::type(this->class_uid) * 100
+          + type_uid::type(this->activity_id))
+      , _key(hash()) {}
+
+    size_t key() const noexcept { return _key; }
+
+    void increment(timestamp_t time) const noexcept {
+        this->count++;
+        this->end_time = time;
+    }
+
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& h,
+      const application_lifecycle& a) {
+        h.update(a.activity_id);
+        h.update(a.app);
+        h.update(a.category_uid);
+        h.update(a.severity_id);
+        h.update(a.type_uid);
+    }
+
+private:
+    activity_id activity_id;
+    product app;
+    category_uid category_uid{category_uid::application_activity};
+    class_uid class_uid{class_uid::application_lifecycle};
+    mutable long count{1};
+    mutable timestamp_t end_time;
+    metadata metadata;
+    severity severity_id;
+    timestamp_t start_time;
+    timestamp_t time;
+    type_uid type_uid;
+
+    size_t _key;
+
+    size_t hash() const noexcept {
+        size_t h = 0;
+        boost::hash_combine(h, std::hash<int>()(int(activity_id)));
+        boost::hash_combine(h, std::hash<product>()(app));
+        boost::hash_combine(h, std::hash<int>()(int(category_uid)));
+        boost::hash_combine(h, std::hash<int>()(int(severity_id)));
+        boost::hash_combine(h, std::hash<typename type_uid::type>()(type_uid));
+        return h;
+    }
+
+    friend void rjson_serialize(
+      ::json::Writer<::json::StringBuffer>& w, const application_lifecycle& l);
 };
 
 inline void rjson_serialize(
@@ -200,6 +262,41 @@ inline void rjson_serialize(
     w.Key("unmapped");
     ::json::rjson_serialize(w, api_activity.unmapped);
 
+    w.EndObject();
+}
+
+inline void rjson_serialize(
+  ::json::Writer<::json::StringBuffer>& w,
+  const struct application_lifecycle& a) {
+    w.StartObject();
+    w.Key("activity_id");
+    ::json::rjson_serialize(w, a.activity_id);
+    w.Key("app");
+    ::json::rjson_serialize(w, a.app);
+    w.Key("category_uid");
+    ::json::rjson_serialize(w, a.category_uid);
+    w.Key("class_uid");
+    ::json::rjson_serialize(w, a.class_uid);
+    if (a.count > 1) {
+        w.Key("count");
+        ::json::rjson_serialize(w, a.count);
+    }
+    if (a.count > 1) {
+        w.Key("end_time");
+        ::json::rjson_serialize(w, a.end_time);
+    }
+    w.Key("metadata");
+    ::json::rjson_serialize(w, a.metadata);
+    w.Key("severity_id");
+    ::json::rjson_serialize(w, a.severity_id);
+    if (a.count > 1) {
+        w.Key("start_time");
+        ::json::rjson_serialize(w, a.start_time);
+    }
+    w.Key("time");
+    ::json::rjson_serialize(w, a.time);
+    w.Key("type_uid");
+    ::json::rjson_serialize(w, a.type_uid);
     w.EndObject();
 }
 
@@ -290,7 +387,7 @@ api_activity create_api_activity(
         .svc_name = ss::sstring{service_name},
       },
       std::move(resource_details),
-      api_activity::severity::informational,
+      severity::informational,
       network_endpoint{
         .ip = fmt::format("{}", client_addr),
         .name = ss::sstring{client_id.value_or("")},
@@ -303,6 +400,22 @@ api_activity create_api_activity(
       api_activity_unmapped{
         .shard_id = ss::this_shard_id(),
         .authorization_metadata = result_to_authorization_metadata(result)}};
+}
+
+application_lifecycle report_change_in_audit_system(bool started) {
+    return {
+      started ? application_lifecycle::activity_id::start
+              : application_lifecycle::activity_id::stop,
+      product{
+        .name = "Audit Subsystem",
+        .vendor_name = ss::sstring{vendor_name},
+        .version = ss::sstring{redpanda_git_version()},
+
+      },
+      severity::informational,
+      timestamp_t{std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                    .count()}};
 }
 
 } // namespace security::audit

@@ -37,7 +37,8 @@ concept IncrementalEvent = requires(T e, timestamp_t t) {
     { T::count } -> std::convertible_to<long>;
 };
 struct audit_event {
-    using audit_events = std::variant<api_activity, authentication>;
+    using audit_events
+      = std::variant<api_activity, application_lifecycle, authentication>;
 
     audit_events event;
     size_t key;
