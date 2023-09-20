@@ -59,7 +59,7 @@ struct api_activity {
       network_endpoint src_endpoint,
       status_id status_id,
       timestamp_t time,
-      std::optional<api_activity_unmapped> unmapped)
+      api_activity_unmapped unmapped)
       : activity_id(activity_id)
       , actor(std::move(actor))
       , api(std::move(api))
@@ -123,7 +123,7 @@ struct api_activity {
     status_id status_id;
     timestamp_t time;
     type_uid type_uid;
-    std::optional<api_activity_unmapped> unmapped;
+    api_activity_unmapped unmapped;
 
 private:
     size_t _key;
@@ -145,10 +145,7 @@ private:
           h,
           std::hash<typename type_uid::type>()(
             typename type_uid::type(type_uid)));
-        if (unmapped) {
-            boost::hash_combine(
-              h, std::hash<api_activity_unmapped>()(unmapped.value()));
-        }
+        boost::hash_combine(h, std::hash<api_activity_unmapped>()(unmapped));
 
         return h;
     }
@@ -200,34 +197,8 @@ inline void rjson_serialize(
     rjson_serialize(w, api_activity.time);
     w.Key("type_uid");
     rjson_serialize(w, api_activity.type_uid);
-    if (api_activity.unmapped) {
-        w.Key("unmapped");
-        w.StartObject();
-        w.Key("acl_authorization");
-        w.StartObject();
-        w.Key("host");
-        ::json::rjson_serialize(
-          w, api_activity.unmapped->acl_authorization.host);
-        w.Key("op");
-        ::json::rjson_serialize(w, api_activity.unmapped->acl_authorization.op);
-        w.Key("permission_type");
-        ::json::rjson_serialize(
-          w, api_activity.unmapped->acl_authorization.permission_type);
-        w.Key("principal");
-        ::json::rjson_serialize(
-          w, api_activity.unmapped->acl_authorization.principal);
-        w.EndObject();
-        w.Key("resource");
-        w.StartObject();
-        w.Key("name");
-        ::json::rjson_serialize(w, api_activity.unmapped->resource.name);
-        w.Key("pattern");
-        ::json::rjson_serialize(w, api_activity.unmapped->resource.pattern);
-        w.Key("type");
-        ::json::rjson_serialize(w, api_activity.unmapped->resource.type);
-        w.EndObject();
-        w.EndObject();
-    }
+    w.Key("unmapped");
+    ::json::rjson_serialize(w, api_activity.unmapped);
 
     w.EndObject();
 }
@@ -256,9 +227,9 @@ op_to_crud(security::acl_operation op) {
     return result->second;
 }
 
-static inline struct std::optional<api_activity_unmapped>
-result_to_unmapped(const security::auth_result& result) {
-    struct api_activity_unmapped rv;
+static inline struct std::optional<authorization_metadata>
+result_to_authorization_metadata(const security::auth_result& result) {
+    struct authorization_metadata rv;
 
     if (!result.acl && !result.resource_pattern) {
         return {};
@@ -329,7 +300,9 @@ api_activity create_api_activity(
       timestamp_t{std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::system_clock::now().time_since_epoch())
                     .count()},
-      result_to_unmapped(result)};
+      api_activity_unmapped{
+        .shard_id = ss::this_shard_id(),
+        .authorization_metadata = result_to_authorization_metadata(result)}};
 }
 
 } // namespace security::audit

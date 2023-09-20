@@ -212,7 +212,7 @@ struct resource_detail {
     }
 };
 
-struct api_activity_unmapped {
+struct authorization_metadata {
     struct acl_authorization {
         ss::sstring host;
         ss::sstring op;
@@ -229,7 +229,7 @@ struct api_activity_unmapped {
     friend void tag_invoke(
       tag_t<incremental_xxhash64_tag>,
       incremental_xxhash64& h,
-      const api_activity_unmapped& u) {
+      const authorization_metadata& u) {
         h.update(u.acl_authorization.host);
         h.update(u.acl_authorization.op);
         h.update(u.acl_authorization.permission_type);
@@ -237,6 +237,21 @@ struct api_activity_unmapped {
         h.update(u.resource.name);
         h.update(u.resource.pattern);
         h.update(u.resource.type);
+    }
+};
+
+struct api_activity_unmapped {
+    ss::shard_id shard_id;
+    std::optional<authorization_metadata> authorization_metadata;
+
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& h,
+      const api_activity_unmapped& u) {
+        h.update(u.shard_id);
+        if (u.authorization_metadata) {
+            h.update(u.authorization_metadata.value());
+        }
     }
 };
 
@@ -398,20 +413,79 @@ inline void rjson_serialize(
     w.EndObject();
 }
 
+inline void rjson_serialize(
+  Writer<StringBuffer>& w, const security::audit::authorization_metadata& m) {
+    w.StartObject();
+    w.Key("acl_authorization");
+    w.StartObject();
+    w.Key("host");
+    ::json::rjson_serialize(w, m.acl_authorization.host);
+    w.Key("op");
+    ::json::rjson_serialize(w, m.acl_authorization.op);
+    w.Key("permission_type");
+    ::json::rjson_serialize(w, m.acl_authorization.permission_type);
+    w.Key("principal");
+    ::json::rjson_serialize(w, m.acl_authorization.principal);
+    w.EndObject();
+    w.Key("resource");
+    w.StartObject();
+    w.Key("name");
+    ::json::rjson_serialize(w, m.resource.name);
+    w.Key("pattern");
+    ::json::rjson_serialize(w, m.resource.pattern);
+    w.Key("type");
+    ::json::rjson_serialize(w, m.resource.type);
+    w.EndObject();
+    w.EndObject();
+}
+
+inline void rjson_serialize(
+  Writer<StringBuffer>& w, const security::audit::api_activity_unmapped& u) {
+    w.StartObject();
+    w.Key("shard_id");
+    ::json::rjson_serialize(w, u.shard_id);
+    if (u.authorization_metadata) {
+        w.Key("authorization_metadata");
+        ::json::rjson_serialize(w, u.authorization_metadata.value());
+    }
+    w.EndObject();
+}
+
 } // namespace json
 
 namespace std {
+
+template<>
+struct hash<security::audit::authorization_metadata> {
+    size_t operator()(const security::audit::authorization_metadata& m) {
+        size_t h = 0;
+        boost::hash_combine(
+          h, std::hash<ss::sstring>()(m.acl_authorization.host));
+        boost::hash_combine(
+          h, std::hash<ss::sstring>()(m.acl_authorization.op));
+        boost::hash_combine(
+          h, std::hash<ss::sstring>()(m.acl_authorization.permission_type));
+        boost::hash_combine(
+          h, std::hash<ss::sstring>()(m.acl_authorization.principal));
+        boost::hash_combine(h, std::hash<ss::sstring>()(m.resource.name));
+        boost::hash_combine(h, std::hash<ss::sstring>()(m.resource.pattern));
+        boost::hash_combine(h, std::hash<ss::sstring>()(m.resource.type));
+
+        return h;
+    }
+};
+
 template<>
 struct hash<security::audit::api_activity_unmapped> {
     size_t operator()(const security::audit::api_activity_unmapped& u) {
         size_t h = 0;
-        boost::hash_combine(h, u.acl_authorization.host);
-        boost::hash_combine(h, u.acl_authorization.op);
-        boost::hash_combine(h, u.acl_authorization.permission_type);
-        boost::hash_combine(h, u.acl_authorization.principal);
-        boost::hash_combine(h, u.resource.name);
-        boost::hash_combine(h, u.resource.pattern);
-        boost::hash_combine(h, u.resource.type);
+        boost::hash_combine(h, std::hash<ss::shard_id>()(u.shard_id));
+        if (u.authorization_metadata) {
+            boost::hash_combine(
+              h,
+              std::hash<security::audit::authorization_metadata>()(
+                u.authorization_metadata.value()));
+        }
 
         return h;
     }
