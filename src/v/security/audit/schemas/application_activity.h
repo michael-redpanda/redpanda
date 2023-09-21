@@ -12,7 +12,11 @@
 #include "hashing/xx.h"
 #include "types.h"
 #include "utils/named_type.h"
+#include "utils/request_auth.h"
 
+#include <seastar/http/httpd.hh>
+
+#include <boost/algorithm/string.hpp>
 #include <boost/container_hash/hash_fwd.hpp>
 
 #include <utility>
@@ -43,6 +47,7 @@ struct api_activity {
       actor actor,
       api api,
       network_endpoint dst_endpoint,
+      std::optional<http_request> http_request,
       fragmented_vector<resource_detail> resources,
       severity severity_id,
       network_endpoint src_endpoint,
@@ -54,6 +59,7 @@ struct api_activity {
       , api(std::move(api))
       , dst_endpoint(std::move(dst_endpoint))
       , end_time(time)
+      , http_request(std::move(http_request))
       , metadata(ocsf_metadata)
       , resources(std::move(resources))
       , severity_id(severity_id)
@@ -79,6 +85,9 @@ struct api_activity {
         hash.update(api_activity.category_uid);
         hash.update(api_activity.class_uid);
         hash.update(api_activity.dst_endpoint.ip);
+        if (api_activity.http_request) {
+            hash.update(api_activity.http_request.value());
+        }
         for (const auto& r : api_activity.resources) {
             hash.update(r);
         }
@@ -104,6 +113,7 @@ private:
     mutable long count{1};
     network_endpoint dst_endpoint;
     mutable timestamp_t end_time;
+    std::optional<http_request> http_request;
     metadata metadata;
     fragmented_vector<resource_detail> resources;
     severity severity_id;
@@ -125,6 +135,10 @@ private:
         boost::hash_combine(h, std::hash<int>()(int(category_uid)));
         boost::hash_combine(h, std::hash<int>()(int(class_uid)));
         boost::hash_combine(h, std::hash<ss::sstring>()(dst_endpoint.ip));
+        if (http_request) {
+            boost::hash_combine(
+              h, std::hash<struct http_request>()(http_request.value()));
+        }
         for (const auto& r : resources) {
             boost::hash_combine(h, std::hash<resource_detail>()(r));
         }
@@ -241,6 +255,10 @@ inline void rjson_serialize(
         w.Key("end_time");
         rjson_serialize(w, api_activity.end_time);
     }
+    if (api_activity.http_request) {
+        w.Key("http_request");
+        rjson_serialize(w, api_activity.http_request);
+    }
     w.Key("metadata");
     rjson_serialize(w, api_activity.metadata);
     w.Key("resources");
@@ -324,6 +342,21 @@ op_to_crud(security::acl_operation op) {
     return result->second;
 }
 
+static inline enum api_activity::activity_id
+method_to_crud(std::string_view method) {
+    if (boost::iequals(method, "GET")) {
+        return api_activity::activity_id::read;
+    } else if (boost::iequals(method, "POST")) {
+        return api_activity::activity_id::create;
+    } else if (boost::iequals(method, "PUT")) {
+        return api_activity::activity_id::update;
+    } else if (boost::iequals(method, "DELETE")) {
+        return api_activity::activity_id::delete_id;
+    } else {
+        return api_activity::activity_id::unknown;
+    }
+}
+
 static inline struct std::optional<authorization_metadata>
 result_to_authorization_metadata(const security::auth_result& result) {
     struct authorization_metadata rv;
@@ -386,6 +419,7 @@ api_activity create_api_activity(
         .port = local_address.port(),
         .svc_name = ss::sstring{service_name},
       },
+      std::nullopt,
       std::move(resource_details),
       severity::informational,
       network_endpoint{
@@ -402,7 +436,28 @@ api_activity create_api_activity(
         .authorization_metadata = result_to_authorization_metadata(result)}};
 }
 
-application_lifecycle report_change_in_audit_system(bool started) {
+static inline api_activity create_api_activity(
+  ss::httpd::const_req req, const request_auth_result& r, bool authorized) {
+    return {
+      method_to_crud(req._method),
+      auth_result_to_actor(r, authorized),
+      api{.operation = req._method},
+      network_endpoint{},
+      create_http_request(req),
+      {},
+      severity::informational,
+      network_endpoint{},
+      authorized ? api_activity::status_id::success
+                 : api_activity::status_id::failure,
+      timestamp_t{std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                    .count()},
+      api_activity_unmapped{
+        .shard_id = ss::this_shard_id(), .authorization_metadata = {}}};
+}
+
+static inline application_lifecycle
+report_change_in_audit_system(bool started) {
     return {
       started ? application_lifecycle::activity_id::start
               : application_lifecycle::activity_id::stop,

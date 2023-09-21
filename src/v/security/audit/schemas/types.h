@@ -11,7 +11,12 @@
 #include "json/stringbuffer.h"
 #include "seastarx.h"
 #include "security/authorizer.h"
+#include "utils/request_auth.h"
 #include "version.h"
+
+#include <seastar/http/httpd.hh>
+
+#include <boost/algorithm/string.hpp>
 
 #pragma once
 
@@ -153,7 +158,7 @@ struct policy {
 
 struct authorization_result {
     ss::sstring decision;
-    policy policy;
+    std::optional<policy> policy;
 
     friend bool
     operator==(const authorization_result&, const authorization_result&)
@@ -164,7 +169,9 @@ struct authorization_result {
       incremental_xxhash64& hash,
       const authorization_result& result) {
         hash.update(result.decision);
-        hash.update(result.policy);
+        if (result.policy) {
+            hash.update(result.policy);
+        }
     }
 };
 
@@ -276,6 +283,59 @@ struct api_activity_unmapped {
     }
 };
 
+struct http_header {
+    ss::sstring name;
+    ss::sstring value;
+
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& hash,
+      const http_header& h) {
+        hash.update(h.name);
+        hash.update(h.value);
+    }
+};
+
+struct uniform_resource_locator {
+    ss::sstring hostname;
+    ss::sstring path;
+    std::uint16_t port;
+    ss::sstring scheme;
+    ss::sstring url_string;
+
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& h,
+      const uniform_resource_locator& url) {
+        h.update(url.hostname);
+        h.update(url.path);
+        h.update(url.port);
+        h.update(url.scheme);
+        h.update(url.url_string);
+    }
+};
+
+struct http_request {
+    fragmented_vector<http_header> http_headers;
+    ss::sstring http_method;
+    uniform_resource_locator url;
+    ss::sstring user_agent;
+    ss::sstring version;
+
+    friend void tag_invoke(
+      tag_t<incremental_xxhash64_tag>,
+      incremental_xxhash64& h,
+      const http_request& r) {
+        for (const auto& hdr : r.http_headers) {
+            h.update(hdr);
+        }
+        h.update(r.http_method);
+        h.update(r.url);
+        h.update(r.user_agent);
+        h.update(r.version);
+    }
+};
+
 static inline actor result_to_actor(const security::auth_result& result) {
     user user{
       .name = result.principal.name(),
@@ -316,6 +376,56 @@ static inline actor result_to_actor(const security::auth_result& result) {
       .authorizations = std::move(auths),
       .user = std::move(user),
     };
+}
+
+static inline actor
+auth_result_to_actor(const request_auth_result& r, bool authorized) {
+    user user{
+      .name = r.get_username(),
+      .type_id = r.is_superuser() ? user::type::admin : user::type::user,
+    };
+
+    std::vector<authorization_result> auths;
+    auths.reserve(1);
+    auths.emplace_back(
+      authorization_result{.decision = authorized ? "authorized" : "denied"});
+
+    return {.authorizations = std::move(auths), .user = std::move(user)};
+}
+
+static inline fragmented_vector<http_header>
+create_headers(ss::httpd::const_req req) {
+    fragmented_vector<http_header> rv;
+
+    std::transform(
+      req._headers.begin(),
+      req._headers.end(),
+      std::back_inserter(rv),
+      [](const auto& h) -> http_header {
+          return {
+            .name = h.first,
+            .value = boost::iequals(h.first, "authorization") ? "******"
+                                                              : h.second};
+      });
+
+    return rv;
+}
+
+static inline uniform_resource_locator req_to_url(ss::httpd::const_req req) {
+    return {
+      .hostname = req.get_header("Host"),
+      .path = req.format_url(),
+      .scheme = req.get_protocol_name(),
+      .url_string = req.get_url()};
+}
+
+static inline http_request create_http_request(ss::httpd::const_req req) {
+    return {
+      .http_headers = create_headers(req),
+      .http_method = req._method,
+      .url = req_to_url(req),
+      .user_agent = req.get_header("user-agent"),
+      .version = req._version};
 }
 } // namespace security::audit
 
@@ -391,8 +501,11 @@ inline void rjson_serialize(
     w.StartObject();
     w.Key("decision");
     rjson_serialize(w, authz.decision);
-    w.Key("policy");
-    rjson_serialize(w, authz.policy);
+    if (authz.policy) {
+        w.Key("policy");
+        rjson_serialize(w, authz.policy);
+    }
+
     w.EndObject();
 }
 
@@ -469,6 +582,53 @@ inline void rjson_serialize(
         w.Key("authorization_metadata");
         ::json::rjson_serialize(w, u.authorization_metadata.value());
     }
+    w.EndObject();
+}
+
+inline void rjson_serialize(
+  Writer<StringBuffer>& w, const security::audit::http_header& h) {
+    w.StartObject();
+    w.Key("name");
+    json::rjson_serialize(w, h.name);
+    w.Key("value");
+    json::rjson_serialize(w, h.value);
+    w.EndObject();
+}
+
+inline void rjson_serialize(
+  Writer<StringBuffer>& w,
+  const security::audit::uniform_resource_locator& url) {
+    w.StartObject();
+    w.Key("hostname");
+    rjson_serialize(w, url.hostname);
+    w.Key("path");
+    rjson_serialize(w, url.path);
+    w.Key("port");
+    rjson_serialize(w, url.port);
+    w.Key("scheme");
+    rjson_serialize(w, url.scheme);
+    w.Key("url_string");
+    rjson_serialize(w, url.url_string);
+    w.EndObject();
+}
+
+inline void rjson_serialize(
+  Writer<StringBuffer>& w, const security::audit::http_request& r) {
+    w.StartObject();
+    w.Key("http_headers");
+    w.StartArray();
+    for (const auto& h : r.http_headers) {
+        rjson_serialize(w, h);
+    }
+    w.EndArray();
+    w.Key("http_method");
+    rjson_serialize(w, r.http_method);
+    w.Key("url");
+    rjson_serialize(w, r.url);
+    w.Key("user_agent");
+    rjson_serialize(w, r.user_agent);
+    w.Key("version");
+    rjson_serialize(w, r.version);
     w.EndObject();
 }
 
@@ -550,7 +710,10 @@ struct hash<security::audit::authorization_result> {
     size_t operator()(const security::audit::authorization_result& r) {
         size_t h = 0;
         boost::hash_combine(h, std::hash<ss::sstring>()(r.decision));
-        boost::hash_combine(h, std::hash<security::audit::policy>()(r.policy));
+        if (r.policy) {
+            boost::hash_combine(
+              h, std::hash<security::audit::policy>()(r.policy.value()));
+        }
 
         return h;
     }
@@ -591,6 +754,52 @@ struct hash<security::audit::product> {
         boost::hash_combine(h, std::hash<ss::sstring>()(p.name));
         boost::hash_combine(h, std::hash<ss::sstring>()(p.version));
         boost::hash_combine(h, std::hash<ss::sstring>()(p.vendor_name));
+
+        return h;
+    }
+};
+
+template<>
+struct hash<security::audit::http_header> {
+    size_t operator()(const security::audit::http_header& header) {
+        size_t h;
+
+        boost::hash_combine(h, std::hash<ss::sstring>()(header.name));
+        boost::hash_combine(h, std::hash<ss::sstring>()(header.value));
+
+        return h;
+    }
+};
+
+template<>
+struct hash<security::audit::uniform_resource_locator> {
+    size_t operator()(const security::audit::uniform_resource_locator& url) {
+        size_t h;
+
+        boost::hash_combine(h, std::hash<ss::sstring>()(url.hostname));
+        boost::hash_combine(h, std::hash<ss::sstring>()(url.path));
+        boost::hash_combine(h, std::hash<ss::sstring>()(url.scheme));
+        boost::hash_combine(h, std::hash<ss::sstring>()(url.url_string));
+        boost::hash_combine(h, std::hash<std::uint16_t>()(url.port));
+
+        return h;
+    }
+};
+
+template<>
+struct hash<security::audit::http_request> {
+    size_t operator()(const security::audit::http_request& r) {
+        size_t h;
+
+        for (const auto& hdr : r.http_headers) {
+            boost::hash_combine(
+              h, std::hash<security::audit::http_header>()(hdr));
+        }
+        boost::hash_combine(h, std::hash<ss::sstring>()(r.http_method));
+        boost::hash_combine(
+          h, std::hash<security::audit::uniform_resource_locator>()(r.url));
+        boost::hash_combine(h, std::hash<ss::sstring>()(r.user_agent));
+        boost::hash_combine(h, std::hash<ss::sstring>()(r.version));
 
         return h;
     }

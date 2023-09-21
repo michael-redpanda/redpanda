@@ -101,7 +101,7 @@ SEASTAR_THREAD_TEST_CASE(test_application_activity) {
       sa::actor{
         .authorizations = {sa::authorization_result{
           .decision = "denied",
-          .policy = {.name = "aclAuthorization", .desc = "{{}}"}}},
+          .policy = sa::policy{.name = "aclAuthorization", .desc = "{{}}"}}},
         .user = {.name = "User:mboquard", .type_id = sa::user::type::user}},
       sa::api{.operation = "create_topic"},
       dst_endpoint,

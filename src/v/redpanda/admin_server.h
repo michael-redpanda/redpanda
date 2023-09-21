@@ -24,6 +24,7 @@
 #include "resource_mgmt/memory_sampling.h"
 #include "rpc/connection_cache.h"
 #include "seastarx.h"
+#include "security/audit/schemas/schemas.h"
 #include "storage/node.h"
 #include "utils/request_auth.h"
 
@@ -123,6 +124,11 @@ private:
               detail::dependent_false<required_auth>::value,
               "Invalid auth_level");
         }
+
+        auto api = security::audit::create_api_activity(req, auth_state, true);
+
+        vlog(
+          ss::logger{"MINE"}.warn, "{}", security::audit::rjson_serialize(api));
 
         return auth_state;
     }
