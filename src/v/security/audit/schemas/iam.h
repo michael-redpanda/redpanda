@@ -10,6 +10,9 @@
 
 #include "json/json.h"
 #include "json/stringbuffer.h"
+#include "utils/request_auth.h"
+
+#include <seastar/http/httpd.hh>
 
 #include <security/audit/schemas/types.h>
 
@@ -54,11 +57,9 @@ struct authentication {
       severity severity_id,
       network_endpoint src_endpoint,
       status_id status_id,
-      long time,
+      timestamp_t time,
       user user)
       : activity_id(activity_id)
-      , category_uid(category_uid::iam)
-      , class_uid(class_uid::authentication)
       , dst_endpoint(std::move(dst_endpoint))
       , is_cleartext(is_cleartext)
       , metadata(ocsf_metadata)
@@ -115,9 +116,9 @@ private:
     activity_id activity_id;
     ss::sstring auth_protocol;
     auth_protocol_id auth_protocol_id;
-    category_uid category_uid;
-    class_uid class_uid;
-    mutable long count;
+    category_uid category_uid{category_uid::iam};
+    class_uid class_uid{class_uid::authentication};
+    mutable long count{1};
     network_endpoint dst_endpoint;
     mutable timestamp_t end_time;
     bool is_cleartext;
@@ -128,7 +129,7 @@ private:
     timestamp_t start_time;
     status_id status_id;
     timestamp_t time;
-    int type_uid;
+    type_uid type_uid;
     user user;
     size_t _key;
 
@@ -204,5 +205,25 @@ inline void rjson_serialize(
     rjson_serialize(w, authentication.user);
 
     w.EndObject();
+}
+
+static inline authentication create_authentication_event(ss::httpd::const_req req, const request_auth_result & r) {
+    return {
+        authentication::activity_id::logon,
+          r.get_sasl_mechanism(),
+        {},
+          !boost::iequals(req.get_protocol_name(), "https"), // If HTTPS then _not_ cleartext
+          false,
+          severity::informational,
+        {},
+          r.is_authenticated() ? authentication::status_id::success : authentication::status_id::failure,
+          timestamp_t{std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::system_clock::now().time_since_epoch())
+                          .count()},
+          user {
+            .name = r.get_username(),
+            .type_id = r.is_superuser() ? user::type::admin : user::type::user,
+        }
+    };
 }
 } // namespace security::audit

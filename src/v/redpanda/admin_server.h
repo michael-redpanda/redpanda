@@ -112,23 +112,46 @@ private:
      */
     template<auth_level required_auth>
     request_auth_result apply_auth(ss::httpd::const_req req) {
-        auto auth_state = _auth.authenticate(req);
-        if constexpr (required_auth == auth_level::superuser) {
-            auth_state.require_superuser();
-        } else if constexpr (required_auth == auth_level::user) {
-            auth_state.require_authenticated();
-        } else if constexpr (required_auth == auth_level::publik) {
-            auth_state.pass();
-        } else {
-            static_assert(
-              detail::dependent_false<required_auth>::value,
-              "Invalid auth_level");
+        request_auth_result auth_state{request_auth_result::authenticated::no,
+                                       request_auth_result::superuser::no};
+        try {
+            auth_state = _auth.authenticate(req);
+            auto auth = security::audit::create_authentication_event(req, auth_state);
+            vlog(ss::logger{"MINE"}.warn, "{}", security::audit::rjson_serialize(auth));
+        } catch(...) {
+
+            std::rethrow_exception(std::current_exception());
+        }
+        //auto auth_state = _auth.authenticate(req);
+
+        try {
+            if constexpr (required_auth == auth_level::superuser) {
+                auth_state.require_superuser();
+            } else if constexpr (required_auth == auth_level::user) {
+                auth_state.require_authenticated();
+            } else if constexpr (required_auth == auth_level::publik) {
+                auth_state.pass();
+            } else {
+                static_assert(
+                  detail::dependent_false<required_auth>::value,
+                  "Invalid auth_level");
+            }
+
+            auto api = security::audit::create_api_activity(req, auth_state, true);
+
+            vlog(
+              ss::logger{"MINE"}.warn, "{}", security::audit::rjson_serialize(api));
+        } catch(...) {
+            auto api = security::audit::create_api_activity(req, auth_state, false);
+
+            vlog(
+              ss::logger{"MINE"}.warn, "{}", security::audit::rjson_serialize(api));
+
+            std::rethrow_exception(std::current_exception());
         }
 
-        auto api = security::audit::create_api_activity(req, auth_state, true);
 
-        vlog(
-          ss::logger{"MINE"}.warn, "{}", security::audit::rjson_serialize(api));
+
 
         return auth_state;
     }
