@@ -26,6 +26,7 @@ set(handlers_srcs
   server/handlers/describe_producers.cc
   server/handlers/describe_transactions.cc
   server/handlers/handler_probe.cc
+        server/handlers/topics/validators.cc
 )
 
 v_cc_library(

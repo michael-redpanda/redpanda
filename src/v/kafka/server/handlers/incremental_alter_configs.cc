@@ -17,6 +17,7 @@
 #include "kafka/protocol/schemata/incremental_alter_configs_response.h"
 #include "kafka/server//handlers/configs/config_utils.h"
 #include "kafka/server/handlers/topics/types.h"
+#include "kafka/server/handlers/topics/validators.h"
 #include "kafka/server/request_context.h"
 #include "kafka/server/response.h"
 #include "kafka/types.h"
@@ -36,6 +37,10 @@ namespace kafka {
 
 using req_resource_t = incremental_alter_configs_resource;
 using resp_resource_t = incremental_alter_configs_resource_response;
+
+using validators = make_validator_types<
+  incremental_alter_configs_resource,
+  replication_factor_must_be_odd>;
 
 /**
  * We pass returned value as a paramter to allow template to be automatically

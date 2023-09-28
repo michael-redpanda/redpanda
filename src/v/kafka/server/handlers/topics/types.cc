@@ -51,11 +51,34 @@ config_map_t make_config_map(const std::vector<T>& config) {
     return ret;
 }
 
+template<typename T>
+concept IncrementalAlterTopicCfg
+  = std::is_same_v<T, incremental_alterable_config>;
+
+template<IncrementalAlterTopicCfg T>
+incremental_config_map_t make_config_map(const std::vector<T>& config) {
+    incremental_config_map_t ret;
+    ret.reserve(config.size());
+
+    for (const auto& c : config) {
+        if (c.value) {
+            ret.emplace(c.name, std::make_tuple(c.config_operation, *c.value));
+        }
+    }
+
+    return ret;
+}
+
 config_map_t config_map(const std::vector<createable_topic_config>& config) {
     return make_config_map(config);
 }
 
 config_map_t config_map(const std::vector<creatable_topic_configs>& config) {
+    return make_config_map(config);
+}
+
+incremental_config_map_t
+config_map(const std::vector<incremental_alterable_config>& config) {
     return make_config_map(config);
 }
 

@@ -101,7 +101,7 @@ Iter validate_requests_range(
         err_it,
         ValidatorTypes::ec,
         ValidatorTypes::error_message,
-        ValidatorTypes::is_valid)),
+        ValidatorTypes::template is_valid<typename Iter::value_type>)),
      ...);
     return end;
 }

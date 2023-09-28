@@ -13,6 +13,7 @@
 #include "cluster/types.h"
 #include "kafka/protocol/schemata/create_topics_request.h"
 #include "kafka/protocol/schemata/create_topics_response.h"
+#include "kafka/protocol/schemata/incremental_alter_configs_request.h"
 #include "kafka/server/errors.h"
 #include "model/fundamental.h"
 #include "model/namespace.h"
@@ -31,6 +32,12 @@ namespace kafka {
  */
 using config_map_t
   = absl::flat_hash_map<ss::sstring, ss::sstring, sstring_hash, sstring_eq>;
+
+using incremental_config_map_t = absl::flat_hash_map<
+  ss::sstring,
+  std::tuple<uint8_t, ss::sstring>,
+  sstring_hash,
+  sstring_eq>;
 /**
  * Topic properties string names
  */
@@ -134,7 +141,9 @@ from_cluster_topic_result(const cluster::topic_result& err) {
 }
 
 config_map_t config_map(const std::vector<createable_topic_config>& config);
-config_map_t config_map(const std::vector<creatable_topic_configs>& config);
+config_map_t config_map(const std::vector<createable_topic_config>& config);
+incremental_config_map_t
+config_map(const std::vector<incremental_alterable_config>& config);
 
 cluster::custom_assignable_topic_configuration
 to_cluster_type(const creatable_topic& t);
