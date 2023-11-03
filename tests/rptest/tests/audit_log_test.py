@@ -33,11 +33,12 @@ from rptest.services.cluster import cluster
 from rptest.services import redpanda
 from rptest.services.keycloak import DEFAULT_REALM, KeycloakService
 from rptest.services.ocsf_server import OcsfServer
-from rptest.services.redpanda import AUDIT_LOG_ALLOW_LIST, LoggingConfig, MetricSamples, MetricsEndpoint, PandaproxyConfig, RedpandaServiceBase, SchemaRegistryConfig, SecurityConfig, TLSProvider
+from rptest.services.redpanda import AUDIT_LOG_ALLOW_LIST, LoggingConfig, MetricSamples, MetricsEndpoint, RedpandaServiceBase, SecurityConfig, TLSProvider
 from rptest.services.rpk_consumer import RpkConsumer
 from rptest.tests.cluster_config_test import wait_for_version_sync
 from rptest.tests.redpanda_test import RedpandaTest
 from rptest.util import wait_until, wait_until_result
+from rptest.utils.audit_log import AuditLogConfig, AuditLogTestSecurityConfig
 from urllib.parse import urlparse
 
 
@@ -181,93 +182,6 @@ class RangeTestItem(BaseTestItem):
 
     def desc(self) -> str:
         return f'[{self.min}, {self.max}]'
-
-
-class AuditLogConfig:
-    """Configuration for the audit log system"""
-    def __init__(self,
-                 enabled: bool = True,
-                 num_partitions: int = 8,
-                 event_types=['management']):
-        """Initializes the config
-        
-        Parameters
-        ----------
-        enabled: bool, default=True
-            Whether or not system is enabled
-
-        num_partitions: int, default=8
-            Number of partitions to create
-
-        event_types: [str], default=['management']
-            The event types to start with enabled
-        """
-        self.enabled = enabled
-        self.num_partitions = num_partitions
-        self.event_types = event_types
-
-    def to_conf(self) -> {str, str}:
-        """Converts conf to dict
-        
-        Returns
-        -------
-        {str, str}
-            Key,value dictionary of configs
-        """
-        return {
-            'audit_enabled': self.enabled,
-            'audit_log_num_partitions': self.num_partitions,
-            'audit_enabled_event_types': self.event_types
-        }
-
-
-class AuditLogTestSecurityConfig(SecurityConfig):
-    def __init__(self,
-                 admin_cert: Optional[tls.Certificate] = None,
-                 user_creds: Optional[tuple[str, str, str]] = None,
-                 user_cert: Optional[tls.Certificate] = None):
-        super(AuditLogTestSecurityConfig, self).__init__()
-        self._user_creds = user_creds
-        self._user_cert = user_cert
-        self._admin_cert = admin_cert
-
-        if (self._user_creds is not None):
-            assert self._user_cert is None and self._admin_cert is None, "Cannot set certs and password"
-            self.enable_sasl = True
-            self.kafka_enable_authorization = True
-            self.endpoint_authn_method = 'sasl'
-        elif (self._user_cert is not None or self._admin_cert is not None):
-            assert self._user_cert is not None and self._admin_cert is not None, "Must set both certs"
-            self.enable_sasl = False
-            self.kafka_enable_authorization = True
-            self.endpoint_authn_method = 'mtls_identity'
-            self.require_client_auth = True
-
-    @staticmethod
-    def default_credentials():
-        username = 'username'
-        password = 'password'
-        algorithm = 'SCRAM-SHA-256'
-        return AuditLogTestSecurityConfig(user_creds=(username, password,
-                                                      algorithm))
-
-    def check_configuration(self):
-        """Used by test harness to ensure auth is sufficent for audit logging
-        """
-        return self._user_creds is not None or (self._user_cert is not None and
-                                                self._admin_cert is not None)
-
-    @property
-    def admin_cert(self) -> Optional[tls.Certificate]:
-        return self._admin_cert
-
-    @property
-    def user_creds(self) -> Optional[tuple[str, str, str]]:
-        return self._user_creds
-
-    @property
-    def user_cert(self) -> Optional[tls.Certificate]:
-        return self._user_cert
 
 
 class AuditLogTestBase(RedpandaTest):

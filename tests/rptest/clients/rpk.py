@@ -320,6 +320,8 @@ class RpkTool:
             resource = "--topic"
         elif resource == "transactional-id":
             resource = "--transactional-id"
+        elif resource == "group":
+            resource = "--group"
         else:
             raise Exception(f"unknown resource: {resource}")
 
