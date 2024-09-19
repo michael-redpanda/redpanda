@@ -63,9 +63,13 @@ void print_arguments(const std::vector<ss::sstring>& args) {
     vlog(lg.debug, "Starting RPK debug bundle: {}", msg);
 }
 
+std::string form_debug_bundle_file_name(job_id_t job_id) {
+    return fmt::format("{}.zip", job_id);
+}
+
 std::filesystem::path form_debug_bundle_file_path(
   const std::filesystem::path& base_path, job_id_t job_id) {
-    return base_path / fmt::format("{}.zip", job_id);
+    return base_path / form_debug_bundle_file_name(job_id);
 }
 
 std::filesystem::path form_debug_bundle_storage_directory() {
@@ -100,10 +104,10 @@ public:
     debug_bundle_process(
       job_id_t job_id,
       std::unique_ptr<external_process::external_process> rpk_process,
-      std::filesystem::path output_file_path)
+      std::filesystem::path output_directory)
       : _job_id(job_id)
       , _rpk_process(std::move(rpk_process))
-      , _output_file_path(std::move(output_file_path))
+      , _output_directory(std::move(output_directory))
       , _created_time(clock::now()) {
         _rpk_process->set_stdout_consumer(
           output_handler{.output_buffer = _cout});
@@ -130,7 +134,7 @@ private:
     job_id_t _job_id;
     std::unique_ptr<external_process::external_process> _rpk_process;
     std::optional<ss::experimental::process::wait_status> _wait_result;
-    std::filesystem::path _output_file_path;
+    std::filesystem::path _output_directory;
     chunked_vector<ss::sstring> _cout;
     chunked_vector<ss::sstring> _cerr;
     clock::time_point _created_time;
@@ -221,6 +225,14 @@ ss::future<result<void>> service::initiate_rpk_debug_bundle_collection(
         }
     }
 
+    try {
+        co_await cleanup_previous_run();
+    } catch (const std::exception& e) {
+        co_return error_info(
+          error_code::internal_error,
+          fmt::format("Failed to clean up previous run: {}", e.what()));
+    }
+
     // Make a copy of it now and use it throughout the initialize process
     // Protects against a situation where the config gets changed while setting
     // up the initialization parameters
@@ -252,7 +264,7 @@ ss::future<result<void>> service::initiate_rpk_debug_bundle_collection(
           job_id,
           co_await external_process::external_process::create_external_process(
             std::move(args)),
-          form_debug_bundle_file_path(output_dir, job_id));
+          output_dir);
     } catch (const std::exception& e) {
         _rpk_process.reset();
         co_return error_info(
@@ -335,7 +347,7 @@ service::rpk_debug_bundle_status() {
       .job_id = _rpk_process->_job_id,
       .status = status.value(),
       .created_timestamp = _rpk_process->_created_time,
-      .file_name = _rpk_process->_output_file_path.filename().native(),
+      .file_name = form_debug_bundle_file_name(_rpk_process->_job_id),
       .cout = _rpk_process->_cout.copy(),
       .cerr = _rpk_process->_cerr.copy()};
 }
@@ -412,6 +424,20 @@ std::vector<ss::sstring> service::build_rpk_arguments(
     }
 
     return rv;
+}
+
+ss::future<> service::cleanup_previous_run() const {
+    if (_rpk_process == nullptr) {
+        co_return;
+    }
+
+    auto debug_bundle_file = form_debug_bundle_file_path(
+      _rpk_process->_output_directory, _rpk_process->_job_id);
+    if (co_await ss::file_exists(debug_bundle_file.native())) {
+        co_await ss::remove_file(debug_bundle_file.native());
+    }
+
+    co_await ss::sync_directory(_rpk_process->_output_directory.native());
 }
 
 std::optional<debug_bundle_status> service::process_status() const {

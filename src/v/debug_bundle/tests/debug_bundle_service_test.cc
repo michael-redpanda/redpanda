@@ -394,3 +394,58 @@ TEST_F_CORO(debug_bundle_service_started_fixture, termiate_never_ran) {
       term_res.assume_error().code(),
       debug_bundle::error_code::debug_bundle_process_never_started);
 }
+
+ss::future<> wait_for_file_to_be_created(
+  const std::filesystem::path& file, const std::chrono::seconds timeout) {
+    const auto start_time = debug_bundle::clock::now();
+    while (debug_bundle::clock::now() - start_time <= timeout) {
+        if (co_await ss::file_exists(file.native())) {
+            co_return;
+        }
+    }
+    throw std::runtime_error(
+      fmt::format("Timed out waiting for process file '{}' to exist", file));
+}
+
+TEST_F_CORO(debug_bundle_service_started_fixture, check_clean_up) {
+    using namespace std::chrono_literals;
+    debug_bundle::job_id_t job1(uuid_t::create());
+    std::filesystem::path job1_file
+      = _data_dir
+        / fmt::format(
+          "{}/{}.zip", debug_bundle::service::debug_bundle_dir_name, job1);
+    debug_bundle::job_id_t job2(uuid_t::create());
+    std::filesystem::path job2_file
+      = _data_dir
+        / fmt::format(
+          "{}/{}.zip", debug_bundle::service::debug_bundle_dir_name, job2);
+
+    {
+        auto res
+          = co_await _service.local().initiate_rpk_debug_bundle_collection(
+            job1, {});
+        ASSERT_FALSE_CORO(res.has_failure())
+          << res.as_failure().error().message();
+        ASSERT_NO_THROW_CORO(
+          co_await wait_for_file_to_be_created(job1_file, 10s));
+        auto term_res = co_await _service.local().cancel_rpk_debug_bundle(job1);
+        ASSERT_FALSE_CORO(term_res.has_failure())
+          << term_res.as_failure().error().message();
+    }
+
+    {
+        auto res
+          = co_await _service.local().initiate_rpk_debug_bundle_collection(
+            job2, {});
+        ASSERT_FALSE_CORO(res.has_failure())
+          << res.as_failure().error().message();
+        ASSERT_NO_THROW_CORO(
+          co_await wait_for_file_to_be_created(job2_file, 10s));
+        auto term_res = co_await _service.local().cancel_rpk_debug_bundle(job2);
+        ASSERT_FALSE_CORO(term_res.has_failure())
+          << term_res.as_failure().error().message();
+    }
+
+    EXPECT_FALSE(co_await ss::file_exists(job1_file.native()));
+    EXPECT_TRUE(co_await ss::file_exists(job2_file.native()));
+}
