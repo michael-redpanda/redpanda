@@ -86,3 +86,29 @@ redpanda_cc_library(
         "//src/v/reflection:type_traits",
     ],
 )
+
+redpanda_cc_library(
+    name = "metadata",
+    srcs = [
+        "metadata.cc",
+    ],
+    hdrs = [
+        "metadata.h",
+    ],
+    implementation_deps = [
+        "//src/v/bytes:streambuf",
+        "//src/v/strings:string_switch",
+    ],
+    include_prefix = "debug_bundle",
+    visibility = [
+        "//src/v/debug_bundle/tests:__subpackages__",
+    ],
+    deps = [
+        ":types",
+        "//src/v/base",
+        "//src/v/bytes",
+        "//src/v/container:fragmented_vector",
+        "//src/v/json",
+        "//src/v/utils:base64",
+    ],
+)
