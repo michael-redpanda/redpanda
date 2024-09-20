@@ -14,14 +14,20 @@
 #include "config/configuration.h"
 #include "config/node_config.h"
 #include "container/fragmented_vector.h"
+#include "crypto/crypto.h"
+#include "crypto/types.h"
 #include "debug_bundle/error.h"
+#include "debug_bundle/metadata.h"
 #include "debug_bundle/types.h"
 #include "ssx/future-util.h"
 #include "utils/external_process.h"
 
+#include <seastar/core/file.hh>
+#include <seastar/core/fstream.hh>
 #include <seastar/core/seastar.hh>
 #include <seastar/core/shard_id.hh>
 #include <seastar/core/sstring.hh>
+#include <seastar/util/defer.hh>
 #include <seastar/util/process.hh>
 #include <seastar/util/variant_utils.hh>
 
@@ -67,6 +73,11 @@ std::string form_debug_bundle_file_name(job_id_t job_id) {
     return fmt::format("{}.zip", job_id);
 }
 
+std::filesystem::path
+form_metadata_file_path(const std::filesystem::path& base_path) {
+    return base_path / service::metadata_file_name;
+}
+
 std::filesystem::path form_debug_bundle_file_path(
   const std::filesystem::path& base_path, job_id_t job_id) {
     return base_path / form_debug_bundle_file_name(job_id);
@@ -81,6 +92,33 @@ std::filesystem::path form_debug_bundle_storage_directory() {
     return debug_bundle_dir.value_or(
       config::node().data_directory.value().path
       / service::debug_bundle_dir_name);
+}
+
+ss::future<bytes> calculate_sha256_sum(const std::filesystem::path& file_path) {
+    const size_t buffer_size = 8192;
+    crypto::digest_ctx ctx(crypto::digest_type::SHA256);
+    auto handle = co_await ss::open_file_dma(
+      file_path.native(), ss::open_flags::ro);
+    auto file_size = co_await handle.size();
+    size_t total_consumed = 0;
+    auto h = ss::defer(
+      [handle]() mutable { ssx::background = handle.close(); });
+
+    auto stream = ss::make_file_input_stream(
+      handle,
+      ss::file_input_stream_options{
+        .buffer_size = buffer_size,
+        .read_ahead = 1,
+      });
+
+    while (total_consumed < file_size) {
+        auto data = co_await stream.read_up_to(
+          std::min(buffer_size, file_size - total_consumed));
+        total_consumed += data.size();
+        ctx.update({data.get(), data.size()});
+    }
+
+    co_return std::move(ctx).final();
 }
 } // namespace
 
@@ -274,9 +312,19 @@ ss::future<result<void>> service::initiate_rpk_debug_bundle_collection(
 
     // Kick off the wait by waiting for the process to finish and then emplacing
     // the result
-    ssx::spawn_with_gate(_gate, [this]() {
+    ssx::spawn_with_gate(_gate, [this, job_id]() {
         return _rpk_process->_rpk_process->wait()
-          .then([this](auto res) { _rpk_process->_wait_result.emplace(res); })
+          .then([this, job_id](auto res) {
+              // This ensures in the extremely unlikely case where this
+              // continuation is called after another debug bundle has been
+              // initiated that we are accessing a present and valid
+              // _rpk_process
+              if (!_rpk_process || _rpk_process->_job_id != job_id) {
+                  return ss::now();
+              }
+              _rpk_process->_wait_result.emplace(res);
+              return construct_metadata(job_id);
+          })
           .handle_exception_type([this](const std::exception& e) {
               lg.error(
                 "wait() failed while running rpk debug bundle: {}", e.what());
@@ -437,6 +485,52 @@ ss::future<> service::cleanup_previous_run() const {
         co_await ss::remove_file(debug_bundle_file.native());
     }
 
+    co_await ss::sync_directory(_rpk_process->_output_directory.native());
+}
+
+ss::future<> service::construct_metadata(job_id_t job_id) {
+    auto units = co_await _process_control_mutex.get_units();
+    // Again, double check that _rpk_process is present and matches the job ID
+    if (!_rpk_process || _rpk_process->_job_id != job_id) {
+        vlog(
+          lg.debug,
+          "Unable to construct metadata for {}, another process already "
+          "started",
+          job_id());
+        co_return;
+    }
+
+    auto file_path = form_debug_bundle_file_path(
+      _rpk_process->_output_directory, job_id);
+    if (!co_await ss::file_exists(file_path.native())) {
+        vlog(
+          lg.warn, "Debug bundle file has been removed earlier than expected");
+        co_return;
+    }
+
+    auto metadata_str = serialize_metadata(
+      {.process_start_time_ms = _rpk_process->_created_time,
+       .cout = _rpk_process->_cout.copy(),
+       .cerr = _rpk_process->_cerr.copy(),
+       .job_id = job_id,
+       .debug_bundle_path = file_path,
+       .sha256_checksum = co_await calculate_sha256_sum(file_path)});
+
+    auto metadata_file_path = form_metadata_file_path(
+      _rpk_process->_output_directory);
+
+    if (co_await ss::file_exists(metadata_file_path.native())) {
+        co_await ss::remove_file(metadata_file_path.native());
+        co_await ss::sync_directory(_rpk_process->_output_directory.native());
+    }
+
+    auto handle = co_await ss::open_file_dma(
+      metadata_file_path.native(), ss::open_flags::create | ss::open_flags::wo);
+    auto h = ss::defer(
+      [handle]() mutable { ssx::background = handle.close(); });
+    auto ostr = co_await ss::make_file_output_stream(handle);
+    co_await ostr.write(metadata_str.data(), metadata_str.size());
+    co_await ostr.flush();
     co_await ss::sync_directory(_rpk_process->_output_directory.native());
 }
 

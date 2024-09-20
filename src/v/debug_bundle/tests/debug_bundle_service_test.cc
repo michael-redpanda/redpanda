@@ -9,19 +9,27 @@
  * by the Apache License, Version 2.0
  */
 
+#include "bytes/iostream.h"
 #include "config/configuration.h"
 #include "config/node_config.h"
 #include "debug_bundle/debug_bundle_service.h"
 #include "debug_bundle/error.h"
+#include "debug_bundle/metadata.h"
 #include "debug_bundle/types.h"
 #include "random/generators.h"
+#include "ssx/future-util.h"
 #include "test_utils/test.h"
+#include "utils/base64.h"
 
+#include <seastar/core/file.hh>
+#include <seastar/core/fstream.hh>
 #include <seastar/core/seastar.hh>
 #include <seastar/core/sleep.hh>
 #include <seastar/util/defer.hh>
 
 #include <gtest/gtest.h>
+
+#include <optional>
 
 struct debug_bundle_service_fixture : public seastar_test {
     ss::future<> SetUpAsync() override {
@@ -83,7 +91,9 @@ TEST_F_CORO(debug_bundle_service_fixture, bad_rpk_path) {
 ss::future<debug_bundle::result<debug_bundle::debug_bundle_status_data>>
 wait_for_process_to_finish(
   ss::sharded<debug_bundle::service>& service,
-  const std::chrono::seconds timeout) {
+  const std::chrono::seconds timeout,
+  std::optional<debug_bundle::debug_bundle_status> expected_status
+  = std::nullopt) {
     const auto start_time = debug_bundle::clock::now();
     while (debug_bundle::clock::now() - start_time <= timeout) {
         auto status = co_await service.local().rpk_debug_bundle_status();
@@ -93,6 +103,16 @@ wait_for_process_to_finish(
         if (
           status.assume_value().status
           != debug_bundle::debug_bundle_status::running) {
+            if (expected_status) {
+                if (status.assume_value().status == *expected_status) {
+                    co_return status;
+                } else {
+                    throw std::runtime_error(fmt::format(
+                      "Process finished with unexpected status: {} != {}",
+                      status.assume_value().status,
+                      *expected_status));
+                }
+            }
             co_return status;
         }
     }
@@ -404,7 +424,27 @@ ss::future<> wait_for_file_to_be_created(
         }
     }
     throw std::runtime_error(
-      fmt::format("Timed out waiting for process file '{}' to exist", file));
+      fmt::format("Timed out waiting for file '{}' to exist", file));
+}
+
+ss::future<> wait_for_file_to_be_populated(
+  const std::filesystem::path& file,
+  const std::chrono::seconds timeout,
+  const size_t min_size = 1) {
+    const auto start_time = debug_bundle::clock::now();
+    while (debug_bundle::clock::now() - start_time <= timeout) {
+        if (co_await ss::file_exists(file.native())) {
+            auto handle = co_await ss::open_file_dma(
+              file.native(), ss::open_flags::ro);
+            auto h = ss::defer(
+              [handle]() mutable { ssx::background = handle.close(); });
+            if (co_await handle.size() >= min_size) {
+                co_return;
+            }
+        }
+    }
+    throw std::runtime_error(
+      fmt::format("Timed out waiting for file '{}' to be populated", file));
 }
 
 TEST_F_CORO(debug_bundle_service_started_fixture, check_clean_up) {
@@ -448,4 +488,79 @@ TEST_F_CORO(debug_bundle_service_started_fixture, check_clean_up) {
 
     EXPECT_FALSE(co_await ss::file_exists(job1_file.native()));
     EXPECT_TRUE(co_await ss::file_exists(job2_file.native()));
+}
+
+ss::future<iobuf> read_file_contents(const std::filesystem::path& file) {
+    iobuf buf;
+    auto handle = co_await ss::open_file_dma(file.native(), ss::open_flags::ro);
+    auto h = ss::defer(
+      [handle]() mutable { ssx::background = handle.close(); });
+    auto istr = ss::make_file_input_stream(handle);
+    auto ostr = make_iobuf_ref_output_stream(buf);
+    co_await ss::copy(istr, ostr);
+    co_return buf;
+}
+
+ss::future<bytes> calculate_sha256_sum(const std::filesystem::path& file_path) {
+    const size_t buffer_size = 8192;
+    crypto::digest_ctx ctx(crypto::digest_type::SHA256);
+    auto handle = co_await ss::open_file_dma(
+      file_path.native(), ss::open_flags::ro);
+    auto file_size = co_await handle.size();
+    size_t total_consumed = 0;
+    auto h = ss::defer(
+      [handle]() mutable { ssx::background = handle.close(); });
+
+    auto stream = ss::make_file_input_stream(
+      handle,
+      ss::file_input_stream_options{
+        .buffer_size = buffer_size,
+        .read_ahead = 1,
+      });
+
+    while (total_consumed < file_size) {
+        auto data = co_await stream.read_up_to(
+          std::min(buffer_size, file_size - total_consumed));
+        total_consumed += data.size();
+        ctx.update({data.get(), data.size()});
+    }
+
+    co_return std::move(ctx).final();
+}
+
+TEST_F_CORO(debug_bundle_service_started_fixture, validate_metadata) {
+    using namespace std::chrono_literals;
+    debug_bundle::job_id_t job_id(uuid_t::create());
+    auto res = co_await _service.local().initiate_rpk_debug_bundle_collection(
+      job_id, {});
+    ASSERT_FALSE_CORO(res.has_failure()) << res.as_failure().error().message();
+
+    ASSERT_NO_THROW_CORO(
+      std::ignore = co_await wait_for_process_to_finish(
+        _service, 10s, debug_bundle::debug_bundle_status::success));
+
+    std::filesystem::path job_file
+      = _data_dir
+        / fmt::format(
+          "{}/{}.zip", debug_bundle::service::debug_bundle_dir_name, job_id);
+
+    std::filesystem::path metadata_file
+      = _data_dir
+        / fmt::format(
+          "{}/{}",
+          debug_bundle::service::debug_bundle_dir_name,
+          debug_bundle::service::metadata_file_name);
+
+    ASSERT_TRUE_CORO(co_await ss::file_exists(job_file.native()));
+    ASSERT_NO_THROW_CORO(
+      co_await wait_for_file_to_be_populated(metadata_file, 10s));
+
+    iobuf metadata_buf = co_await read_file_contents(metadata_file);
+
+    auto metadata = debug_bundle::parse_metadata_json(std::move(metadata_buf));
+
+    EXPECT_EQ(metadata.job_id, job_id);
+    EXPECT_EQ(metadata.debug_bundle_path, job_file);
+    EXPECT_EQ(
+      metadata.sha256_checksum, co_await calculate_sha256_sum(job_file));
 }

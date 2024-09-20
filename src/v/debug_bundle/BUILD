@@ -10,6 +10,8 @@ redpanda_cc_library(
         "fwd.h",
     ],
     implementation_deps = [
+        ":metadata",
+        "//src/v/crypto",
         "//src/v/ssx:future_util",
         "//src/v/utils:external_process",
         "@boost//:algorithm",

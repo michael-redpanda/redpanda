@@ -135,6 +135,13 @@ private:
     ss::future<> cleanup_previous_run() const;
 
     /**
+     * @brief Constructs metadata and writes it to the file
+     *
+     * @param job_id The Job ID to construct metadata for
+     */
+    ss::future<> construct_metadata(job_id_t job_id);
+
+    /**
      * @brief Returns the status of the running process
      *
      * @return std::optional<debug_bundle_status> Will return std::nullopt if
