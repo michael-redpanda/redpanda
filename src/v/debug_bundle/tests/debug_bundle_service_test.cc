@@ -447,6 +447,23 @@ ss::future<> wait_for_file_to_be_populated(
       fmt::format("Timed out waiting for file '{}' to be populated", file));
 }
 
+ss::future<iobuf> read_file_contents(const std::filesystem::path& file) {
+    iobuf buf;
+    auto handle = co_await ss::open_file_dma(file.native(), ss::open_flags::ro);
+    auto h = ss::defer(
+      [handle]() mutable { ssx::background = handle.close(); });
+    auto istr = ss::make_file_input_stream(handle);
+    auto ostr = make_iobuf_ref_output_stream(buf);
+    co_await ss::copy(istr, ostr);
+    co_return buf;
+}
+
+ss::future<debug_bundle::metadata>
+get_metadata_from_file(const std::filesystem::path& file) {
+    co_return debug_bundle::parse_metadata_json(
+      co_await read_file_contents(file));
+}
+
 TEST_F_CORO(debug_bundle_service_started_fixture, check_clean_up) {
     using namespace std::chrono_literals;
     debug_bundle::job_id_t job1(uuid_t::create());
@@ -460,6 +477,14 @@ TEST_F_CORO(debug_bundle_service_started_fixture, check_clean_up) {
         / fmt::format(
           "{}/{}.zip", debug_bundle::service::debug_bundle_dir_name, job2);
 
+    auto metadata_file_path = _data_dir
+                              / fmt::format(
+                                "{}/{}",
+                                debug_bundle::service::debug_bundle_dir_name,
+                                debug_bundle::service::metadata_file_name);
+
+    debug_bundle::metadata m1;
+
     {
         auto res
           = co_await _service.local().initiate_rpk_debug_bundle_collection(
@@ -471,7 +496,12 @@ TEST_F_CORO(debug_bundle_service_started_fixture, check_clean_up) {
         auto term_res = co_await _service.local().cancel_rpk_debug_bundle(job1);
         ASSERT_FALSE_CORO(term_res.has_failure())
           << term_res.as_failure().error().message();
+        ASSERT_NO_THROW_CORO(
+          co_await wait_for_file_to_be_populated(metadata_file_path, 10s));
+        m1 = co_await get_metadata_from_file(metadata_file_path);
     }
+
+    debug_bundle::metadata m2;
 
     {
         auto res
@@ -484,21 +514,15 @@ TEST_F_CORO(debug_bundle_service_started_fixture, check_clean_up) {
         auto term_res = co_await _service.local().cancel_rpk_debug_bundle(job2);
         ASSERT_FALSE_CORO(term_res.has_failure())
           << term_res.as_failure().error().message();
+
+        ASSERT_NO_THROW_CORO(
+          co_await wait_for_file_to_be_populated(metadata_file_path, 10s));
+        m2 = co_await get_metadata_from_file(metadata_file_path);
     }
 
     EXPECT_FALSE(co_await ss::file_exists(job1_file.native()));
     EXPECT_TRUE(co_await ss::file_exists(job2_file.native()));
-}
-
-ss::future<iobuf> read_file_contents(const std::filesystem::path& file) {
-    iobuf buf;
-    auto handle = co_await ss::open_file_dma(file.native(), ss::open_flags::ro);
-    auto h = ss::defer(
-      [handle]() mutable { ssx::background = handle.close(); });
-    auto istr = ss::make_file_input_stream(handle);
-    auto ostr = make_iobuf_ref_output_stream(buf);
-    co_await ss::copy(istr, ostr);
-    co_return buf;
+    EXPECT_NE(m1, m2);
 }
 
 ss::future<bytes> calculate_sha256_sum(const std::filesystem::path& file_path) {
@@ -555,9 +579,7 @@ TEST_F_CORO(debug_bundle_service_started_fixture, validate_metadata) {
     ASSERT_NO_THROW_CORO(
       co_await wait_for_file_to_be_populated(metadata_file, 10s));
 
-    iobuf metadata_buf = co_await read_file_contents(metadata_file);
-
-    auto metadata = debug_bundle::parse_metadata_json(std::move(metadata_buf));
+    auto metadata = co_await get_metadata_from_file(metadata_file);
 
     EXPECT_EQ(metadata.job_id, job_id);
     EXPECT_EQ(metadata.debug_bundle_path, job_file);

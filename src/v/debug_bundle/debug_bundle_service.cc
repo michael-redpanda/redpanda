@@ -485,6 +485,12 @@ ss::future<> service::cleanup_previous_run() const {
         co_await ss::remove_file(debug_bundle_file.native());
     }
 
+    auto metadata_file = form_metadata_file_path(
+      _rpk_process->_output_directory);
+    if (co_await ss::file_exists(metadata_file.native())) {
+        co_await ss::remove_file(metadata_file.native());
+    }
+
     co_await ss::sync_directory(_rpk_process->_output_directory.native());
 }
 
