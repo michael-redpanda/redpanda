@@ -17,6 +17,10 @@
 #include "json/writer.h"
 #include "strings/string_switch.h"
 
+#include <seastar/util/process.hh>
+
+#include <variant>
+
 namespace debug_bundle {
 template<typename Encoding = ::json::UTF8<>>
 class metadata_handler
@@ -30,6 +34,14 @@ class metadata_handler
         job_id,
         debug_bundle_path,
         sha256_checksum,
+        process_result,
+        process_result_object,
+        process_result_signaled,
+        process_result_signaled_object,
+        terminating_signal,
+        process_result_exited,
+        process_result_exited_object,
+        exit_code,
     };
     state _state = state::empty;
 
@@ -53,7 +65,38 @@ public:
                 .match("job_id", state::job_id)
                 .match("debug_bundle_path", state::debug_bundle_path)
                 .match("sha256_checksum", state::sha256_checksum)
+                .match("process_result", state::process_result)
                 .default_match(std::nullopt)};
+            if (s.has_value()) {
+                _state = *s;
+            }
+            return s.has_value();
+        }
+        case state::process_result_object: {
+            std::optional<state> s{
+              string_switch<std::optional<state>>(sv)
+                .match("signaled", state::process_result_signaled)
+                .match("exited", state::process_result_exited)
+                .default_match(std::nullopt)};
+            if (s.has_value()) {
+                _state = *s;
+            }
+            return s.has_value();
+        }
+        case state::process_result_signaled_object: {
+            std::optional<state> s{
+              string_switch<std::optional<state>>(sv)
+                .match("terminating_signal", state::terminating_signal)
+                .default_match(std::nullopt)};
+            if (s.has_value()) {
+                _state = *s;
+            }
+            return s.has_value();
+        }
+        case state::process_result_exited_object: {
+            std::optional<state> s{string_switch<std::optional<state>>(sv)
+                                     .match("exit_code", state::exit_code)
+                                     .default_match(std::nullopt)};
             if (s.has_value()) {
                 _state = *s;
             }
@@ -66,6 +109,11 @@ public:
         case state::job_id:
         case state::debug_bundle_path:
         case state::sha256_checksum:
+        case state::process_result_signaled:
+        case state::process_result_exited:
+        case state::process_result:
+        case state::terminating_signal:
+        case state::exit_code:
             return false;
         }
         return false;
@@ -103,6 +151,14 @@ public:
         case state::empty:
         case state::object:
         case state::process_start_time_ms:
+        case state::process_result:
+        case state::process_result_object:
+        case state::process_result_signaled:
+        case state::process_result_signaled_object:
+        case state::terminating_signal:
+        case state::process_result_exited:
+        case state::process_result_exited_object:
+        case state::exit_code:
             return false;
         }
 
@@ -116,6 +172,16 @@ public:
               std::chrono::milliseconds(i));
             _state = state::object;
             return true;
+        case state::exit_code:
+            result.process_result = ss::experimental::process::wait_exited{
+              static_cast<int>(i)};
+            _state = state::process_result_exited_object;
+            return true;
+        case state::terminating_signal:
+            result.process_result = ss::experimental::process::wait_signaled{
+              static_cast<int>(i)};
+            _state = state::process_result_signaled_object;
+            return true;
         case state::empty:
         case state::object:
         case state::cout:
@@ -123,6 +189,12 @@ public:
         case state::job_id:
         case state::debug_bundle_path:
         case state::sha256_checksum:
+        case state::process_result:
+        case state::process_result_object:
+        case state::process_result_exited:
+        case state::process_result_exited_object:
+        case state::process_result_signaled:
+        case state::process_result_signaled_object:
             return false;
         }
         return false;
@@ -138,12 +210,63 @@ public:
     }
 
     bool StartObject() {
-        return std::exchange(_state, state::object) == state::empty;
+        switch (_state) {
+        case state::empty:
+            _state = state::object;
+            return true;
+        case state::process_result:
+            _state = state::process_result_object;
+            return true;
+        case state::process_result_exited:
+            _state = state::process_result_exited_object;
+            return true;
+        case state::process_result_signaled:
+            _state = state::process_result_signaled_object;
+            return true;
+        case state::object:
+        case state::process_start_time_ms:
+        case state::cout:
+        case state::cerr:
+        case state::job_id:
+        case state::debug_bundle_path:
+        case state::sha256_checksum:
+        case state::process_result_object:
+        case state::process_result_exited_object:
+        case state::process_result_signaled_object:
+        case state::terminating_signal:
+        case state::exit_code:
+            return false;
+        }
+        return false;
     }
 
     bool EndObject(::json::SizeType) {
-        _state = state::empty;
-        return true;
+        switch (_state) {
+        case state::object:
+            _state = state::empty;
+            return true;
+        case state::process_result_object:
+            _state = state::object;
+            return true;
+        case state::process_result_exited_object:
+        case state::process_result_signaled_object:
+            _state = state::process_result_object;
+            return true;
+        case state::empty:
+        case state::process_start_time_ms:
+        case state::cout:
+        case state::cerr:
+        case state::job_id:
+        case state::debug_bundle_path:
+        case state::sha256_checksum:
+        case state::process_result:
+        case state::process_result_exited:
+        case state::process_result_signaled:
+        case state::terminating_signal:
+        case state::exit_code:
+            return false;
+        }
+        return false;
     }
 };
 

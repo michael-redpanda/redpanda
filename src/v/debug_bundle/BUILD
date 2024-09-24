@@ -11,6 +11,7 @@ redpanda_cc_library(
     ],
     implementation_deps = [
         ":metadata",
+        "//src/v/bytes:iostream",
         "//src/v/crypto",
         "//src/v/ssx:future_util",
         "//src/v/utils:external_process",
@@ -112,5 +113,6 @@ redpanda_cc_library(
         "//src/v/container:fragmented_vector",
         "//src/v/json",
         "//src/v/utils:base64",
+        "@seastar",
     ],
 )

@@ -11,6 +11,7 @@
 
 #include "debug_bundle_service.h"
 
+#include "bytes/iostream.h"
 #include "config/configuration.h"
 #include "config/node_config.h"
 #include "container/fragmented_vector.h"
@@ -120,6 +121,24 @@ ss::future<bytes> calculate_sha256_sum(const std::filesystem::path& file_path) {
 
     co_return std::move(ctx).final();
 }
+
+ss::future<metadata> get_metadata(const std::string_view debug_bundle_path) {
+    iobuf buf;
+    auto handle = co_await ss::open_file_dma(
+      debug_bundle_path.data(), ss::open_flags::ro);
+    auto h = ss::defer(
+      [handle]() mutable { ssx::background = handle.close(); });
+    auto istr = ss::make_file_input_stream(handle);
+    auto ostrm = make_iobuf_ref_output_stream(buf);
+    co_await ss::copy(istr, ostrm);
+    co_return parse_metadata_json(std::move(buf));
+}
+
+ss::future<bool> validate_sha256_checksum(
+  const std::filesystem::path& file_path, const bytes& checksum) {
+    auto calculated_checksum = co_await calculate_sha256_sum(file_path);
+    co_return calculated_checksum == checksum;
+}
 } // namespace
 
 struct service::output_handler {
@@ -152,6 +171,20 @@ public:
         _rpk_process->set_stderr_consumer(
           output_handler{.output_buffer = _cerr});
     }
+
+    debug_bundle_process(
+      job_id_t job_id,
+      ss::experimental::process::wait_status wait_result,
+      std::filesystem::path output_directory,
+      chunked_vector<ss::sstring> cout,
+      chunked_vector<ss::sstring> cerr,
+      clock::time_point created_time)
+      : _job_id(job_id)
+      , _wait_result(wait_result)
+      , _output_directory(std::move(output_directory))
+      , _cout(std::move(cout))
+      , _cerr(std::move(cerr))
+      , _created_time(created_time) {}
 
     debug_bundle_process() = delete;
     debug_bundle_process(debug_bundle_process&&) = default;
@@ -601,6 +634,48 @@ bool service::is_running() const {
         return _rpk_process->is_running();
     }
     return false;
+}
+
+ss::future<> service::maybe_reload_previous_run() {
+    const auto metadata_file = form_metadata_file_path(_debug_bundle_dir);
+    if (!co_await ss::file_exists(metadata_file.native())) {
+        co_return;
+    }
+    vlog(lg.debug, "Detected metadata file at {}", metadata_file);
+    metadata md;
+    try {
+        md = co_await get_metadata(metadata_file.native());
+    } catch (const std::exception& e) {
+        vlog(
+          lg.info,
+          "Failed to read metadata from {}: {}",
+          metadata_file,
+          e.what());
+        co_return;
+    }
+    if (!co_await ss::file_exists(md.debug_bundle_path.native())) {
+        vlog(
+          lg.info,
+          "Detected metadata file at {} but debug bundle file {} is missing.  "
+          "Removing metadata file",
+          metadata_file,
+          md.debug_bundle_path);
+        co_await ss::remove_file(metadata_file.native());
+        co_return;
+    }
+    if (!co_await validate_sha256_checksum(
+          md.debug_bundle_path.native(), md.sha256_checksum)) {
+        vlog(lg.info, "Checksum mismatch for {}", md.debug_bundle_path);
+        co_await ss::remove_file(metadata_file.native());
+        co_await ss::remove_file(md.debug_bundle_path.native());
+        co_return;
+    }
+    vlog(
+      lg.info,
+      "Detected metadata file at {} and debug bundle file {} is present and "
+      "valid.  Reloading metadata",
+      metadata_file,
+      md.debug_bundle_path);
 }
 
 } // namespace debug_bundle

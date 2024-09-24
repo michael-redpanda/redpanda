@@ -154,6 +154,8 @@ private:
      */
     bool is_running() const;
 
+    ss::future<> maybe_reload_previous_run();
+
 private:
     /// Handler used to emplace stdout/stderr into a buffer
     struct output_handler;
