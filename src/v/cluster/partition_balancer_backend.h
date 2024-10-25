@@ -35,12 +35,13 @@ public:
     partition_balancer_backend(
       consensus_ptr raft0,
       ss::sharded<controller_stm>&,
+      ss::sharded<features::feature_table>&,
       ss::sharded<partition_balancer_state>&,
       ss::sharded<health_monitor_backend>&,
       ss::sharded<partition_allocator>&,
       ss::sharded<topics_frontend>&,
       ss::sharded<members_frontend>&,
-      config::binding<model::partition_autobalancing_mode>&& mode,
+      config::sanctioning_binding<model::partition_autobalancing_mode>&& mode,
       config::binding<std::chrono::seconds>&& availability_timeout,
       config::binding<unsigned>&& max_disk_usage_percent,
       config::binding<unsigned>&& storage_space_alert_free_threshold_percent,
@@ -91,13 +92,14 @@ private:
     consensus_ptr _raft0;
 
     controller_stm& _controller_stm;
+    features::feature_table& _feature_table;
     partition_balancer_state& _state;
     health_monitor_backend& _health_monitor;
     partition_allocator& _partition_allocator;
     topics_frontend& _topics_frontend;
     members_frontend& _members_frontend;
 
-    config::binding<model::partition_autobalancing_mode> _mode;
+    config::sanctioning_binding<model::partition_autobalancing_mode> _mode;
     config::binding<std::chrono::seconds> _availability_timeout;
     config::binding<unsigned> _max_disk_usage_percent;
     config::binding<unsigned> _storage_space_alert_free_threshold_percent;

@@ -23,6 +23,8 @@
 #include "cluster/types.h"
 #include "config/configuration.h"
 #include "config/property.h"
+#include "features/feature_table.h"
+#include "model/metadata.h"
 #include "random/generators.h"
 #include "utils/stable_iterator_adaptor.h"
 
@@ -43,12 +45,13 @@ static constexpr std::chrono::seconds add_move_cmd_timeout = 10s;
 partition_balancer_backend::partition_balancer_backend(
   consensus_ptr raft0,
   ss::sharded<controller_stm>& controller_stm,
+  ss::sharded<features::feature_table>& feature_table,
   ss::sharded<partition_balancer_state>& state,
   ss::sharded<health_monitor_backend>& health_monitor,
   ss::sharded<partition_allocator>& partition_allocator,
   ss::sharded<topics_frontend>& topics_frontend,
   ss::sharded<members_frontend>& members_frontend,
-  config::binding<model::partition_autobalancing_mode>&& mode,
+  config::sanctioning_binding<model::partition_autobalancing_mode>&& mode,
   config::binding<std::chrono::seconds>&& availability_timeout,
   config::binding<unsigned>&& max_disk_usage_percent,
   config::binding<unsigned>&& storage_space_alert_free_threshold_percent,
@@ -62,6 +65,7 @@ partition_balancer_backend::partition_balancer_backend(
   config::binding<bool> topic_aware)
   : _raft0(std::move(raft0))
   , _controller_stm(controller_stm.local())
+  , _feature_table(feature_table.local())
   , _state(state.local())
   , _health_monitor(health_monitor.local())
   , _partition_allocator(partition_allocator.local())
@@ -358,9 +362,22 @@ ss::future<> partition_balancer_backend::do_tick() {
     // status requests by default 700ms
     const auto node_responsiveness_timeout = _node_status_interval() * 7;
 
+    const bool should_sanction = _feature_table.should_sanction();
+
+    const auto [mode, is_sanctioned] = _mode(should_sanction);
+    if (is_sanctioned) {
+        vlog(
+          clusterlog.warn,
+          "A Redpanda Enterprise Edition license is required to use enterprise "
+          "feature \"partition_autobalancing_mode\" with value \"{}\". "
+          "Behavior is being restricted to \"{}\".",
+          _mode(false).first,
+          mode);
+    }
+
     partition_balancer_planner planner(
       planner_config{
-        .mode = _mode(),
+        .mode = mode,
         .soft_max_disk_usage_ratio = soft_max_disk_usage_ratio,
         .hard_max_disk_usage_ratio = hard_max_disk_usage_ratio,
         .max_concurrent_actions = _max_concurrent_actions(),
