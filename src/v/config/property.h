@@ -40,6 +40,9 @@ class binding_base;
 template<class T>
 class binding;
 
+template<class T>
+class sanctioning_binding;
+
 template<typename U, typename T>
 class conversion_binding;
 
@@ -197,6 +200,10 @@ public:
         return std::nullopt;
     }
 
+    bool check_restricted(const T& value) const {
+        return do_check_restricted(value);
+    }
+
     void reset() override {
         auto v = default_value();
         update_value(std::move(v));
@@ -225,6 +232,11 @@ public:
         return {*this, std::move(conv)};
     }
 
+    sanctioning_binding<T> sanctioning_bind() {
+        assert_live_settable();
+        return {*this};
+    }
+
     std::optional<std::string_view> example() const override {
         if (_meta.example.has_value()) {
             return _meta.example;
@@ -250,7 +262,7 @@ public:
             _default = _legacy_default.value().value;
             _value = _default;
             // In case someone already made a binding to us early in startup
-            notify_watchers(_default);
+            notify_watchers(_default, false);
         }
     }
 
@@ -259,11 +271,11 @@ public:
     };
 
 protected:
-    void notify_watchers(const value_type& new_value) {
+    void notify_watchers(const value_type& new_value, bool is_restricted) {
         std::exception_ptr ex;
         for (auto& binding : _bindings) {
             try {
-                binding.update(new_value);
+                binding.update(new_value, is_restricted);
             } catch (...) {
                 // In case there are multiple bindings:
                 // if one of them throws an exception from an on_change
@@ -285,7 +297,7 @@ protected:
             // Update the main value first, in case one of the binding updates
             // throws.
             _value = std::move(new_value);
-            notify_watchers(_value);
+            notify_watchers(_value, check_restricted(_value));
 
             return true;
         } else {
@@ -301,6 +313,11 @@ protected:
     const std::optional<legacy_default<value_type>> _legacy_default;
 
 private:
+    virtual bool do_check_restricted(const T&) const {
+        // Config properties are unrestricted by default
+        return false;
+    }
+
     validator _validator;
 
     friend class binding_base<value_type>;
@@ -402,9 +419,9 @@ public:
 private:
     friend class property<T>;
     void detach() { _parent = nullptr; }
-    void update(const T& v) {
+    void update(const T& v, bool is_restricted) {
         oncore_debug_verify(_verify_shard);
-        const bool changed = do_update(v);
+        const bool changed = do_update(v, is_restricted);
         if (changed && _on_change.has_value()) {
             _on_change.value()();
         }
@@ -414,7 +431,7 @@ private:
 protected:
     /// Apply the updated property value to the binding, return true if
     /// the value has changed and the base_binding should call the watcher sink
-    virtual bool do_update(const T& v) = 0;
+    virtual bool do_update(const T& v, bool is_restricted) = 0;
 };
 
 /**
@@ -430,7 +447,7 @@ class binding : public binding_base<T> {
 private:
     T _value;
 
-    bool do_update(const T& v) override {
+    bool do_update(const T& v, bool) override {
         auto changed = _value != v;
         _value = v;
         return changed;
@@ -517,7 +534,7 @@ private:
     U _value;
     conversion_func _convert;
 
-    bool do_update(const T& v) override {
+    bool do_update(const T& v, bool) override {
         U converted = _convert(v);
         const bool changed = _value != converted;
         _value = std::move(converted);
@@ -565,6 +582,70 @@ public:
     const U& operator()() const {
         oncore_debug_verify(binding_base<T>::_verify_shard);
         return _value;
+    }
+};
+
+/**
+ * A property sanctioning binding contains a copy of the property's
+ * value, which will be updated in-place whenever the property is
+ * updated in the cluster configuration. It offers both free access
+ * to the value and a sanctioned view, in case the value is restricted.
+ *
+ * This is useful for classes that want a copy of a property without
+ * having to write their own logic for subscribing to value changes.
+ */
+template<class T>
+class sanctioning_binding : public binding_base<T> {
+private:
+    T _value;
+    T _default_value;
+    bool _is_value_restricted;
+
+    bool do_update(const T& v, bool is_restricted) override {
+        auto changed = _value != v;
+        _value = v;
+        _is_value_restricted = is_restricted;
+        return changed;
+    }
+
+public:
+    sanctioning_binding(property<T>& parent)
+      : binding_base<T>{parent}
+      , _value{parent()}
+      , _default_value{parent.default_value()}
+      , _is_value_restricted{parent.check_restricted(_value)} {}
+
+    sanctioning_binding(const sanctioning_binding<T>& rhs)
+      : binding_base<T>{rhs}
+      , _value{rhs._value}
+      , _default_value{rhs._default_value}
+      , _is_value_restricted{rhs._is_value_restricted} {}
+
+    sanctioning_binding& operator=(const sanctioning_binding& rhs) {
+        binding_base<T>::operator=(rhs);
+        _value = rhs._value;
+        _default_value = rhs._default_value;
+        _is_value_restricted = rhs._is_value_restricted;
+        return *this;
+    }
+
+    sanctioning_binding(sanctioning_binding<T>&& rhs) noexcept
+      // The base move constructor doesn't touch _value, _default_value or
+      // _is_value_restricted so that's why it's safe to reference these after.
+      : binding_base<T>(std::move(rhs))
+      // NOLINTNEXTLINE(*-use-after-move)
+      , _value(std::move(rhs._value))
+      // NOLINTNEXTLINE(*-use-after-move)
+      , _default_value(std::move(rhs._default_value))
+      // NOLINTNEXTLINE(*-use-after-move)
+      , _is_value_restricted(std::move(rhs._is_value_restricted)) {}
+
+    std::pair<T, bool> operator()(bool should_sanction) const {
+        oncore_debug_verify(binding_base<T>::_verify_shard);
+        if (should_sanction && _is_value_restricted) {
+            return std::make_pair(_default_value, true);
+        }
+        return std::make_pair(_value, false);
     }
 };
 
@@ -1060,6 +1141,9 @@ public:
         assert_no_default_conflict();
     }
 
+    // Needed because the following override shadows the rest of the overloads
+    using P::check_restricted;
+
     /**
      * Decodes the given YAML node into the underlying property's value_type and
      * checks whether that value should be restricted to enterprise clusters
@@ -1067,7 +1151,7 @@ public:
      */
     std::optional<validation_error> check_restricted(YAML::Node n) const final {
         auto v = std::move(n.as<T>());
-        if (check_restricted(v)) {
+        if (do_check_restricted(v)) {
             return std::make_optional<validation_error>(
               P::name().data(),
               ssx::sformat(
@@ -1077,14 +1161,7 @@ public:
     }
 
 private:
-    void assert_no_default_conflict() const {
-        vassert(
-          !check_restricted(this->default_value()),
-          "Enterprise properties must not restrict the default value of the "
-          "underlying property!");
-    }
-
-    bool check_restricted(const T& setting) const {
+    bool do_check_restricted(const T& setting) const final {
         // depending on how the restriction was defined, construct an applicable
         // check function for bare instances of the underlying value type
         auto restriction_check = [this](const val_t& v) -> bool {
@@ -1111,6 +1188,13 @@ private:
         if constexpr (std::is_same_v<T, val_t>) {
             return restriction_check(setting);
         }
+    }
+
+    void assert_no_default_conflict() const {
+        vassert(
+          !do_check_restricted(this->default_value()),
+          "Enterprise properties must not restrict the default value of the "
+          "underlying property!");
     }
 
     restrict_variant_t _restriction;
