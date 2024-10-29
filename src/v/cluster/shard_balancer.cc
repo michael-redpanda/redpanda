@@ -49,7 +49,7 @@ shard_balancer::shard_balancer(
   ss::sharded<topic_table>& topics,
   ss::sharded<controller_backend>& cb,
   config::binding<bool> balancing_on_core_count_change,
-  config::binding<bool> balancing_continuous,
+  config::sanctioning_binding<bool> balancing_continuous,
   config::binding<std::chrono::milliseconds> debounce_timeout,
   config::binding<uint32_t> partitions_per_shard,
   config::binding<uint32_t> partitions_reserve_shard0)
@@ -461,9 +461,20 @@ void shard_balancer::maybe_assign(
         // partition is removed from this node, this will likely disrupt the
         // counts balance, so we set up the balancing timer.
 
+        const bool should_sanction = _features.should_sanction();
+        const auto [balancing_continuous, is_sanctioned]
+          = _balancing_continuous(should_sanction);
+        if (is_sanctioned) {
+            vlog(
+              clusterlog.warn,
+              "A Redpanda Enterprise Edition license is required to use "
+              "enterprise feature \"core_balancing_continuous\". "
+              "This property is being ignored.");
+        }
+
         if (
           _features.is_active(features::feature::node_local_core_assignment)
-          && _balancing_continuous() && !_balance_timer.armed()) {
+          && balancing_continuous && !_balance_timer.armed()) {
             // Add jitter so that different nodes don't move replicas of the
             // same partition in unison.
             auto debounce_interval = _debounce_jitter.next_duration();
