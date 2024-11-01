@@ -373,6 +373,19 @@ path_type_map = {
             "MatchType": ("kafka::describe_client_quotas_match_type", "int8"),
         },
     },
+    "DescribeUserScramCredentialsRequestData": {
+        "Users": {
+            "Name": ("kafka::scram_user_name", "string"),
+        },
+    },
+    "DescribeUserScramCredentialsResponseData": {
+        "Results": {
+            "Name": ("kafka::scram_user_name", "string"),
+            "CredentialInfos": {
+                "Mechanism": ("kafka::scram_mechanism", "int8"),
+            },
+        },
+    },
 }
 
 # a few kafka field types specify an entity type
@@ -629,6 +642,9 @@ STRUCT_TYPES = [
     "OpData",
     "ComponentData",
     "ValueData",
+    "UserName",
+    "DescribeUserScramCredentialsResult",
+    "CredentialInfo",
 ]
 
 DROP_STREAM_OPERATOR = [
