@@ -16,7 +16,7 @@ namespace cluster {
 ss::future<put_ephemeral_credential_reply>
 ephemeral_credential_service::put_ephemeral_credential(
   put_ephemeral_credential_request r, rpc::streaming_context&) {
-    co_await _fe.local().put(r.principal, r.user, r.credential);
+    co_await _fe.local().put(r.principal, r.user, r.credential, r.algorithm);
     co_return errc::success;
 }
 

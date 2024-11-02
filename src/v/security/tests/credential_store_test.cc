@@ -29,13 +29,15 @@ BOOST_AUTO_TEST_CASE(credential_store_test) {
       bytes::from_string("salty"),
       bytes::from_string("i'm a server key"),
       bytes::from_string("i'm the stored key"),
-      123456);
+      123456,
+      scram_algorithm_t::sha256);
 
     const scram_credential cred1(
       bytes::from_string("salty2"),
       bytes::from_string("i'm a server key2"),
       bytes::from_string("i'm the stored key2"),
-      1234567);
+      1234567,
+      scram_algorithm_t::sha512);
 
     auto cred0_copy = cred0;
     auto cred1_copy = cred1;
@@ -73,14 +75,16 @@ BOOST_AUTO_TEST_CASE(credential_store_test_principal) {
       bytes::from_string("salty"),
       bytes::from_string("i'm a server key"),
       bytes::from_string("i'm the stored key"),
-      123456);
+      123456,
+      scram_algorithm_t::sha256);
 
     const scram_credential cred1(
       bytes::from_string("salty2"),
       bytes::from_string("i'm a server key2"),
       bytes::from_string("i'm the stored key2"),
       1234567,
-      acl_principal{principal_type::ephemeral_user, "ephemeral"});
+      acl_principal{principal_type::ephemeral_user, "ephemeral"},
+      scram_algorithm_t::sha512);
 
     const credential_user user0("user0");
     const credential_user user1("user1");

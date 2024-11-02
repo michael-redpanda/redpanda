@@ -23,7 +23,8 @@ inline security::scram_credential random_credential() {
       random_generators::get_bytes(256),
       random_generators::get_bytes(256),
       random_generators::get_bytes(256),
-      random_generators::get_int(1, 10));
+      random_generators::get_int(1, 10),
+      security::scram_algorithm_t::sha256);
 }
 
 inline security::resource_type random_resource_type() {

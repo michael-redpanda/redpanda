@@ -618,6 +618,7 @@ redpanda_cc_library(
     ],
     implementation_deps = [
         "//src/v/features:enterprise_feature_messages",
+        "//src/v/strings:string_switch",
     ],
     include_prefix = "cluster",
     visibility = ["//visibility:public"],

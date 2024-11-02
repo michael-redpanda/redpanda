@@ -53,7 +53,8 @@ public:
     ss::future<> put(
       security::acl_principal,
       security::credential_user,
-      security::scram_credential);
+      security::scram_credential,
+      security::scram_algorithm_t);
 
     // Insert or update an ephemeral_credential
     ss::future<> put(security::ephemeral_credential);

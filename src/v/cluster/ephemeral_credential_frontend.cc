@@ -23,6 +23,7 @@
 #include "security/scram_authenticator.h"
 #include "security/scram_credential.h"
 #include "security/types.h"
+#include "strings/string_switch.h"
 
 #include <seastar/coroutine/exception.hh>
 
@@ -92,7 +93,8 @@ ephemeral_credential_frontend::get(const security::acl_principal& principal) {
 ss::future<> ephemeral_credential_frontend::put(
   security::acl_principal principal,
   security::credential_user user,
-  security::scram_credential cred) {
+  security::scram_credential cred,
+  security::scram_algorithm_t algorithm) {
     auto guard = _gate.hold();
     // Add the principal to the supplied scram_credential
     cred = {
@@ -100,7 +102,8 @@ ss::future<> ephemeral_credential_frontend::put(
       cred.server_key(),
       cred.stored_key(),
       cred.iterations(),
-      std::move(principal)};
+      std::move(principal),
+      algorithm};
     co_await _c_store.invoke_on_all(
       [user{std::move(user)}, cred{std::move(cred)}](auto& store) {
           store.put(user, cred);
@@ -124,12 +127,24 @@ ss::future<std::error_code> ephemeral_credential_frontend::inform(
         co_return err;
     }
 
+    // TODO: default_match bad
+    auto algo = string_switch<security::scram_algorithm_t>(
+                  e_cred_res.credential.mechanism())
+                  .match(
+                    security::scram_sha256_authenticator::name,
+                    security::scram_algorithm_t::sha256)
+                  .match(
+                    security::scram_sha512_authenticator::name,
+                    security::scram_algorithm_t::sha512)
+                  .default_match(security::scram_algorithm_t::sha512);
+
     if (_self == node_id) {
         vlog(clusterlog.debug, "Inform self: {}", e_cred_res.credential);
         co_await put(
           e_cred_res.credential.principal(),
           e_cred_res.credential.user(),
-          make_scram_credential(e_cred_res.credential));
+          make_scram_credential(e_cred_res.credential),
+          algo);
         co_return errc::success;
     }
 
@@ -137,7 +152,8 @@ ss::future<std::error_code> ephemeral_credential_frontend::inform(
     auto req = put_ephemeral_credential_request{
       principal,
       e_cred_res.credential.user(),
-      make_scram_credential(e_cred_res.credential)};
+      make_scram_credential(e_cred_res.credential),
+      algo};
     auto res = rpc::get_ctx_data<put_ephemeral_credential_reply>(
       co_await _connections.local()
         .with_node_client<impl::ephemeral_credential_client_protocol>(

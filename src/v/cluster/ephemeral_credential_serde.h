@@ -22,7 +22,7 @@ namespace cluster {
 struct put_ephemeral_credential_request
   : serde::envelope<
       put_ephemeral_credential_request,
-      serde::version<0>,
+      serde::version<1>,
       serde::compat_version<0>> {
     using rpc_adl_exempt = std::true_type;
 
@@ -30,16 +30,21 @@ struct put_ephemeral_credential_request
     explicit put_ephemeral_credential_request(
       security::acl_principal principal,
       security::credential_user user,
-      security::scram_credential cred)
+      security::scram_credential cred,
+      security::scram_algorithm_t algorithm)
       : principal{std::move(principal)}
       , user{std::move(user)}
-      , credential{std::move(cred)} {}
+      , credential{std::move(cred)}
+      , algorithm(algorithm) {}
 
-    auto serde_fields() { return std::tie(principal, user, credential); }
+    auto serde_fields() {
+        return std::tie(principal, user, credential, algorithm);
+    }
 
     security::acl_principal principal;
     security::credential_user user;
     security::scram_credential credential;
+    security::scram_algorithm_t algorithm;
 };
 
 struct put_ephemeral_credential_reply

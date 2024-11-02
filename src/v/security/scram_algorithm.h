@@ -16,6 +16,7 @@
 #include "security/scram_credential.h"
 #include "ssx/sformat.h"
 #include "utils/base64.h"
+#include "utils/functional.h"
 
 #include <absl/container/node_hash_map.h>
 
@@ -196,6 +197,16 @@ public:
     static constexpr int min_iterations = MinIterations;
     static_assert(min_iterations > 0, "Minimum iterations must be positive");
 
+    static constexpr scram_algorithm_t algorithm() {
+        if constexpr (std::is_same_v<MacType, hmac_sha256>) {
+            return scram_algorithm_t::sha256;
+        } else if constexpr (std::is_same_v<MacType, hmac_sha512>) {
+            return scram_algorithm_t::sha512;
+        } else {
+            static_assert(always_false_v<MacType>, "Invalid MAC type");
+        }
+    }
+
     static bytes client_signature(
       bytes_view stored_key,
       const client_first_message& client_first,
@@ -241,7 +252,8 @@ public:
           std::move(salt),
           std::move(serverkey),
           std::move(storedkey),
-          iterations);
+          iterations,
+          algorithm());
     }
     static scram_credential make_credentials(
       acl_principal principal, const ss::sstring& password, int iterations) {
@@ -255,7 +267,8 @@ public:
           std::move(serverkey),
           std::move(storedkey),
           iterations,
-          std::move(principal));
+          std::move(principal),
+          algorithm());
     }
 
     static bytes client_proof(

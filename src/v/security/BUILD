@@ -158,6 +158,7 @@ redpanda_cc_library(
         "//src/v/thirdparty/krb5",
         "//src/v/utils:absl_sstring_hash",
         "//src/v/utils:base64",
+        "//src/v/utils:functional",
         "//src/v/utils:log_hist",
         "//src/v/utils:named_type",
         "//src/v/utils:to_string",

@@ -19,41 +19,55 @@
 
 namespace security {
 
+enum class scram_algorithm_t : int8_t {
+    sha256 = 0,
+    sha512 = 1,
+};
+
 class scram_credential
   : public serde::
-      envelope<scram_credential, serde::version<0>, serde::compat_version<0>> {
+      envelope<scram_credential, serde::version<1>, serde::compat_version<0>> {
 public:
     scram_credential() noexcept = default;
-
-    scram_credential(
-      bytes salt, bytes server_key, bytes stored_key, int iterations) noexcept
-      : _salt(std::move(salt))
-      , _server_key(std::move(server_key))
-      , _stored_key(std::move(stored_key))
-      , _iterations(iterations) {}
 
     scram_credential(
       bytes salt,
       bytes server_key,
       bytes stored_key,
       int iterations,
-      acl_principal principal) noexcept
+      scram_algorithm_t algorithm) noexcept
       : _salt(std::move(salt))
       , _server_key(std::move(server_key))
       , _stored_key(std::move(stored_key))
       , _iterations(iterations)
-      , _principal(std::move(principal)) {}
+      , _algorithm(algorithm) {}
+
+    scram_credential(
+      bytes salt,
+      bytes server_key,
+      bytes stored_key,
+      int iterations,
+      acl_principal principal,
+      scram_algorithm_t algorithm) noexcept
+      : _salt(std::move(salt))
+      , _server_key(std::move(server_key))
+      , _stored_key(std::move(stored_key))
+      , _iterations(iterations)
+      , _principal(std::move(principal))
+      , _algorithm(algorithm) {}
 
     const bytes& salt() const { return _salt; }
     const bytes& server_key() const { return _server_key; }
     const bytes& stored_key() const { return _stored_key; }
     int iterations() const { return _iterations; }
     const std::optional<acl_principal>& principal() const { return _principal; }
+    scram_algorithm_t algorithm() const { return _algorithm; }
 
     bool operator==(const scram_credential&) const = default;
 
     auto serde_fields() {
-        return std::tie(_salt, _server_key, _stored_key, _iterations);
+        return std::tie(
+          _salt, _server_key, _stored_key, _iterations, _algorithm);
     }
 
 private:
@@ -65,6 +79,7 @@ private:
     int _iterations{0};
     // Principal is not serialized on disk, it is sent over internal rpc
     std::optional<acl_principal> _principal;
+    scram_algorithm_t _algorithm;
 };
 
 } // namespace security
@@ -84,7 +99,8 @@ struct adl<security::scram_credential> {
           bytes_to_iobuf(c.salt()),
           bytes_to_iobuf(c.server_key()),
           bytes_to_iobuf(c.stored_key()),
-          static_cast<int32_t>(c.iterations()));
+          static_cast<int32_t>(c.iterations()),
+          static_cast<int8_t>(c.algorithm()));
     }
 
     security::scram_credential from(iobuf_parser& in) {
@@ -98,11 +114,13 @@ struct adl<security::scram_credential> {
         auto server_key = adl<iobuf>{}.from(in);
         auto stored_key = adl<iobuf>{}.from(in);
         auto iterations = adl<int32_t>{}.from(in);
+        auto algorithm = adl<int8_t>{}.from(in);
         return security::scram_credential(
           iobuf_to_bytes(salt),
           iobuf_to_bytes(server_key),
           iobuf_to_bytes(stored_key),
-          iterations);
+          iterations,
+          security::scram_algorithm_t{algorithm});
     }
 };
 } // namespace reflection
