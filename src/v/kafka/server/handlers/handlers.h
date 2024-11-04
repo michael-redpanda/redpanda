@@ -30,6 +30,7 @@
 #include "kafka/server/handlers/describe_log_dirs.h"
 #include "kafka/server/handlers/describe_producers.h"
 #include "kafka/server/handlers/describe_transactions.h"
+#include "kafka/server/handlers/describe_user_scram_credentials.h"
 #include "kafka/server/handlers/end_txn.h"
 #include "kafka/server/handlers/fetch.h"
 #include "kafka/server/handlers/find_coordinator.h"
@@ -109,7 +110,8 @@ using request_types = make_request_types<
   describe_transactions_handler,
   list_transactions_handler,
   alter_client_quotas_handler,
-  describe_client_quotas_handler>;
+  describe_client_quotas_handler,
+  describe_user_scram_credentials_handler>;
 
 template<typename... RequestTypes>
 static constexpr size_t max_api_key(type_list<RequestTypes...>) {
