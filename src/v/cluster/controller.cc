@@ -511,7 +511,6 @@ ss::future<> controller::start(
       std::ref(_tp_state),
       std::ref(_backend),
       config::shard_local_cfg().core_balancing_on_core_count_change.bind(),
-      config::shard_local_cfg().core_balancing_continuous.sanctioning_bind(),
       config::shard_local_cfg().core_balancing_debounce_timeout.bind(),
       config::shard_local_cfg().topic_partitions_per_shard.bind(),
       config::shard_local_cfg().topic_partitions_reserve_shard0.bind());
@@ -730,7 +729,6 @@ ss::future<> controller::start(
       std::ref(_partition_allocator),
       std::ref(_tp_frontend),
       std::ref(_members_frontend),
-      config::shard_local_cfg().partition_autobalancing_mode.sanctioning_bind(),
       config::shard_local_cfg()
         .partition_autobalancing_node_availability_timeout_sec.bind(),
       config::shard_local_cfg()

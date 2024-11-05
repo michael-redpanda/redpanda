@@ -23,6 +23,7 @@
 #include "cluster/types.h"
 #include "config/configuration.h"
 #include "config/property.h"
+#include "features/enterprise_features.h"
 #include "features/feature_table.h"
 #include "model/metadata.h"
 #include "random/generators.h"
@@ -51,7 +52,6 @@ partition_balancer_backend::partition_balancer_backend(
   ss::sharded<partition_allocator>& partition_allocator,
   ss::sharded<topics_frontend>& topics_frontend,
   ss::sharded<members_frontend>& members_frontend,
-  config::sanctioning_binding<model::partition_autobalancing_mode>&& mode,
   config::binding<std::chrono::seconds>&& availability_timeout,
   config::binding<unsigned>&& max_disk_usage_percent,
   config::binding<unsigned>&& storage_space_alert_free_threshold_percent,
@@ -71,7 +71,9 @@ partition_balancer_backend::partition_balancer_backend(
   , _partition_allocator(partition_allocator.local())
   , _topics_frontend(topics_frontend.local())
   , _members_frontend(members_frontend.local())
-  , _mode(std::move(mode))
+  , _mode(features::make_sanctioning_binding<
+          features::license_required_feature::
+            partition_auto_balancing_continuous>())
   , _availability_timeout(std::move(availability_timeout))
   , _max_disk_usage_percent(std::move(max_disk_usage_percent))
   , _storage_space_alert_free_threshold_percent(

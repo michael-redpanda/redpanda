@@ -16,6 +16,7 @@
 #include "cluster/partition_balancer_types.h"
 #include "cluster/types.h"
 #include "config/property.h"
+#include "features/enterprise_features.h"
 #include "model/fundamental.h"
 #include "raft/consensus.h"
 #include "utils/mutex.h"
@@ -41,7 +42,6 @@ public:
       ss::sharded<partition_allocator>&,
       ss::sharded<topics_frontend>&,
       ss::sharded<members_frontend>&,
-      config::sanctioning_binding<model::partition_autobalancing_mode>&& mode,
       config::binding<std::chrono::seconds>&& availability_timeout,
       config::binding<unsigned>&& max_disk_usage_percent,
       config::binding<unsigned>&& storage_space_alert_free_threshold_percent,
@@ -99,7 +99,9 @@ private:
     topics_frontend& _topics_frontend;
     members_frontend& _members_frontend;
 
-    config::sanctioning_binding<model::partition_autobalancing_mode> _mode;
+    features::sanctioning_binding<
+      config::enum_property<model::partition_autobalancing_mode>>
+      _mode;
     config::binding<std::chrono::seconds> _availability_timeout;
     config::binding<unsigned> _max_disk_usage_percent;
     config::binding<unsigned> _storage_space_alert_free_threshold_percent;

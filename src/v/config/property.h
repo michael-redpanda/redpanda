@@ -40,9 +40,6 @@ class binding_base;
 template<class T>
 class binding;
 
-template<class T>
-class sanctioning_binding;
-
 template<typename U, typename T>
 class conversion_binding;
 
@@ -232,11 +229,6 @@ public:
         return {*this, std::move(conv)};
     }
 
-    sanctioning_binding<T> sanctioning_bind() {
-        assert_live_settable();
-        return {*this};
-    }
-
     std::optional<std::string_view> example() const override {
         if (_meta.example.has_value()) {
             return _meta.example;
@@ -262,7 +254,7 @@ public:
             _default = _legacy_default.value().value;
             _value = _default;
             // In case someone already made a binding to us early in startup
-            notify_watchers(_default, false);
+            notify_watchers(_default);
         }
     }
 
@@ -271,11 +263,11 @@ public:
     };
 
 protected:
-    void notify_watchers(const value_type& new_value, bool is_restricted) {
+    void notify_watchers(const value_type& new_value) {
         std::exception_ptr ex;
         for (auto& binding : _bindings) {
             try {
-                binding.update(new_value, is_restricted);
+                binding.update(new_value);
             } catch (...) {
                 // In case there are multiple bindings:
                 // if one of them throws an exception from an on_change
@@ -297,7 +289,7 @@ protected:
             // Update the main value first, in case one of the binding updates
             // throws.
             _value = std::move(new_value);
-            notify_watchers(_value, check_restricted(_value));
+            notify_watchers(_value);
 
             return true;
         } else {
@@ -419,9 +411,9 @@ public:
 private:
     friend class property<T>;
     void detach() { _parent = nullptr; }
-    void update(const T& v, bool is_restricted) {
+    void update(const T& v) {
         oncore_debug_verify(_verify_shard);
-        const bool changed = do_update(v, is_restricted);
+        const bool changed = do_update(v);
         if (changed && _on_change.has_value()) {
             _on_change.value()();
         }
@@ -431,7 +423,7 @@ private:
 protected:
     /// Apply the updated property value to the binding, return true if
     /// the value has changed and the base_binding should call the watcher sink
-    virtual bool do_update(const T& v, bool is_restricted) = 0;
+    virtual bool do_update(const T& v) = 0;
 };
 
 /**
@@ -447,7 +439,7 @@ class binding : public binding_base<T> {
 private:
     T _value;
 
-    bool do_update(const T& v, bool) override {
+    bool do_update(const T& v) override {
         auto changed = _value != v;
         _value = v;
         return changed;
@@ -534,7 +526,7 @@ private:
     U _value;
     conversion_func _convert;
 
-    bool do_update(const T& v, bool) override {
+    bool do_update(const T& v) override {
         U converted = _convert(v);
         const bool changed = _value != converted;
         _value = std::move(converted);
@@ -582,70 +574,6 @@ public:
     const U& operator()() const {
         oncore_debug_verify(binding_base<T>::_verify_shard);
         return _value;
-    }
-};
-
-/**
- * A property sanctioning binding contains a copy of the property's
- * value, which will be updated in-place whenever the property is
- * updated in the cluster configuration. It offers both free access
- * to the value and a sanctioned view, in case the value is restricted.
- *
- * This is useful for classes that want a copy of a property without
- * having to write their own logic for subscribing to value changes.
- */
-template<class T>
-class sanctioning_binding : public binding_base<T> {
-private:
-    T _value;
-    T _default_value;
-    bool _is_value_restricted;
-
-    bool do_update(const T& v, bool is_restricted) override {
-        auto changed = _value != v;
-        _value = v;
-        _is_value_restricted = is_restricted;
-        return changed;
-    }
-
-public:
-    sanctioning_binding(property<T>& parent)
-      : binding_base<T>{parent}
-      , _value{parent()}
-      , _default_value{parent.default_value()}
-      , _is_value_restricted{parent.check_restricted(_value)} {}
-
-    sanctioning_binding(const sanctioning_binding<T>& rhs)
-      : binding_base<T>{rhs}
-      , _value{rhs._value}
-      , _default_value{rhs._default_value}
-      , _is_value_restricted{rhs._is_value_restricted} {}
-
-    sanctioning_binding& operator=(const sanctioning_binding& rhs) {
-        binding_base<T>::operator=(rhs);
-        _value = rhs._value;
-        _default_value = rhs._default_value;
-        _is_value_restricted = rhs._is_value_restricted;
-        return *this;
-    }
-
-    sanctioning_binding(sanctioning_binding<T>&& rhs) noexcept
-      // The base move constructor doesn't touch _value, _default_value or
-      // _is_value_restricted so that's why it's safe to reference these after.
-      : binding_base<T>(std::move(rhs))
-      // NOLINTNEXTLINE(*-use-after-move)
-      , _value(std::move(rhs._value))
-      // NOLINTNEXTLINE(*-use-after-move)
-      , _default_value(std::move(rhs._default_value))
-      // NOLINTNEXTLINE(*-use-after-move)
-      , _is_value_restricted(std::move(rhs._is_value_restricted)) {}
-
-    std::pair<T, bool> operator()(bool should_sanction) const {
-        oncore_debug_verify(binding_base<T>::_verify_shard);
-        if (should_sanction && _is_value_restricted) {
-            return std::make_pair(_default_value, true);
-        }
-        return std::make_pair(_value, false);
     }
 };
 
