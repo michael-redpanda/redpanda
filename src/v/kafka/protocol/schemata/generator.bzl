@@ -12,6 +12,7 @@ MESSAGES = [
     "alter_client_quotas",
     "alter_configs",
     "alter_partition_reassignments",
+    "alter_user_scram_credentials",
     "api_versions",
     "create_acls",
     "create_partitions",
