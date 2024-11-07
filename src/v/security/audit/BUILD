@@ -56,6 +56,7 @@ redpanda_cc_library(
         "//src/v/kafka/protocol/schemata:alter_client_quotas_request",
         "//src/v/kafka/protocol/schemata:alter_configs_request",
         "//src/v/kafka/protocol/schemata:alter_partition_reassignments_request",
+        "//src/v/kafka/protocol/schemata:alter_user_scram_credentials_request",
         "//src/v/kafka/protocol/schemata:create_acls_request",
         "//src/v/kafka/protocol/schemata:create_partitions_request",
         "//src/v/kafka/protocol/schemata:create_topics_request",

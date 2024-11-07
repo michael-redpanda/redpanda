@@ -270,6 +270,22 @@ public:
           std::move(principal),
           algorithm());
     }
+    static scram_credential make_credentials(
+      acl_principal principal,
+      bytes_view salted_password,
+      bytes_view salt,
+      int iterations) {
+        auto clientkey = client_key(salted_password);
+        auto storedkey = stored_key(clientkey);
+        auto serverkey = server_key(salted_password);
+        return {
+          bytes{salt},
+          std::move(serverkey),
+          std::move(storedkey),
+          iterations,
+          std::move(principal),
+          algorithm()};
+    }
 
     static bytes client_proof(
       bytes_view salted_password,
