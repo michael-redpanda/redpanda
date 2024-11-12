@@ -29,6 +29,7 @@ set(handlers_srcs
   server/handlers/describe_transactions.cc
   server/handlers/handler_probe.cc
   server/handlers/client_quotas.cc
+  server/handlers/details/security.cc
 )
 
 v_cc_library(
