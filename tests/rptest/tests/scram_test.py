@@ -6,6 +6,7 @@
 # As of the Change Date specified in that file, in accordance with
 # the Business Source License, use of this software will be governed
 # by the Apache License, Version 2.0
+from enum import IntEnum
 import random
 import socket
 import string
@@ -15,14 +16,18 @@ import time
 import urllib.parse
 import re
 
-from ducktape.mark import parametrize
+from confluent_kafka import KafkaException, KafkaError
+
+from ducktape.mark import parametrize, matrix
 from ducktape.utils.util import wait_until
 from ducktape.errors import TimeoutError
 
 from rptest.services.cluster import cluster
 from rptest.tests.redpanda_test import RedpandaTest
+from rptest.clients.kcl import RawKCL
+from rptest.clients.kafka_cli_tools import KafkaCliTools, KafkaCliToolsError
 from rptest.clients.types import TopicSpec
-from rptest.clients.rpk import RpkTool
+from rptest.clients.rpk import RpkTool, RpkException
 from rptest.clients.python_librdkafka import PythonLibrdkafka
 from rptest.services.admin import Admin
 from rptest.services.redpanda import SecurityConfig, SaslCredentials, SecurityConfig
@@ -102,9 +107,12 @@ class BaseScramTest(RedpandaTest):
 
         return password
 
-    def make_superuser_client(self, password_override=None):
+    def make_superuser_client(self,
+                              password_override=None,
+                              algorithm_override=None):
         username, password, algorithm = self.redpanda.SUPERUSER_CREDENTIALS
         password = password_override or password
+        algorithm = algorithm_override or algorithm
         return PythonLibrdkafka(self.redpanda,
                                 username=username,
                                 password=password,
@@ -292,6 +300,154 @@ class ScramTest(BaseScramTest):
 
         users = self.list_users()
         assert username in users
+
+
+class SaslPlainTest(BaseScramTest):
+    class ClientType(IntEnum):
+        KCL = 1
+        RPK = 2
+        PYTHON_RDKAFKA = 3
+        KCLI = 4
+
+    class ScramType(IntEnum):
+        SCRAM_SHA_256 = 1
+        SCRAM_SHA_512 = 2
+
+        def __str__(self):
+            return self.name.replace("_", "-")
+
+    def __init__(self, test_context):
+        security = SecurityConfig()
+        security.enable_sasl = True
+        super(SaslPlainTest,
+              self).__init__(test_context,
+                             num_brokers=3,
+                             security=security,
+                             extra_node_conf={'developer_mode': True})
+
+    def _enable_plain_authn(self):
+        self.logger.debug("Enabling SASL PLAIN and disabling SCRAM")
+        admin = Admin(self.redpanda)
+        # PLAIN cannot be on by itself, so we will enable OAUTHBEARER as well
+        # but keep SCRAM disabled to ensure we are validating the PLAIN authentication
+        # mechanism
+        admin.patch_cluster_config(
+            upsert={'sasl_mechanisms': ['PLAIN', 'OAUTHBEARER']})
+
+    def _make_client(
+        self,
+        client_type: ClientType,
+        username_override: str | None = None,
+        password_override: str | None = None,
+        algorithm_override: str | None = None
+    ) -> PythonLibrdkafka | RawKCL | RpkTool | KafkaCliTools:
+        username, password, algorithm = self.redpanda.SUPERUSER_CREDENTIALS
+        username = username_override or username
+        password = password_override or password
+        algorithm = algorithm_override or algorithm
+
+        if client_type == self.ClientType.PYTHON_RDKAFKA:
+            return PythonLibrdkafka(self.redpanda,
+                                    username=username,
+                                    password=password,
+                                    algorithm=algorithm)
+        elif client_type == self.ClientType.KCL:
+            return RawKCL(self.redpanda,
+                          username=username,
+                          password=password,
+                          sasl_mechanism=algorithm)
+        elif client_type == self.ClientType.RPK:
+            return RpkTool(self.redpanda,
+                           username=username,
+                           password=password,
+                           sasl_mechanism=algorithm)
+        elif client_type == self.ClientType.KCLI:
+            return KafkaCliTools(self.redpanda,
+                                 user=username,
+                                 passwd=password,
+                                 algorithm=algorithm)
+        else:
+            assert False, f'Unknown client type: {client_type}'
+
+    def _make_topic(self, client: PythonLibrdkafka | RawKCL | RpkTool
+                    | KafkaCliTools, expect_success: bool) -> TopicSpec:
+        topic_name = "test-topic"
+        topic = TopicSpec(name=topic_name)
+        try:
+            if isinstance(client, PythonLibrdkafka):
+                client.create_topic(topic)
+            elif isinstance(client, RawKCL):
+                resp = client.create_topics(6, [{"name": topic_name}])
+                self.logger.info(f"RESP: {resp}")
+                if expect_success:
+                    assert len(
+                        resp
+                    ) != 0, "Should have received response with SASL/PLAIN enabled"
+                    assert resp[0][
+                        'ErrorCode'] == 0, f"Expected error code 0, got {resp[0]['ErrorCode']}"
+                    return
+                else:
+                    assert len(
+                        resp
+                    ) == 0, "Should not have received response with SASL/PLAIN disabled"
+                    return
+            elif isinstance(client, RpkTool):
+                client.create_topic(topic=topic_name)
+            elif isinstance(client, KafkaCliTools):
+                client.create_topic(topic)
+            else:
+                assert False, f'Unknown client type: {client} ({type(client)})'
+            assert expect_success, "Should have failed with SASL/PLAIN disabled"
+        except RpkException as e:
+            assert isinstance(
+                client, RpkTool
+            ), f"Should not have received an RPK exception from {client} ({type(client)})"
+            assert not expect_success, f"Should not have failed with SASL/PLAIN enabled: {e}"
+            assert "UNSUPPORTED_SASL_MECHANISM" in str(
+                e), f"Expected UNSUPPORTED_SASL_MECHANISM, got {e}"
+        except KafkaException as e:
+            assert isinstance(
+                client, PythonLibrdkafka
+            ), f"Should not have received a KafkaException from {client} ({type(client)})"
+            assert not expect_success, f"Should not have failed with SASL/PLAIN enabled: {e}"
+            assert e.args[0].code(
+            ) == KafkaError._TIMED_OUT, f"Expected KafkaError._TIMED_OUT, got {e.args[0].code()}"
+        except KafkaCliToolsError as e:
+            assert isinstance(
+                client, KafkaCliTools
+            ), f"Should not have received a KafkaCliToolsError from {client} ({type(client)})"
+            assert not expect_success, f"Should not have failed with SASL/PLAIN enabled: {e}"
+            assert "UnsupportedSaslMechanismException" in str(
+                e
+            ), f"Expected to see UnsupportedSaslMechanismException, got {e}"
+
+    @cluster(num_nodes=3)
+    @matrix(client_type=list(ClientType),
+            scram_type=list(ScramType),
+            sasl_plain_enabled=[True, False])
+    def test_plain_authn(self, client_type, scram_type, sasl_plain_enabled):
+        username = "test-user"
+        password = "test-password"
+        RpkTool(self.redpanda,
+                username=self.redpanda.SUPERUSER_CREDENTIALS.username,
+                password=self.redpanda.SUPERUSER_CREDENTIALS.password,
+                sasl_mechanism=self.redpanda.SUPERUSER_CREDENTIALS.algorithm
+                ).sasl_allow_principal(principal=username,
+                                       operations=["all"],
+                                       resource="topic",
+                                       resource_name="*")
+        self.create_user(username=username,
+                         algorithm=str(scram_type),
+                         password=password)
+
+        if sasl_plain_enabled:
+            self._enable_plain_authn()
+
+        client = self._make_client(client_type,
+                                   username_override=username,
+                                   password_override=password,
+                                   algorithm_override="PLAIN")
+        self._make_topic(client, sasl_plain_enabled)
 
 
 class ScramLiveUpdateTest(RedpandaTest):
