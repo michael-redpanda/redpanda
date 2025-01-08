@@ -11,9 +11,11 @@
 #include "kafka/protocol/schemata/create_acls_request.h"
 #include "kafka/protocol/schemata/delete_acls_request.h"
 #include "kafka/protocol/schemata/describe_acls_request.h"
+#include "kafka/protocol/types.h"
 #include "kafka/server/request_context.h"
 #include "model/validation.h"
 #include "security/acl.h"
+#include "security/scram_credential.h"
 namespace kafka::details {
 
 /*
@@ -517,5 +519,11 @@ to_acl_binding_filter(const delete_acls_filter& filter) {
     return security::acl_binding_filter(
       to_resource_pattern_filter(filter), to_acl_entry_filter(filter));
 }
+
+scram_mechanism
+security_to_kafka_mechanism(security::scram_algorithm_t mechanism);
+
+std::optional<security::scram_algorithm_t>
+kafka_to_security_mechanism(kafka::scram_mechanism mechanism);
 
 } // namespace kafka::details

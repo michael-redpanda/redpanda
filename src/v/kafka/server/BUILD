@@ -37,6 +37,7 @@ redpanda_cc_library(
         "handlers/describe_log_dirs.cc",
         "handlers/describe_producers.cc",
         "handlers/describe_transactions.cc",
+        "handlers/details/security.cc",
         "handlers/fetch.cc",
         "handlers/find_coordinator.cc",
         "handlers/handler_interface.cc",
