@@ -70,6 +70,7 @@ redpanda_cc_library(
         "//src/v/kafka/protocol/schemata:describe_log_dirs_request",
         "//src/v/kafka/protocol/schemata:describe_producers_request",
         "//src/v/kafka/protocol/schemata:describe_transactions_request",
+        "//src/v/kafka/protocol/schemata:describe_user_scram_credentials_request",
         "//src/v/kafka/protocol/schemata:end_txn_request",
         "//src/v/kafka/protocol/schemata:fetch_request",
         "//src/v/kafka/protocol/schemata:find_coordinator_request",

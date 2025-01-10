@@ -27,6 +27,7 @@
 #include "kafka/protocol/describe_log_dirs.h"
 #include "kafka/protocol/describe_producers.h"
 #include "kafka/protocol/describe_transactions.h"
+#include "kafka/protocol/describe_user_scram_credentials.h"
 #include "kafka/protocol/end_txn.h"
 #include "kafka/protocol/fetch.h"
 #include "kafka/protocol/find_coordinator.h"
