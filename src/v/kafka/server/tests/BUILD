@@ -842,3 +842,26 @@ redpanda_cc_bench(
         "@seastar//:benchmark",
     ],
 )
+
+redpanda_cc_btest(
+    name = "describe_user_scram_credentials_test",
+    timeout = "short",
+    srcs = [
+        "describe_user_scram_credentials_test.cc",
+    ],
+    env = {"RP_FIXTURE_ENV": "1"},
+    tags = ["exclusive"],
+    deps = [
+        "//src/v/cluster",
+        "//src/v/kafka/protocol",
+        "//src/v/kafka/protocol:describe_user_scram_credentials",
+        "//src/v/kafka/server",
+        "//src/v/model",
+        "//src/v/redpanda/tests:fixture",
+        "//src/v/security",
+        "//src/v/test_utils:seastar_boost",
+        "@abseil-cpp//absl/algorithm:container",
+        "@seastar",
+        "@seastar//:testing",
+    ],
+)

@@ -848,6 +848,15 @@ public:
         return b;
     }
 
+    void disable_sasl() {
+        cluster::config_update_request r{.upsert = {{"enable_sasl", "false"}}};
+        auto res = app.controller->get_config_frontend()
+                     .local()
+                     .patch(r, model::timeout_clock::now() + 1s)
+                     .get();
+        BOOST_REQUIRE(!res.errc);
+    }
+
     void enable_sasl() {
         cluster::config_update_request r{.upsert = {{"enable_sasl", "true"}}};
         auto res = app.controller->get_config_frontend()
