@@ -69,7 +69,8 @@ set(srcs
   partition_reassignments_test.cc
   replicated_partition_test.cc
   metadata_test.cc
-  describe_user_scram_credentials_test.cc)
+  describe_user_scram_credentials_test.cc
+  alter_user_scram_credentials_test.cc)
 
 rp_test(
   FIXTURE_TEST
