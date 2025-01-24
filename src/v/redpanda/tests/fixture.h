@@ -897,41 +897,44 @@ public:
           std::move(client_last_resp.data.auth_bytes));
     }
 
+    template<typename Authenticator = security::scram_sha256_authenticator>
     void do_sasl_handshake(kafka::client::transport& client) {
         kafka::sasl_handshake_request req;
-        req.data.mechanism = security::scram_sha256_authenticator::name;
+        req.data.mechanism = Authenticator::name;
 
         auto resp = client.dispatch(req).get();
         BOOST_REQUIRE_EQUAL(resp.data.error_code, kafka::error_code::none);
     }
 
+    template<
+      typename ScramMech = security::scram_sha256,
+      typename Authenticator = security::scram_sha256_authenticator>
     void authn_kafka_client(
       kafka::client::transport& client,
       const ss::sstring& username,
       const ss::sstring& password) {
-        do_sasl_handshake(client);
+        do_sasl_handshake<Authenticator>(client);
         const auto nonce = random_generators::gen_alphanum_string(130);
         const security::client_first_message client_first(username, nonce);
         const auto server_first = send_scram_client_first(client, client_first);
 
         BOOST_REQUIRE(
           std::string_view(server_first.nonce()).starts_with(nonce));
-        BOOST_REQUIRE_GE(
-          server_first.iterations(), security::scram_sha256::min_iterations);
+        BOOST_REQUIRE_GE(server_first.iterations(), ScramMech::min_iterations);
         security::client_final_message client_final(
           bytes::from_string("n,,"), server_first.nonce());
-        auto salted_password = security::scram_sha256::hi(
+        auto salted_password = ScramMech::hi(
           bytes(password.cbegin(), password.cend()),
           server_first.salt(),
           server_first.iterations());
-        client_final.set_proof(security::scram_sha256::client_proof(
+        client_final.set_proof(ScramMech::client_proof(
           salted_password, client_first, server_first, client_final));
 
         auto server_final = send_scram_client_final(client, client_final);
         BOOST_REQUIRE(!server_final.error());
 
-        auto server_key = security::scram_sha256::server_key(salted_password);
-        auto server_sig = security::scram_sha256::server_signature(
+        auto server_key = ScramMech::server_key(salted_password);
+        auto server_sig = ScramMech::server_signature(
           server_key, client_first, server_first, client_final);
 
         BOOST_REQUIRE_EQUAL(server_final.signature(), server_sig);
