@@ -260,6 +260,22 @@ public:
           std::move(principal));
     }
 
+    static scram_credential make_credentials(
+      acl_principal principal,
+      bytes_view salted_password,
+      bytes_view salt,
+      int iterations) {
+        auto clientkey = client_key(salted_password);
+        auto storedkey = stored_key(clientkey);
+        auto serverkey = server_key(salted_password);
+        return {
+          bytes{salt},
+          std::move(serverkey),
+          std::move(storedkey),
+          iterations,
+          std::move(principal)};
+    }
+
     /// Test method used to generate credentials and it returns the salted
     /// password
     static std::pair<scram_credential, bytes>
