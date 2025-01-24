@@ -386,6 +386,21 @@ path_type_map = {
             },
         },
     },
+    "AlterUserScramCredentialsRequestData": {
+        "Deletions": {
+            "Name": ("kafka::scram_user_name", "string"),
+            "Mechanism": ("kafka::scram_mechanism", "int8"),
+        },
+        "Upsertions": {
+            "Name": ("kafka::scram_user_name", "string"),
+            "Mechanism": ("kafka::scram_mechanism", "int8"),
+        },
+    },
+    "AlterUserScramCredentialsResponseData": {
+        "Results": {
+            "User": ("kafka::scram_user_name", "string")
+        },
+    },
 }
 
 # a few kafka field types specify an entity type
@@ -645,6 +660,9 @@ STRUCT_TYPES = [
     "UserName",
     "DescribeUserScramCredentialsResult",
     "CredentialInfo",
+    "ScramCredentialDeletion",
+    "ScramCredentialUpsertion",
+    "AlterUserScramCredentialsResult",
 ]
 
 DROP_STREAM_OPERATOR = [
