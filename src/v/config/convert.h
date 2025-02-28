@@ -719,4 +719,30 @@ struct convert<config::datalake_catalog_auth_mode> {
     }
 };
 
+template<>
+struct convert<config::tls_name_format> {
+    static Node encode(const config::tls_name_format& rhs) {
+        return Node(fmt::format("{}", rhs));
+    }
+
+    static bool decode(const Node& node, config::tls_name_format& rhs) {
+        static constexpr auto acceptable_values
+          = config::acceptable_tls_name_format_values();
+        auto value = node.as<std::string>();
+        if (
+          std::find(acceptable_values.cbegin(), acceptable_values.cend(), value)
+          == acceptable_values.end()) {
+            return false;
+        }
+        rhs = string_switch<config::tls_name_format>(std::string_view{value})
+                .match(
+                  to_string_view(config::tls_name_format::legacy),
+                  config::tls_name_format::legacy)
+                .match(
+                  to_string_view(config::tls_name_format::rfc2253),
+                  config::tls_name_format::rfc2253);
+        return true;
+    }
+};
+
 } // namespace YAML
