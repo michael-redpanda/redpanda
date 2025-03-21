@@ -16,4 +16,5 @@ static constexpr size_t max_log_line_bytes = 128_KiB;
 ss::logger klog("kafka");
 truncating_logger kwire(klog, max_log_line_bytes);
 ss::logger client_quota_log("kafka_quotas");
+ss::logger cg_klog("kafka-cg");
 } // namespace kafka
