@@ -856,6 +856,14 @@ ss::future<> group_manager::handle_partition_leader_change(
                   std::nullopt);
                 auto expected_to_read = model::prev_offset(
                   p->partition->high_watermark());
+                vlog(
+                  cg_klog.info,
+                  "Recovering group state from {}, offset expected to read {}, "
+                  "log offsets: {}, raft protocol state: {}",
+                  p->partition->ntp(),
+                  expected_to_read,
+                  p->partition->log()->offsets(),
+                  p->partition->raft()->meta());
                 return p->partition->make_reader(reader_config)
                   .then([this, term, p, timeout, expected_to_read](
                           model::record_batch_reader reader) {
