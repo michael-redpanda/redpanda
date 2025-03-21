@@ -23,11 +23,13 @@ from rptest.services.cluster import cluster
 from rptest.clients.kcl import RawKCL
 from rptest.clients.rpk import RpkException, RpkTool
 from rptest.clients.types import TopicSpec
+from rptest.services.admin import Admin
 from rptest.services.kafka_cli_consumer import KafkaCliConsumer
 from rptest.services.kgo_verifier_services import KgoVerifierProducer
 from rptest.services.redpanda import RESTART_LOG_ALLOW_LIST, RedpandaService, MetricsEndpoint
 from rptest.services.rpk_producer import RpkProducer
 from rptest.services.verifiable_consumer import VerifiableConsumer
+from rptest.services.verifiable_producer import VerifiableProducer
 from rptest.tests.redpanda_test import RedpandaTest
 from rptest.util import expect_exception, wait_until_result
 from rptest.utils.mode_checks import skip_debug_mode
@@ -56,7 +58,9 @@ class ConsumerGroupTest(RedpandaTest):
             # disable leader balancer to make sure that group will not be realoaded because of leadership changes
             extra_rp_conf={
                 "enable_leader_balancer": False,
-                "default_topic_replications": 3
+                "default_topic_replications": 3,
+                "log_compaction_interval_ms": 1000,
+                "group_topic_partitions": 1
             },
             **kwargs)
 
@@ -390,6 +394,85 @@ class ConsumerGroupTest(RedpandaTest):
             c.stop()
             c.wait()
             c.free()
+
+    @cluster(num_nodes=6)
+    def test_group_recovery_partition_move(self):
+        """
+        Tests that group recovery state is constistent between partition moves
+        """
+        self.create_topic(1)
+        msg_cnt = 1000000
+
+        group_id = 'test-gr-1'
+        consumers = self.create_consumers(2,
+                                          self.topic_spec.name,
+                                          group_id,
+                                          static_members=False,
+                                          consumer_properties={
+                                              "enable.auto.commit": True,
+                                              "auto.commit.interval.ms": 10
+                                          })
+
+        producer = VerifiableProducer(
+            context=self.test_context,
+            num_nodes=1,
+        )
+
+        admin = Admin(self.redpanda)
+
+        offset_key = TopicPartition(self.topic_spec.name, 0)
+
+        test_admin = KafkaTestAdminClient(self.redpanda)
+        offsets = test_admin.list_offsets(
+            group_id, [TopicPartition(self.topic_spec.name, 0)])
+
+        # Test that the consumer committed what we expected.
+        self.logger.info(f"Got offsets: {offsets}")
+        assert len(offsets) == 1
+        last_seen_offset = offsets[offset_key].offset
+
+        saw_offset_backwards = False
+
+        last_xfer_time = time.time()
+
+        while True:
+            try:
+                offsets = test_admin.list_offsets(
+                    group_id, [TopicPartition(self.topic_spec.name, 0)])
+                self.logger.debug(f'Offsets: {offsets}')
+            except kerr.NotCoordinatorForGroupError:
+                continue
+            if offsets[offset_key].offset < last_seen_offset:
+                self.logger.info(
+                    f"Uh oh: {offsets[offset_key].offset} < {last_seen_offset}"
+                )
+                saw_offset_backwards = True
+                break
+            last_seen_offset = offsets[offset_key].offset
+            if last_seen_offset == msg_cnt:
+                saw_offset_backwards = False
+                break
+
+            if time.time() - last_xfer_time > 45:
+                self.logger.info("Moving partition")
+                for p in range(0, 1):
+                    leader = admin.get_partition_leader(
+                        namespace='kafka',
+                        topic='__consumer_offsets',
+                        partition=p)
+                    self.logger.info(f"Partition {p} leader: {leader}")
+                    admin.partition_transfer_leadership(
+                        'kafka', '__consumer_offsets', p)
+                last_xfer_time = time.time()
+
+        self.producer.wait()
+        self.producer.free()
+        for c in consumers:
+            c.stop()
+            c.wait()
+            c.free()
+
+        assert not saw_offset_backwards, "IT WENT BACKWARDS"
 
     @cluster(num_nodes=4, log_allow_list=RESTART_LOG_ALLOW_LIST)
     def test_group_recovery(self):
