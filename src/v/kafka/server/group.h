@@ -635,21 +635,8 @@ public:
         }
     }
 
-    bool try_upsert_offset(model::topic_partition tp, offset_metadata md) {
-        if (auto o_it = _offsets.find(tp); o_it != _offsets.end()) {
-            if (o_it->second->metadata.log_offset < md.log_offset) {
-                o_it->second->metadata = std::move(md);
-                return true;
-            }
-            return false;
-        } else {
-            _offsets.emplace(
-              std::move(tp),
-              std::make_unique<offset_metadata_with_probe>(
-                std::move(md), _id, tp, _enable_group_metrics));
-            return true;
-        }
-    }
+    bool
+    try_upsert_offset(const model::topic_partition& tp, offset_metadata md);
 
     void
     insert_ongoing_tx(model::producer_identity pid, ongoing_transaction tx);

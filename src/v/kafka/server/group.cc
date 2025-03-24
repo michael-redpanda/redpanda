@@ -2106,6 +2106,31 @@ void group::update_store_offset_builder(
       offset_metadata_kv{.key = std::move(key), .value = std::move(value)});
     builder.add_raw_kv(std::move(kv.key), std::move(kv.value));
 }
+bool group::try_upsert_offset(
+  const model::topic_partition& tp, offset_metadata md) {
+    if (auto o_it = _offsets.find(tp); o_it != _offsets.end()) {
+        if (o_it->second->metadata.log_offset < md.log_offset) {
+            if (o_it->second->metadata.offset > md.offset) [[unlikely]] {
+                vlog(
+                  _ctxlog.info,
+                  "Requested commited offset for {} to be smaller than "
+                  "previously committed value - previous: {} requested: {}",
+                  tp,
+                  o_it->second->metadata.offset,
+                  md.offset);
+            }
+            o_it->second->metadata = std::move(md);
+            return true;
+        }
+        return false;
+    } else {
+        _offsets.emplace(
+          std::move(tp),
+          std::make_unique<offset_metadata_with_probe>(
+            std::move(md), _id, tp, _enable_group_metrics));
+        return true;
+    }
+}
 
 group::offset_commit_stages group::store_offsets(offset_commit_request&& r) {
     cluster::simple_batch_builder builder(
