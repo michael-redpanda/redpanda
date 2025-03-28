@@ -24,6 +24,7 @@ from rptest.services.admin import Admin
 from rptest.services.cluster import cluster
 from rptest.services.consumer_swarm import ConsumerSwarm
 from rptest.services.redpanda import LoggingConfig
+from rptest.services.redpanda_installer import RedpandaVersion, RedpandaVersionTriple
 from rptest.services.verifiable_producer import VerifiableProducer
 
 from rptest.tests.redpanda_test import RedpandaTest
@@ -43,14 +44,65 @@ class ConsumerGroupReproTest(RedpandaTest):
                 "log_segment_size":
                 8388608,  # sets log segment size for CO topic
             },
-            log_config=LoggingConfig('info',
-                                     logger_levels={'kafka-cg': 'trace'}),
+            log_config=LoggingConfig('info', logger_levels={'kafka': 'trace'}),
             **kwargs)
         self._client = DefaultClient(self.redpanda)
         self._topics: List[TopicSpec] = []
         self._cg_name = "test-cg-1"
         self._rpk = RpkTool(self.redpanda)
         self._admin = Admin(self.redpanda)
+        self.installer = self.redpanda._installer
+        self.cur_version = (23, 1, 1)
+        self.final_version = (24, 3, 9)
+
+    def increment_version(
+            self, version: RedpandaVersionTriple) -> RedpandaVersionTriple:
+        return (version[0], version[1], version[2] + 1)
+
+    def decrement_version(
+            self, version: RedpandaVersionTriple) -> RedpandaVersionTriple:
+        return (version[0], version[1], version[2] - 1)
+
+    def get_latest_major_version(self) -> RedpandaVersionTriple:
+        return self.installer.latest_for_line(self.cur_version[0:2])[0]
+
+    def setUp(self):
+        pass
+
+    def load_version_range(
+            self, initial_version: RedpandaVersion,
+            stop_version: RedpandaVersionTriple
+    ) -> List[RedpandaVersionTriple]:
+        """
+        For tests that do upgrades: find all the latest versions from feature branches
+        between the initial version and the head version.  Result is a list, inclusive of both initial
+        version and head.
+        """
+
+        k = 0
+        v = stop_version
+        versions = [v]
+        while v[2] > 1:
+            v = self.decrement_version(v)
+            self.logger.info(f'v: {v}')
+            versions.insert(0, v)
+        while (v[0], v[1]) != initial_version[0:2]:
+            k += 1
+
+            v = self.redpanda._installer.highest_from_prior_feature_version(v)
+            self.logger.info(f'v: {v}')
+            versions.insert(0, v)
+            while v[2] > 1 and v != initial_version:
+                v = self.decrement_version(v)
+                self.logger.info(f'v: {v}')
+                versions.insert(0, v)
+
+            # Protect against infinite loop if something is wrong with our version finding
+            if k > 100:
+                raise RuntimeError(
+                    f"Failed to hit expected oldest version, v={v}")
+
+        return versions
 
     def client(self) -> DefaultClient:
         return self._client
@@ -191,50 +243,21 @@ class ConsumerGroupReproTest(RedpandaTest):
     @parametrize(run_time_sec=120,
                  num_consumers=10,
                  partition_move_interval=10,
-                 reverse_tolerance=10_000)
+                 reverse_tolerance=10_000,
+                 version_pause_interval_sec=600)
     def test_consumer_group_repro(self, run_time_sec: int, num_consumers: int,
                                   partition_move_interval: int,
-                                  reverse_tolerance: int):
+                                  reverse_tolerance: int,
+                                  version_pause_interval_sec: int):
         """
         Attempts reproduction of the issue
         """
-        self.create_topic("large_topic", 350)
-        self.create_topic("small_topic", 10)
+        versions = self.load_version_range(self.cur_version,
+                                           self.final_version)
 
         consumers: List[ConsumerSwarm] = []
-        for t in self._topics:
-            consumers.append(
-                self.create_consumer_swarm(
-                    num_consumers=num_consumers,
-                    records=1_000_000_000,
-                    topic=t,
-                    commit_interval_ms=10,
-                    # I want to set this to 'error' but I can never get the consumers to stabilize
-                    reset_behavior="earliest"))
 
-        producers = self.create_producers()
-        self.logger.info("Starting producers")
-        for p in producers:
-            p.start()
-
-        def all_consumers_present(expected_count: int):
-            gr = self._rpk.group_describe(self._cg_name, summary=True)
-            self.logger.debug(
-                f'State: {gr.state}, members: {gr.members}, expected: {expected_count}'
-            )
-            return gr.members == expected_count
-
-        self.logger.info("Starting consumers")
-        for c in consumers:
-            c.start()
-
-        expected_count = len(self._topics) * num_consumers
-
-        wait_until(
-            lambda: all_consumers_present(expected_count),
-            timeout_sec=60,
-            err_msg=
-            f'Group {self._cg_name} did not obtain {expected_count} members')
+        producers: List[VerifiableProducer] = []
 
         def group_is_ready():
             gr = self._rpk.group_describe(self._cg_name, summary=True)
@@ -244,18 +267,47 @@ class ConsumerGroupReproTest(RedpandaTest):
             return gr.state == "Stable" and gr.members == len(
                 self._topics) * num_consumers
 
-        wait_until(group_is_ready,
-                   timeout_sec=60,
-                   err_msg=f'Group {self._cg_name} did not stablize')
+        def initialize_everything():
+            self.create_topic("large_topic", 350)
+            self.create_topic("small_topic", 10)
+            for t in self._topics:
+                consumers.append(
+                    self.create_consumer_swarm(
+                        num_consumers=num_consumers,
+                        records=1_000_000_000,
+                        topic=t,
+                        commit_interval_ms=10,
+                        # I want to set this to 'error' but I can never get the consumers to stabilize
+                        reset_behavior="earliest"))
 
-        self.logger.info("Starting test")
-        start_time = time.time()
+            producers.extend(self.create_producers())
+            self.logger.info("Starting producers")
+            for p in producers:
+                p.start()
 
-        prev_offsets = {}
-        for t in self._topics:
-            prev_offsets[t.name] = {p: -1 for p in range(t.partition_count)}
+            def all_consumers_present(expected_count: int):
+                gr = self._rpk.group_describe(self._cg_name, summary=True)
+                self.logger.debug(
+                    f'State: {gr.state}, members: {gr.members}, expected: {expected_count}'
+                )
+                return gr.members == expected_count
 
-        saw_backwards: bool = False
+            self.logger.info("Starting consumers")
+            for c in consumers:
+                c.start()
+
+            expected_count = len(self._topics) * num_consumers
+
+            wait_until(
+                lambda: all_consumers_present(expected_count),
+                timeout_sec=60,
+                err_msg=
+                f'Group {self._cg_name} did not obtain {expected_count} members'
+            )
+
+            wait_until(group_is_ready,
+                       timeout_sec=60,
+                       err_msg=f'Group {self._cg_name} did not stablize')
 
         # Monitor offsets and alert on backwards offset
         def monitor_offsets() -> bool:
@@ -301,6 +353,51 @@ class ConsumerGroupReproTest(RedpandaTest):
                     self.logger.info(f"Resetting consumer {c}")
                     c.stop()
                     c.start()
+
+        started = False
+        prev_offsets = {}
+        for t in self._topics:
+            prev_offsets[t.name] = {p: -1 for p in range(t.partition_count)}
+        saw_backwards: bool = False
+
+        self.logger.info(
+            f"Beginning burn in process, here we will run RP on each version for {version_pause_interval_sec} seconds before upgrading to the next version"
+        )
+        for current_version in self.upgrade_through_versions(versions):
+            upgrade_time = time.time()
+            self.logger.info(f'Upgraded to {current_version}')
+            if not started:
+                initialize_everything()
+                started = True
+
+            while time.time() - upgrade_time < version_pause_interval_sec:
+                self.logger.info(
+                    f'Waiting for {version_pause_interval_sec} seconds before upgrading to the next version'
+                )
+
+                saw_backwards = not monitor_offsets()
+                if saw_backwards:
+                    break
+
+                check_consumers()
+                time.sleep(1)
+
+            if (current_version[0], current_version[1],
+                    current_version[2] + 1) == self.final_version:
+                self.logger.info(
+                    "About to upgrade to final version, setting kafka-cg logger"
+                )
+                self.redpanda.update_log_config(
+                    LoggingConfig('info',
+                                  logger_levels={
+                                      'kafka': 'trace',
+                                      'kafka-cg': 'trace'
+                                  }))
+
+        assert not saw_backwards, "Saw offsets go backwards during burn in!"
+
+        self.logger.info("Burn in complete - Starting test")
+        start_time = time.time()
 
         last_partition_move = time.time() + partition_move_interval
 
@@ -365,7 +462,7 @@ class ConsumerGroupReproTest(RedpandaTest):
                 in_maintenance_mode = not in_maintenance_mode
                 last_partition_move = time.time()
 
-            time.sleep(0.1)
+            time.sleep(1)
 
         self.logger.info("Test ending, stopping producer")
         for p in producers:

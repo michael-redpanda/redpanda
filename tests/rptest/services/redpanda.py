@@ -2649,6 +2649,11 @@ class RedpandaService(RedpandaServiceBase):
 
         self._expect_max_controller_records = 1000
 
+    def update_log_config(self, log_config: LoggingConfig):
+        # Updates the log config which will be applied on the next
+        # restart of the redpanda service
+        self._log_config = log_config
+
     def redpanda_env_preamble(self):
         # Pass environment variables via FOO=BAR shell expressions
         return " ".join([f"{k}={v}" for (k, v) in self._environment.items()])
