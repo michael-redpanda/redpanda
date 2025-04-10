@@ -413,3 +413,24 @@ redpanda_cc_library(
         "@seastar",
     ],
 )
+
+redpanda_cc_library(
+    name = "write_at_offset_stm",
+    srcs = [
+        "write_at_offset_stm.cc",
+    ],
+    hdrs = [
+        "write_at_offset_stm.h",
+    ],
+    include_prefix = "kafka/server",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":logger",
+        "//src/v/cluster:snapshot",
+        "//src/v/cluster:state_machine_registry",
+        "//src/v/model:batch_utils",
+        "//src/v/raft",
+        "//src/v/raft:fundamental",
+        "@seastar",
+    ],
+)
