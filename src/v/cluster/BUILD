@@ -626,6 +626,7 @@ redpanda_cc_library(
     ],
     implementation_deps = [
         ":topic_memory_per_partition_default",
+        "//src/v/cluster_link:write_at_offset_stm",
         "//src/v/crash_tracker",
         "//src/v/features:enterprise_feature_messages",
         "//src/v/resource_mgmt:memory_groups",
@@ -661,8 +662,7 @@ redpanda_cc_library(
         "//src/v/cloud_storage_clients",
         "//src/v/cloud_topics/dl_stm",
         "//src/v/cloud_topics/dl_stm:dl_stm_api",
-        "//src/v/cluster_link",
-        "//src/v/cluster_link:write_at_offset_stm",
+        "//src/v/cluster_link:fwd",
         "//src/v/config",
         "//src/v/container:chunked_hash_map",
         "//src/v/container:contiguous_range_map",

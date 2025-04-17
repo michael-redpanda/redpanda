@@ -23,7 +23,6 @@
 #include "model/record_batch_reader.h"
 #include "model/timeout_clock.h"
 #include "raft/replicate.h"
-#include "src/v/cluster_link/write_at_offset_stm.h"
 #include "storage/ntp_config.h"
 #include "storage/translating_reader.h"
 #include "storage/types.h"

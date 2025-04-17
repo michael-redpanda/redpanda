@@ -25,6 +25,7 @@
 #include "cluster/rm_stm.h"
 #include "cluster/tm_stm.h"
 #include "cluster/types.h"
+#include "cluster_link/write_at_offset_stm.h"
 #include "config/configuration.h"
 #include "features/feature_table.h"
 #include "model/fundamental.h"
