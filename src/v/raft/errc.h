@@ -40,6 +40,7 @@ enum class errc : int16_t {
     group_not_exists,
     replicate_first_stage_exception,
     invalid_input_records,
+    write_at_offset_not_available,
 };
 struct errc_category final : public std::error_category {
     const char* name() const noexcept final { return "raft::errc"; }
@@ -96,6 +97,9 @@ struct errc_category final : public std::error_category {
                    "first phase";
         case errc::invalid_input_records:
             return "attempt to replicate invalid input records";
+        case errc::write_at_offset_not_available:
+            return "unable to write at offset - mirroring on this partition is "
+                   "not enabled";
         }
         return "cluster::errc::unknown";
     }
