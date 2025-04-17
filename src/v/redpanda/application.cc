@@ -78,6 +78,7 @@
 #include "cluster/tx_gateway_frontend.h"
 #include "cluster/tx_topic_manager.h"
 #include "cluster/types.h"
+#include "cluster_link/write_at_offset_stm.h"
 #include "compression/async_stream_zstd.h"
 #include "compression/lz4_decompression_buffers.h"
 #include "compression/stream_zstd.h"
@@ -2945,6 +2946,10 @@ void application::start_runtime_services(
             config::shard_local_cfg().iceberg_enabled());
           if (config::shard_local_cfg().development_enable_cloud_topics()) {
               pm.register_factory<experimental::cloud_topics::dl_stm_factory>();
+          }
+          if (config::shard_local_cfg().development_enable_cluster_linking()) {
+              pm.register_factory<cluster_link::write_at_offset_stm_factory>(
+                storage.local().kvs(), model::offset_translator_batch_types());
           }
       })
       .get();

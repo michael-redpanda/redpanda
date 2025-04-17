@@ -92,6 +92,9 @@ redpanda_cc_library(
         "@protobuf//:protobuf_lite",
         "@seastar",
     ],
+    implementation_deps = [
+        "//src/v/cluster_link:write_at_offset_stm",
+    ],
 )
 
 # Enable or disable (thin) LTO for the redpanda binary (only)
