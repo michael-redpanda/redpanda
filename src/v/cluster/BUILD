@@ -661,6 +661,8 @@ redpanda_cc_library(
         "//src/v/cloud_storage_clients",
         "//src/v/cloud_topics/dl_stm",
         "//src/v/cloud_topics/dl_stm:dl_stm_api",
+        "//src/v/cluster_link",
+        "//src/v/cluster_link:write_at_offset_stm",
         "//src/v/config",
         "//src/v/container:chunked_hash_map",
         "//src/v/container:contiguous_range_map",

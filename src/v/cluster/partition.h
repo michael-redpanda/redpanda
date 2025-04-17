@@ -18,10 +18,12 @@
 #include "cluster/partition_probe.h"
 #include "cluster/partition_properties_stm.h"
 #include "cluster/types.h"
+#include "cluster_link/fwd.h"
 #include "features/fwd.h"
 #include "model/record_batch_reader.h"
 #include "model/timeout_clock.h"
 #include "raft/replicate.h"
+#include "src/v/cluster_link/write_at_offset_stm.h"
 #include "storage/ntp_config.h"
 #include "storage/translating_reader.h"
 #include "storage/types.h"
@@ -424,6 +426,7 @@ private:
     ss::shared_ptr<archival_metadata_stm> _archival_meta_stm;
     ss::shared_ptr<partition_properties_stm> _partition_properties_stm;
     ss::shared_ptr<experimental::cloud_topics::dl_stm_api> _dl_stm_api;
+    ss::shared_ptr<cluster_link::write_at_offset_stm> _write_at_offset_stm;
     ss::abort_source _as;
     partition_probe _probe;
     ss::sharded<features::feature_table>& _feature_table;

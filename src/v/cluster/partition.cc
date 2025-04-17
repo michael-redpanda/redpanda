@@ -546,6 +546,9 @@ ss::future<> partition::start(
           clusterlog, std::move(dl_stm));
     }
 
+    _write_at_offset_stm
+      = _raft->stm_manager()->get<cluster_link::write_at_offset_stm>();
+
     _archiver_flush_subscription = register_flush_hook(
       [this](
         model::offset,
