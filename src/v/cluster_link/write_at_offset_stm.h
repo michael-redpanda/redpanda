@@ -14,7 +14,7 @@
 #include "raft/persisted_stm.h"
 #include "raft/replicate.h"
 
-namespace kafka {
+namespace cluster_link {
 
 /**
  * The write at offset state machine allows caller to replicate the record batch
@@ -152,4 +152,4 @@ private:
     std::vector<model::record_batch_type> _offset_translated_batches;
 };
 
-} // namespace kafka
+} // namespace cluster_link

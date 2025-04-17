@@ -8,17 +8,17 @@
  * the Business Source License, use of this software will be governed
  * by the Apache License, Version 2.0
  */
-#include "kafka/server/write_at_offset_stm.h"
+#include "cluster_link/write_at_offset_stm.h"
 
 #include "cluster/snapshot.h"
-#include "kafka/server/logger.h"
+#include "cluster_link/logger.h"
 #include "model/batch_utils.h"
 
 #include <seastar/coroutine/as_future.hh>
 
 #include <algorithm>
 
-namespace kafka {
+namespace cluster_link {
 
 namespace {
 struct local_snapshot
@@ -282,7 +282,7 @@ bool write_at_offset_stm_factory::is_applicable_for(
 void write_at_offset_stm_factory::create(
   raft::state_machine_manager_builder& builder, raft::consensus* raft) {
     auto stm = builder.create_stm<write_at_offset_stm>(
-      raft, klog, _kvstore, _offset_translated_batches);
+      raft, cllog, _kvstore, _offset_translated_batches);
     raft->log()->stm_manager()->add_stm(stm);
 }
-} // namespace kafka
+} // namespace cluster_link
