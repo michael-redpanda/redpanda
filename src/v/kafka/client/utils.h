@@ -45,7 +45,7 @@ auto retry_with_mitigation(
       std::move(errFunc),
       std::exception_ptr(),
       [retries, retry_base_backoff, as](
-        const Func& func, ErrFunc& errFunc, std::exception_ptr& eptr) {
+        Func& func, ErrFunc& errFunc, std::exception_ptr& eptr) {
           return retry_with_backoff(
             retries,
             [&func, &errFunc, &eptr]() {
@@ -56,8 +56,8 @@ auto retry_with_mitigation(
                           // ignore failed mitigation
                       });
                 }
-                return fut.then(func).handle_exception(
-                  [&eptr](std::exception_ptr ex) mutable {
+                return fut.then([&func]() mutable { return func(); })
+                  .handle_exception([&eptr](std::exception_ptr ex) mutable {
                       eptr = ex;
                       return Futurator::make_exception_future(eptr);
                   });
@@ -83,11 +83,11 @@ std::invoke_result_t<Func> gated_retry_with_mitigation_impl(
        &retry_gate,
        func{std::move(func)},
        errFunc{std::move(errFunc)},
-       as]() {
+       as]() mutable {
           return retry_with_mitigation(
             retries,
             retry_base_backoff,
-            [&retry_gate, func{std::move(func)}]() {
+            [&retry_gate, func{std::move(func)}]() mutable {
                 retry_gate.check();
                 return func();
             },
