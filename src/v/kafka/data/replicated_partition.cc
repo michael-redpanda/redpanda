@@ -375,6 +375,15 @@ raft::replicate_stages replicated_partition::replicate(
     return out;
 }
 
+raft::replicate_stages replicated_partition::write_at_offset(
+  model::record_batch batch,
+  kafka::offset expected_base_offset,
+  std::optional<kafka::offset> prev_log_offset,
+  model::timeout_clock::duration timeout) {
+    return _partition->write_at_offset(
+      std::move(batch), expected_base_offset, prev_log_offset, timeout);
+}
+
 model::offset replicated_partition::partition_kafka_start_offset() const {
     if (
       _partition->is_read_replica_mode_enabled()

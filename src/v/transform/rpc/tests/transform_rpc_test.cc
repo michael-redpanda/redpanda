@@ -651,6 +651,13 @@ private:
         cluster::partition_probe& probe() override {
             throw std::runtime_error("unimplemented");
         }
+        raft::replicate_stages write_at_offset(
+          model::record_batch,
+          kafka::offset,
+          std::optional<kafka::offset>,
+          model::timeout_clock::duration) override {
+            throw std::runtime_error("unimplemented");
+        }
 
     private:
         model::offset latest_offset() {
