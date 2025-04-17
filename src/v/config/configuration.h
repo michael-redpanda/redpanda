@@ -771,6 +771,7 @@ struct configuration final : public config_store {
 
 public:
     development_feature_property<bool> development_enable_cloud_topics;
+    development_feature_property<bool> development_enable_cluster_linking;
 
     development_feature_property<int> development_feature_property_testing_only;
 
