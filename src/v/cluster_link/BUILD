@@ -38,3 +38,15 @@ redpanda_cc_library(
         "@seastar",
     ],
 )
+
+redpanda_cc_library(
+    name = "cluster_link",
+    hdrs = [
+        "fwd.h",
+    ],
+    include_prefix = "cluster_link",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":write_at_offset_stm",
+    ],
+)
