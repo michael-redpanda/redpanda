@@ -577,4 +577,39 @@ ss::future<kafka::fetch_response> client::consumer_fetch(
     });
 }
 
+ss::future<kafka::describe_configs_response> client::describe_topic(
+  model::topic topic, chunked_vector<ss::sstring> configuration_keys) {
+    return gated_retry_with_mitigation(
+      [this,
+       topic = std::move(topic),
+       configuration_keys = std::move(configuration_keys)]() mutable {
+          return do_describe_topic(
+            std::move(topic), std::move(configuration_keys));
+      });
+}
+
+ss::future<kafka::describe_configs_response> client::do_describe_topic(
+  model::topic topic, chunked_vector<ss::sstring> configuration_keys) {
+    auto controller = _controller;
+    auto broker = co_await _brokers.find(controller);
+    chunked_vector<describe_configs_resource> dcr;
+    dcr.push_back(describe_configs_resource{
+      .resource_type = config_resource_type::topic,
+      .resource_name = topic(),
+      .configuration_keys = std::move(configuration_keys),
+    });
+    auto res = co_await broker->dispatch(
+      describe_configs_request{.data = {.resources = std::move(dcr)}});
+    if (res.data.results.empty()) {
+        co_return ss::coroutine::exception(std::make_exception_ptr(
+          broker_error(controller, error_code::unknown_server_error)));
+    }
+    auto ec = res.data.results[0].error_code;
+    if (ec != error_code::none) {
+        co_return ss::coroutine::exception(
+          std::make_exception_ptr(topic_error(topic, ec)));
+    }
+    co_return res;
+}
+
 } // namespace kafka::client

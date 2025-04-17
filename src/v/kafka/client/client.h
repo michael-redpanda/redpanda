@@ -24,6 +24,7 @@
 #include "kafka/client/types.h"
 #include "kafka/client/utils.h"
 #include "kafka/protocol/create_topics.h"
+#include "kafka/protocol/describe_configs.h"
 #include "kafka/protocol/fetch.h"
 #include "kafka/protocol/list_offset.h"
 #include "ssx/semaphore.h"
@@ -162,6 +163,9 @@ public:
       std::optional<std::chrono::milliseconds> timeout,
       std::optional<int32_t> max_bytes);
 
+    ss::future<describe_configs_response> describe_topic(
+      model::topic topic, chunked_vector<ss::sstring> configuration_keys);
+
     ss::future<> update_metadata() { return _wait_or_start_update_metadata(); }
 
     ss::future<bool> is_connected() const {
@@ -173,6 +177,9 @@ public:
 private:
     ss::future<list_offsets_response>
     do_list_offsets(model::topic_partition tp);
+
+    ss::future<describe_configs_response> do_describe_topic(
+      model::topic topic, chunked_vector<ss::sstring> configuration_keys);
 
     /// \brief Connect and update metdata.
     ss::future<> do_connect(net::unresolved_address addr);
