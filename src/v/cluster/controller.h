@@ -75,6 +75,9 @@ public:
     ss::sharded<plugin_frontend>& get_plugin_frontend() {
         return _plugin_frontend;
     }
+    ss::sharded<panda_link_frontend>& get_panda_link_frontend() {
+        return _panda_link_frontend;
+    }
     ss::sharded<members_table>& get_members_table() { return _members_table; }
     ss::sharded<topic_table>& get_topics_state() { return _tp_state; }
     ss::sharded<partition_leaders_table>& get_partition_leaders() {

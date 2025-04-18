@@ -61,7 +61,8 @@ service::service(
   ss::sharded<rpc::connection_cache>& conn_cache,
   ss::sharded<partition_manager>& partition_manager,
   ss::sharded<node_status_backend>& node_status_backend,
-  ss::sharded<client_quota::frontend>& quotas_frontend)
+  ss::sharded<client_quota::frontend>& quotas_frontend,
+  ss::sharded<panda_link_frontend>& panda_link_frontend)
   : controller_service(sg, ssg)
   , _controller(controller)
   , _topics_frontend(tf)
@@ -79,7 +80,8 @@ service::service(
   , _partition_manager(partition_manager)
   , _plugin_frontend(pf)
   , _node_status_backend(node_status_backend)
-  , _quotas_frontend(quotas_frontend) {}
+  , _quotas_frontend(quotas_frontend)
+  , _panda_link_frontend(panda_link_frontend) {}
 
 ss::future<join_node_reply>
 service::join_node(join_node_request req, rpc::streaming_context&) {
