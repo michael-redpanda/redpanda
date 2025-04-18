@@ -98,6 +98,8 @@ enum class errc : int16_t {
     data_migrations_disabled,
     resource_is_being_migrated,
     invalid_target_node_id,
+    panda_link_does_not_exist,
+    panda_link_invalid_create,
 };
 
 std::ostream& operator<<(std::ostream& o, errc err);
@@ -288,6 +290,10 @@ struct errc_category final : public std::error_category {
                    "undergoing data migration";
         case errc::invalid_target_node_id:
             return "Request was intended for the node with different node id";
+        case errc::panda_link_does_not_exist:
+            return "Panda link does not exist";
+        case errc::panda_link_invalid_create:
+            return "Invalid create panda link configuration";
         }
         return "cluster::errc::unknown";
     }

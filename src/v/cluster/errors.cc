@@ -182,6 +182,10 @@ std::ostream& operator<<(std::ostream& o, cluster::errc err) {
         return o << "cluster::errc::resource_is_being_migrated";
     case errc::invalid_target_node_id:
         return o << "cluster::errc::invalid_target_node_id";
+    case errc::panda_link_does_not_exist:
+        return o << "cluster::errc::panda_link_does_not_exist";
+    case errc::panda_link_invalid_create:
+        return o << "cluster::errc::panda_link_invalid_create";
     }
 }
 } // namespace cluster
