@@ -16,6 +16,7 @@
 #include "cluster/simple_batch_builder.h"
 #include "cluster/types.h"
 #include "model/metadata.h"
+#include "model/panda_link.h"
 #include "model/record.h"
 #include "model/record_batch_types.h"
 #include "model/transform.h"
@@ -31,6 +32,8 @@
 #include <seastar/core/future-util.hh>
 #include <seastar/core/future.hh>
 #include <seastar/core/when_all.hh>
+
+#include <cstdint>
 
 namespace cluster {
 
@@ -148,6 +151,10 @@ inline constexpr int8_t alter_quotas_delta_cmd_type = 0;
 inline constexpr int8_t create_data_migration_cmd_type = 0;
 inline constexpr int8_t update_data_migration_state_cmd_type = 1;
 inline constexpr int8_t remove_data_migration_cmd_type = 2;
+
+// panda link commands
+inline constexpr int8_t panda_link_update_cmd_type = 0;
+inline constexpr int8_t panda_link_remove_cmd_type = 1;
 
 using create_topic_cmd = controller_command<
   model::topic_namespace,
@@ -396,6 +403,20 @@ using transform_remove_cmd = controller_command<
   int8_t, // unused
   transform_remove_cmd_type,
   model::record_batch_type::plugin_update,
+  serde_opts::serde_only>;
+
+using panda_link_update_cmd = controller_command<
+  int8_t, // unused
+  model::panda_link_metadata,
+  panda_link_update_cmd_type,
+  model::record_batch_type::panda_link_update,
+  serde_opts::serde_only>;
+
+using panda_link_remove_cmd = controller_command<
+  int8_t, // unused
+  model::panda_link_name,
+  panda_link_remove_cmd_type,
+  model::record_batch_type::panda_link_update,
   serde_opts::serde_only>;
 
 // Cluster bootstrap

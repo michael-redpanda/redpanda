@@ -346,6 +346,9 @@ private:
     ss::sharded<plugin_frontend> _plugin_frontend; // instance per core
     ss::sharded<plugin_table> _plugin_table;       // instance per core
     ss::sharded<plugin_backend> _plugin_backend;   // single instance
+
+    ss::sharded<panda_link_frontend> _panda_link_frontend; // instance per core
+    ss::sharded<panda_link_table> _panda_link_table;       // instance per core
     bool _is_ready = false;
 };
 

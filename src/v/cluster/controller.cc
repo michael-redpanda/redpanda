@@ -53,6 +53,8 @@
 #include "cluster/metadata_dissemination_service.h"
 #include "cluster/metrics_reporter.h"
 #include "cluster/node_status_table.h"
+#include "cluster/panda_link_frontend.h"
+#include "cluster/panda_link_table.h"
 #include "cluster/partition_balancer_backend.h"
 #include "cluster/partition_balancer_state.h"
 #include "cluster/partition_leaders_table.h"
@@ -287,6 +289,8 @@ ss::future<> controller::start(
     co_await _plugin_table.start();
     co_await _plugin_backend.start_single(&_plugin_table);
 
+    co_await _panda_link_table.start();
+
     co_await _quota_store.start();
     co_await _quota_backend.start_single(std::ref(_quota_store));
 
@@ -444,6 +448,16 @@ ss::future<> controller::start(
       ss::sharded_parameter([this] { return &_partition_leaders.local(); }),
       ss::sharded_parameter([this] { return &_plugin_table.local(); }),
       ss::sharded_parameter([this] { return &_tp_state.local(); }),
+      ss::sharded_parameter([this] {
+          return _stm.local_is_initialized() ? &_stm.local() : nullptr;
+      }),
+      ss::sharded_parameter([this] { return &_connections.local(); }),
+      ss::sharded_parameter([this] { return &_as.local(); }));
+
+    co_await _panda_link_frontend.start(
+      _raft0->self().id(),
+      ss::sharded_parameter([this] { return &_partition_leaders.local(); }),
+      ss::sharded_parameter([this] { return &_panda_link_table.local(); }),
       ss::sharded_parameter([this] {
           return _stm.local_is_initialized() ? &_stm.local() : nullptr;
       }),
@@ -889,6 +903,7 @@ ss::future<> controller::stop() {
     co_await _shard_balancer.stop();
     co_await _backend.stop();
     co_await _tp_frontend.stop();
+    co_await _panda_link_frontend.stop();
     co_await _plugin_frontend.stop();
     co_await _quota_frontend.stop();
     co_await _ephemeral_credential_frontend.stop();
@@ -909,6 +924,7 @@ ss::future<> controller::stop() {
     co_await _stm.stop();
     co_await _quota_backend.stop();
     co_await _quota_store.stop();
+    co_await _panda_link_table.stop();
     co_await _plugin_backend.stop();
     co_await _plugin_table.stop();
     co_await _drain_manager.stop();

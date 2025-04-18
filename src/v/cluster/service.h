@@ -143,6 +143,12 @@ public:
     ss::future<client_quota::alter_quotas_response> alter_client_quotas(
       client_quota::alter_quotas_request, rpc::streaming_context&) final;
 
+    ss::future<upsert_panda_link_response>
+    upsert_panda_link(upsert_panda_link_request, rpc::streaming_context&) final;
+
+    ss::future<delete_panda_link_response>
+    delete_panda_link(delete_panda_link_request, rpc::streaming_context&) final;
+
 private:
     static constexpr auto default_move_interruption_timeout = 10s;
     std::pair<std::vector<model::topic_metadata>, topic_configuration_vector>
