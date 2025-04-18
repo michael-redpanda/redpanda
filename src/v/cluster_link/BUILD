@@ -9,7 +9,7 @@ redpanda_cc_library(
         "logger.h",
     ],
     include_prefix = "cluster_link",
-    visibility = [":__subpackages__"],
+    visibility = ["//src/v/cluster_link:__subpackages__"],
     deps = [
         "//src/v/base",
         "@seastar",
@@ -51,11 +51,36 @@ redpanda_cc_library(
 redpanda_cc_library(
     name = "cluster_link",
     srcs = [
-        "service.cc",
+        "api.cc",
     ],
     hdrs = [
-        "service.h",
+        "api.h",
+    ],
+    implementation_deps = [
+        ":impl",
     ],
     include_prefix = "cluster_link",
     visibility = ["//visibility:public"],
+    deps = [
+        "//src/v/base",
+        "@seastar",
+    ],
+)
+
+redpanda_cc_library(
+    name = "impl",
+    srcs = [
+        "panda_link.cc",
+        "panda_link_manager.cc",
+    ],
+    hdrs = [
+        "panda_link.h",
+        "panda_link_manager.h",
+    ],
+    include_prefix = "cluster_link",
+    visibility = ["//src/v/cluster_link:__subpackages__"],
+    deps = [
+        "//src/v/base",
+        "//src/v/kafka/protocol:describe_configs",
+    ],
 )
