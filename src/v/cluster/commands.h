@@ -413,8 +413,8 @@ using panda_link_update_cmd = controller_command<
   serde_opts::serde_only>;
 
 using panda_link_remove_cmd = controller_command<
-  int8_t, // unused
   model::panda_link_name,
+  int8_t, // unused
   panda_link_remove_cmd_type,
   model::record_batch_type::panda_link_update,
   serde_opts::serde_only>;
