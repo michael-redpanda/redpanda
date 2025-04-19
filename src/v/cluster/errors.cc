@@ -186,6 +186,8 @@ std::ostream& operator<<(std::ostream& o, cluster::errc err) {
         return o << "cluster::errc::panda_link_does_not_exist";
     case errc::panda_link_invalid_create:
         return o << "cluster::errc::panda_link_invalid_create";
+    case errc::panda_link_invalid_update:
+        return o << "cluster::errc::panda_link_invalid_update";
     }
 }
 } // namespace cluster

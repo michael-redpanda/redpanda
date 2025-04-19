@@ -100,6 +100,7 @@ enum class errc : int16_t {
     invalid_target_node_id,
     panda_link_does_not_exist,
     panda_link_invalid_create,
+    panda_link_invalid_update,
 };
 
 std::ostream& operator<<(std::ostream& o, errc err);
@@ -294,6 +295,8 @@ struct errc_category final : public std::error_category {
             return "Panda link does not exist";
         case errc::panda_link_invalid_create:
             return "Invalid create panda link configuration";
+        case errc::panda_link_invalid_update:
+            return "Invalid update panda link configuration";
         }
         return "cluster::errc::unknown";
     }
