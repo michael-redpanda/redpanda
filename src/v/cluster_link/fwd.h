@@ -11,5 +11,6 @@
 #pragma once
 
 namespace cluster_link {
+class manager;
 class write_at_offset_stm;
-}
+} // namespace cluster_link

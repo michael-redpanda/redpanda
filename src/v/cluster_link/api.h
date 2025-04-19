@@ -11,13 +11,21 @@
 #pragma once
 
 #include "base/seastarx.h"
+#include "cluster/fwd.h"
+#include "cluster_link/fwd.h"
+#include "model/fundamental.h"
 
+#include <seastar/core/gate.hh>
 #include <seastar/core/sharded.hh>
+#include <seastar/util/defer.hh>
 
 namespace cluster_link {
 class service : public ss::peering_sharded_service<service> {
 public:
-    service() = default;
+    service(
+      model::node_id self,
+      ss::sharded<cluster::panda_link_frontend>* pl_frontend,
+      ss::scheduling_group sg);
     service(const service&) = delete;
     service& operator=(const service&) = delete;
     service(service&&) = delete;
@@ -28,5 +36,16 @@ public:
     ss::future<> stop();
 
 private:
+    void register_notifications();
+    void unregister_notifications();
+
+private:
+    ss::gate _gate;
+    model::node_id _self;
+    ss::sharded<cluster::panda_link_frontend>* _pl_frontend;
+    ss::scheduling_group _sg;
+    std::unique_ptr<manager> _manager;
+    std::vector<ss::deferred_action<ss::noncopyable_function<void()>>>
+      _notification_cleanups;
 };
 } // namespace cluster_link

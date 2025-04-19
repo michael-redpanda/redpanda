@@ -62,7 +62,10 @@ redpanda_cc_library(
     include_prefix = "cluster_link",
     visibility = ["//visibility:public"],
     deps = [
+        ":fwd",
         "//src/v/base",
+        "//src/v/cluster",
+        "//src/v/model",
         "@seastar",
     ],
 )

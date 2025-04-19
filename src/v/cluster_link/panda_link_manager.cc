@@ -51,7 +51,7 @@ ss::future<> manager::handle_link_change(model::panda_link_id id) {
         co_return;
     }
 
-    vlog(cllog.debug, "Change/addition of link {}: {}", id, meta->name());
+    vlog(cllog.debug, "Change/addition of link {}: {}", id, meta.value());
     co_return;
 }
 } // namespace cluster_link
