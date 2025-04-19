@@ -21,6 +21,7 @@
 namespace cluster {
 
 using mutation_result = panda_link_frontend::mutation_result;
+using model::panda_link_id;
 using model::panda_link_metadata;
 using model::panda_link_name;
 namespace {
@@ -78,6 +79,23 @@ ss::future<mutation_result> panda_link_frontend::delete_panda_link(
   panda_link_name name, model::timeout_clock::time_point timeout) {
     panda_link_cmd c{panda_link_remove_cmd{std::move(name), 0}};
     co_return co_await do_mutation(std::move(c), timeout);
+}
+
+std::optional<panda_link_metadata>
+panda_link_frontend::lookup_panda_link(const panda_link_name& name) const {
+    return _table->find_by_name(name);
+}
+std::optional<panda_link_metadata>
+panda_link_frontend::lookup_panda_link(panda_link_id id) const {
+    return _table->find_by_id(id);
+}
+
+panda_link_frontend::notification_id
+panda_link_frontend::register_for_updates(notification_callback cb) {
+    return _table->register_for_updates(std::move(cb));
+}
+void panda_link_frontend::unregister_for_updates(notification_id id) {
+    _table->unregister_for_updates(id);
 }
 
 ss::future<mutation_result> panda_link_frontend::do_mutation(

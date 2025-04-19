@@ -15,6 +15,7 @@
 #include "cluster/commands.h"
 #include "cluster/fwd.h"
 #include "cluster/panda_link_table.h"
+#include "model/panda_link.h"
 #include "rpc/connection_cache.h"
 
 #include <seastar/core/sharded.hh>
@@ -35,6 +36,9 @@ public:
       rpc::connection_cache*,
       ss::abort_source*);
 
+    using notification_id = panda_link_table::notification_id;
+    using notification_callback = panda_link_table::notification_callback;
+
     struct mutation_result {
         uuid_t uuid;
         errc ec;
@@ -45,6 +49,13 @@ public:
 
     ss::future<mutation_result> delete_panda_link(
       model::panda_link_name, model::timeout_clock::time_point);
+
+    std::optional<model::panda_link_metadata>
+    lookup_panda_link(const model::panda_link_name&) const;
+    std::optional<model::panda_link_metadata>
+      lookup_panda_link(model::panda_link_id) const;
+    notification_id register_for_updates(notification_callback);
+    void unregister_for_updates(notification_id);
 
 private:
     ss::future<mutation_result>
