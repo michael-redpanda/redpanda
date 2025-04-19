@@ -85,7 +85,9 @@ void panda_link_table::upsert_link(panda_link_metadata meta) {
     } else {
         _name_index.emplace(meta.name, meta.uuid);
     }
-    _underlying.insert_or_assign(meta.uuid, std::move(meta));
+    auto uuid = meta.uuid;
+    _underlying.insert_or_assign(uuid, std::move(meta));
+    run_callbacks(meta.uuid);
 }
 
 void panda_link_table::remove_link(const panda_link_name& name) {
@@ -103,6 +105,7 @@ void panda_link_table::remove_link(const panda_link_name& name) {
       id);
     _name_index.erase(name_it);
     _underlying.erase(it);
+    run_callbacks(id);
 }
 
 void panda_link_table::remove_link(panda_link_id id) {
@@ -117,6 +120,7 @@ void panda_link_table::remove_link(panda_link_id id) {
       id);
     _name_index.erase(name_it);
     _underlying.erase(it);
+    run_callbacks(id);
 }
 
 void panda_link_table::reset_links(panda_link_table::map_t snap) {
@@ -151,6 +155,35 @@ void panda_link_table::reset_links(panda_link_table::map_t snap) {
 
     _underlying = std::move(snap);
     _name_index = std::move(snap_name_index);
+
+    for (const auto& deleted : all_deletes) {
+        run_callbacks(deleted);
+    }
+
+    for (const auto& inserted : all_inserted) {
+        run_callbacks(inserted);
+    }
+
+    for (const auto& updated : all_changed) {
+        run_callbacks(updated);
+    }
+}
+
+panda_link_table::notification_id panda_link_table::register_for_updates(
+  panda_link_table::notification_callback cb) {
+    auto it = _callbacks.insert({++_latest_id, std::move(cb)});
+    vassert(it.second, "invalid duplicate in callbacks");
+    return _latest_id;
+}
+
+void panda_link_table::unregister_for_updates(notification_id id) {
+    _callbacks.erase(id);
+}
+
+void panda_link_table::run_callbacks(panda_link_id id) {
+    for (const auto& [_, cb] : _callbacks) {
+        cb(id);
+    }
 }
 
 // Perform a map diff to figure out which

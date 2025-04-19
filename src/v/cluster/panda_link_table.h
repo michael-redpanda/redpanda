@@ -14,6 +14,7 @@
 #include "model/panda_link.h"
 
 #include <absl/container/btree_map.h>
+#include <absl/container/flat_hash_map.h>
 
 namespace cluster {
 class panda_link_table {
@@ -28,9 +29,10 @@ public:
     panda_link_table& operator=(panda_link_table&&) = default;
     ~panda_link_table() = default;
 
-    using notification_id = model::panda_link_id;
+    using notification_id
+      = named_type<size_t, struct panda_link_notification_id_tag>;
     using notification_callback
-      = ss::noncopyable_function<void(model::panda_link_metadata)>;
+      = ss::noncopyable_function<void(model::panda_link_id)>;
 
     /// Snapshot copy of all the links
     map_t all_links() const;
@@ -53,6 +55,12 @@ public:
 
     void reset_links(map_t snap);
 
+    notification_id register_for_updates(notification_callback);
+    void unregister_for_updates(notification_id);
+
+private:
+    void run_callbacks(model::panda_link_id);
+
 private:
     struct name_less_cmp {
         using is_transparent = void;
@@ -68,5 +76,7 @@ private:
     // The underlying data for all panda links
     map_t _underlying;
     name_index_t _name_index;
+    absl::flat_hash_map<notification_id, notification_callback> _callbacks;
+    notification_id _latest_id{0};
 };
 } // namespace cluster
