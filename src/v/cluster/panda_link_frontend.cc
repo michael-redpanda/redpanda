@@ -216,6 +216,15 @@ errc panda_link_frontend::validator::validate_mutation(
       [this](const panda_link_update_cmd& cmd) {
           auto existing = _table->find_by_name(cmd.value.name);
           if (existing.has_value()) {
+              if (
+                existing->source_cluster_bootstrap_server
+                != cmd.value.source_cluster_bootstrap_server) {
+                  vlog(
+                    clusterlog.info,
+                    "attempting to update a panda link with a different "
+                    "source cluster bootstrap address");
+                  return errc::panda_link_invalid_update;
+              }
               return errc::success;
           }
           if (cmd.value.name().empty()) {
