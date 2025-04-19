@@ -187,6 +187,7 @@ redpanda_cc_library(
         "@fmt",
     ],
     implementation_deps = [
+        "//src/v/cluster_link",
         "//src/v/features:enterprise_feature_messages",
     ],
     include_prefix = "redpanda/admin",
@@ -216,6 +217,7 @@ redpanda_cc_library(
         "//src/v/bytes:streambuf",
         "//src/v/cloud_storage",
         "//src/v/cluster",
+        "//src/v/cluster_link:fwd",
         "//src/v/config",
         "//src/v/container:fragmented_vector",
         "//src/v/container:lw_shared_container",

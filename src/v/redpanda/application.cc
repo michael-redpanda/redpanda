@@ -1106,7 +1106,8 @@ void application::configure_admin_server() {
       std::ref(_tx_manager_migrator),
       std::ref(_kafka_server.ref()),
       std::ref(tx_gateway_frontend),
-      std::ref(_debug_bundle_service))
+      std::ref(_debug_bundle_service),
+      std::ref(_cluster_link_service))
       .get();
 }
 
