@@ -401,6 +401,8 @@ void admin_server::configure_admin_routes() {
     rb->register_api_file(_server._routes, "transform");
     rb->register_function(_server._routes, insert_comma);
     rb->register_api_file(_server._routes, "debug_bundle");
+    rb->register_function(_server._routes, insert_comma);
+    rb->register_api_file(_server._routes, "panda_link");
     register_config_routes();
     register_cluster_config_routes();
     register_raft_routes();
@@ -421,6 +423,7 @@ void admin_server::configure_admin_routes() {
     register_data_migration_routes();
     register_topic_routes();
     register_debug_bundle_routes();
+    register_panda_link_routes();
     /**
      * Special REST apis active only in recovery mode
      */

@@ -1,0 +1,76 @@
+"/v1/panda_link": {
+    "post": {
+        "description": "Posting to this endpoint will create a link",
+        "summary": "Start a link",
+        "operationId": "post_panda_link",
+        "consumes": [
+            "application/json"
+        ],
+        "parameters": [
+            {
+                "name": "config",
+                "in": "body",
+                "required": true,
+                "schema": {
+                    "description": "Configuration for the link",
+                    "type": "objectr",
+                    "required": [
+                        "source_bootstrap_server",
+                        "link_name"
+                    ],
+                    "properties": {
+                        "link_name": {
+                            "description": "Name of the link",
+                            "type": "string"
+                        },
+                        "source_bootstrap_server": {
+                            "description": "The bootstrap server of the source cluster",
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        ],
+        "produces": [
+            "application/json"
+        ],
+        "responses": {
+            "200": {
+                "description": "OK",
+                "schema": {
+                    "$ref": "#/definitions/panda_link_create_response"
+                }
+            },
+            "401": {
+                "description": "Unauthorized",
+                "schema": {
+                    "$ref": "#/definitions/error_body"
+                }
+            },
+            "403": {
+                "description": "Forbidden",
+                "schema": {
+                    "$ref": "#/definitions/error_body"
+                }
+            },
+            "409": {
+                "description": "Conflict",
+                "schema": {
+                    "$ref": "#/definitions/error_body"
+                }
+            },
+            "422": {
+                "description": "Format error",
+                "schema": {
+                    "$ref": "#/definitions/error_body"
+                }
+            },
+            "500": {
+                "description": "Internal server error",
+                "schema": {
+                    "$ref": "#/definitions/error_body"
+                }
+            }
+        }
+    }
+}
