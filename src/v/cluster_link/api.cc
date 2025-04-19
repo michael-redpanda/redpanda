@@ -33,20 +33,16 @@ private:
 };
 
 service::service(
-  model::node_id self,
-  ss::sharded<cluster::panda_link_frontend>* pl_frontend,
-  ss::scheduling_group sg)
+  model::node_id self, ss::sharded<cluster::panda_link_frontend>* pl_frontend)
   : _self(self)
-  , _pl_frontend(pl_frontend)
-  , _sg(sg) {}
+  , _pl_frontend(pl_frontend) {}
 
 service::~service() = default;
 
 ss::future<> service::start() {
     _manager = std::make_unique<manager>(
       _self,
-      std::make_unique<panda_link_registry_adapter>(&_pl_frontend->local()),
-      _sg);
+      std::make_unique<panda_link_registry_adapter>(&_pl_frontend->local()));
 
     co_await _manager->start();
 

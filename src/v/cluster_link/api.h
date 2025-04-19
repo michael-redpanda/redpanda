@@ -24,8 +24,7 @@ class service : public ss::peering_sharded_service<service> {
 public:
     service(
       model::node_id self,
-      ss::sharded<cluster::panda_link_frontend>* pl_frontend,
-      ss::scheduling_group sg);
+      ss::sharded<cluster::panda_link_frontend>* pl_frontend);
     service(const service&) = delete;
     service& operator=(const service&) = delete;
     service(service&&) = delete;
@@ -43,7 +42,6 @@ private:
     ss::gate _gate;
     model::node_id _self;
     ss::sharded<cluster::panda_link_frontend>* _pl_frontend;
-    ss::scheduling_group _sg;
     std::unique_ptr<manager> _manager;
     std::vector<ss::deferred_action<ss::noncopyable_function<void()>>>
       _notification_cleanups;

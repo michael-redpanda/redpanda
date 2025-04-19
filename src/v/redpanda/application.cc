@@ -1347,10 +1347,7 @@ void application::wire_up_runtime_services(
     }
 
     construct_service(
-      _cluster_link_service,
-      node_id,
-      &controller->get_panda_link_frontend(),
-      sched_groups.panda_link_sg())
+      _cluster_link_service, node_id, &controller->get_panda_link_frontend())
       .get();
 
     if (datalake_enabled()) {

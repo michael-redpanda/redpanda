@@ -46,10 +46,7 @@ public:
 
 class manager {
 public:
-    manager(
-      model::node_id,
-      std::unique_ptr<panda_link_registry>,
-      ss::scheduling_group);
+    manager(model::node_id, std::unique_ptr<panda_link_registry>);
     manager(const manager&) = delete;
     manager& operator=(const manager&) = delete;
     manager(manager&&) = delete;

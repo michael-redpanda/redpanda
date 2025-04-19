@@ -94,10 +94,6 @@ public:
          * replication part is done in this scheduling group.
          */
         _produce = co_await ss::create_scheduling_group("produce", 1000);
-        /**
-         * Group used to handle panda link.
-         */
-        _panda_link = co_await ss::create_scheduling_group("panda_link", 1000);
     }
 
     ss::future<> destroy_groups() {
@@ -150,14 +146,6 @@ public:
      * group.
      */
     ss::scheduling_group produce_sg() { return _produce; }
-    /**
-     * Scheduling group for panda link requests.
-     *
-     * We use separate scheduling group for panda link requests to prevent them
-     * from negatively impacting other work executed in the default scheduling
-     * group.
-     */
-    ss::scheduling_group panda_link_sg() { return _panda_link; }
 
     std::vector<std::reference_wrapper<const ss::scheduling_group>>
     all_scheduling_groups() const {
@@ -176,8 +164,7 @@ public:
           std::cref(_fetch),
           std::cref(_transforms),
           std::cref(_datalake),
-          std::cref(_produce),
-          std::cref(_panda_link)};
+          std::cref(_produce)};
     }
 
 private:
@@ -197,5 +184,4 @@ private:
     ss::scheduling_group _transforms;
     ss::scheduling_group _datalake;
     ss::scheduling_group _produce;
-    ss::scheduling_group _panda_link;
 };

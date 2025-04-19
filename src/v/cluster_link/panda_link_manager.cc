@@ -16,15 +16,11 @@
 namespace cluster_link {
 
 manager::manager(
-  model::node_id self,
-  std::unique_ptr<panda_link_registry> registry,
-  ss::scheduling_group sg)
+  model::node_id self, std::unique_ptr<panda_link_registry> registry)
   : _self(self)
-  , _queue(
-      sg,
-      [](const std::exception_ptr& ex) {
-          vlog(cllog.error, "unexpected panda link manager error: {}", ex);
-      })
+  , _queue([](const std::exception_ptr& ex) {
+      vlog(cllog.error, "unexpected panda link manager error: {}", ex);
+  })
   , _registry(std::move(registry)) {}
 
 ss::future<void> manager::start() {
