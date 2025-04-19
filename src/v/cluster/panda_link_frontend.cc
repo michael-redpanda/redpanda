@@ -243,6 +243,21 @@ errc panda_link_frontend::validator::validate_mutation(
                 "cluster bootstrap address");
               return errc::panda_link_invalid_create;
           }
+          if (!is_valid_utf8(cmd.value.source_cluster_bootstrap_server)) {
+              vlog(
+                clusterlog.info,
+                "attempting to create a panda link with an invalid source "
+                "cluster bootstrap address");
+              return errc::panda_link_invalid_create;
+          }
+          if (contains_control_character(
+                cmd.value.source_cluster_bootstrap_server)) {
+              vlog(
+                clusterlog.info,
+                "attempting to create a panda link with an invalid source "
+                "cluster bootstrap address");
+              return errc::panda_link_invalid_create;
+          }
           return errc::success;
       },
       [this](const panda_link_remove_cmd& cmd) {
