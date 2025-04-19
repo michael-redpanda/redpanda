@@ -1,0 +1,14 @@
+{
+    "namespace": "cluster_link::rpc::impl",
+    "service_name": "panda_link_rpc",
+    "includes": [
+        "cluster_link/rpc/serde.h"
+    ],
+    "methods": [
+        {
+            "name": "panda_link_update",
+            "input_type": "panda_link_update_request",
+            "output_type": "panda_link_update_reply"
+        }
+    ]
+}
