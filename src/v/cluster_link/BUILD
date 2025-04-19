@@ -77,10 +77,15 @@ redpanda_cc_library(
         "panda_link.h",
         "panda_link_manager.h",
     ],
+    implementation_deps = [
+        ":logger",
+    ],
     include_prefix = "cluster_link",
     visibility = ["//src/v/cluster_link:__subpackages__"],
     deps = [
         "//src/v/base",
         "//src/v/kafka/protocol:describe_configs",
+        "//src/v/model",
+        "//src/v/ssx:work_queue",
     ],
 )

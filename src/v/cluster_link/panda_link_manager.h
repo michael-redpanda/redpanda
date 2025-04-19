@@ -11,6 +11,8 @@
 #pragma once
 
 #include "cluster_link/panda_link.h"
+#include "model/panda_link.h"
+#include "ssx/work_queue.h"
 
 namespace cluster_link {
 
@@ -29,19 +31,42 @@ public:
 private:
 };
 
+class panda_link_registry {
+public:
+    panda_link_registry() = default;
+    panda_link_registry(const panda_link_registry&) = delete;
+    panda_link_registry& operator=(const panda_link_registry&) = delete;
+    panda_link_registry(panda_link_registry&&) = default;
+    panda_link_registry& operator=(panda_link_registry&&) = default;
+    virtual ~panda_link_registry() = default;
+
+    virtual std::optional<model::panda_link_metadata>
+      lookup_by_id(model::panda_link_id) const = 0;
+};
+
 class manager {
 public:
-    manager() = default;
+    manager(
+      model::node_id,
+      std::unique_ptr<panda_link_registry>,
+      ss::scheduling_group);
     manager(const manager&) = delete;
     manager& operator=(const manager&) = delete;
-    manager(manager&&) = default;
-    manager& operator=(manager&&) = default;
+    manager(manager&&) = delete;
+    manager& operator=(manager&&) = delete;
     virtual ~manager() = default;
 
     ss::future<void> start();
     ss::future<void> stop();
 
+    void on_link_change(model::panda_link_id);
+
 private:
-    std::unique_ptr<panda_link_factory> _panda_link_factory;
+    ss::future<> handle_link_change(model::panda_link_id);
+
+private:
+    model::node_id _self;
+    ssx::work_queue _queue;
+    std::unique_ptr<panda_link_registry> _registry;
 };
 } // namespace cluster_link
