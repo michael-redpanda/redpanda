@@ -58,6 +58,7 @@ redpanda_cc_library(
     ],
     implementation_deps = [
         ":impl",
+        ":logger",
     ],
     include_prefix = "cluster_link",
     visibility = ["//visibility:public"],
@@ -86,6 +87,7 @@ redpanda_cc_library(
     include_prefix = "cluster_link",
     visibility = ["//src/v/cluster_link:__subpackages__"],
     deps = [
+        ":fwd",
         "//src/v/base",
         "//src/v/kafka/protocol:describe_configs",
         "//src/v/model",

@@ -40,6 +40,8 @@ service::service(
   , _pl_frontend(pl_frontend)
   , _sg(sg) {}
 
+service::~service() = default;
+
 ss::future<> service::start() {
     _manager = std::make_unique<manager>(
       _self,

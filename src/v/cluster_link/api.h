@@ -30,7 +30,7 @@ public:
     service& operator=(const service&) = delete;
     service(service&&) = delete;
     service& operator=(service&&) = delete;
-    virtual ~service() = default;
+    ~service();
 
     ss::future<> start();
     ss::future<> stop();

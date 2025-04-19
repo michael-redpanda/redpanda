@@ -26,6 +26,7 @@
 #include "cluster/self_test_backend.h"
 #include "cluster/self_test_frontend.h"
 #include "cluster/tx_coordinator_mapper.h"
+#include "cluster_link/fwd.h"
 #include "config/node_config.h"
 #include "crash_tracker/service.h"
 #include "crypto/ossl_context_service.h"
@@ -397,6 +398,8 @@ private:
     ss::sharded<transform::service> _transform_service;
     ss::sharded<transform::rpc::local_service> _transform_rpc_service;
     ss::sharded<transform::rpc::client> _transform_rpc_client;
+
+    ss::sharded<cluster_link::service> _cluster_link_service;
 
     metrics::internal_metric_groups _metrics;
     ss::sharded<metrics::public_metrics_group_service> _public_metrics;

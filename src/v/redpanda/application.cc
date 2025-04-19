@@ -78,6 +78,7 @@
 #include "cluster/tx_gateway_frontend.h"
 #include "cluster/tx_topic_manager.h"
 #include "cluster/types.h"
+#include "cluster_link/api.h"
 #include "cluster_link/write_at_offset_stm.h"
 #include "compression/async_stream_zstd.h"
 #include "compression/lz4_decompression_buffers.h"
@@ -1344,6 +1345,13 @@ void application::wire_up_runtime_services(
           memory_groups().data_transforms_max_memory())
           .get();
     }
+
+    construct_service(
+      _cluster_link_service,
+      node_id,
+      &controller->get_panda_link_frontend(),
+      sched_groups.panda_link_sg())
+      .get();
 
     if (datalake_enabled()) {
         vassert(
@@ -2901,6 +2909,8 @@ void application::wire_up_and_start(::stop_signal& app_signal, bool test_mode) {
         _transform_service.invoke_on_all(&transform::service::start).get();
     }
 
+    _cluster_link_service.invoke_on_all(&cluster_link::service::start).get();
+
     construct_service(_aggregate_metrics_watcher).get();
 
     _admin.invoke_on_all([](admin_server& admin) { admin.set_ready(); }).get();
@@ -2947,10 +2957,8 @@ void application::start_runtime_services(
           if (config::shard_local_cfg().development_enable_cloud_topics()) {
               pm.register_factory<experimental::cloud_topics::dl_stm_factory>();
           }
-          if (config::shard_local_cfg().development_enable_cluster_linking()) {
-              pm.register_factory<cluster_link::write_at_offset_stm_factory>(
-                storage.local().kvs(), model::offset_translator_batch_types());
-          }
+          pm.register_factory<cluster_link::write_at_offset_stm_factory>(
+            storage.local().kvs(), model::offset_translator_batch_types());
       })
       .get();
     partition_manager.invoke_on_all(&cluster::partition_manager::start).get();
