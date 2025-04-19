@@ -11,9 +11,11 @@ redpanda_cc_library(
     name = "rpc",
     srcs = [
         "serde.cc",
+        "service.cc",
     ],
     hdrs = [
         "serde.h",
+        "service.h",
     ],
     include_prefix = "cluster_link/rpc",
     visibility = ["//visibility:public"],
