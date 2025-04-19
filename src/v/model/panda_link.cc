@@ -14,8 +14,8 @@
 #include <fmt/ranges.h>
 
 auto fmt::formatter<model::panda_link_metadata>::format(
-  const model::panda_link_metadata& m, format_context& ctx)
-  -> decltype(ctx.out()) {
+  const model::panda_link_metadata& m,
+  format_context& ctx) -> decltype(ctx.out()) {
     auto out = ctx.out();
     fmt::format_to(
       out,
