@@ -74,11 +74,9 @@ redpanda_cc_library(
 redpanda_cc_library(
     name = "impl",
     srcs = [
-        "panda_link.cc",
         "panda_link_manager.cc",
     ],
     hdrs = [
-        "panda_link.h",
         "panda_link_manager.h",
     ],
     implementation_deps = [
@@ -89,7 +87,6 @@ redpanda_cc_library(
     deps = [
         ":fwd",
         "//src/v/base",
-        "//src/v/kafka/protocol:describe_configs",
         "//src/v/model",
         "//src/v/ssx:work_queue",
     ],

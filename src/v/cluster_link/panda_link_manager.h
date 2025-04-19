@@ -10,26 +10,10 @@
  */
 #pragma once
 
-#include "cluster_link/panda_link.h"
 #include "model/panda_link.h"
 #include "ssx/work_queue.h"
 
 namespace cluster_link {
-
-class panda_link_factory {
-public:
-    panda_link_factory() = default;
-    panda_link_factory(const panda_link_factory&) = delete;
-    panda_link_factory& operator=(const panda_link_factory&) = delete;
-    panda_link_factory(panda_link_factory&&) = default;
-    panda_link_factory& operator=(panda_link_factory&&) = default;
-    virtual ~panda_link_factory() = default;
-
-    virtual ss::future<std::unique_ptr<panda_link>>
-    create(ss::sstring broker_address) = 0;
-
-private:
-};
 
 class panda_link_registry {
 public:
