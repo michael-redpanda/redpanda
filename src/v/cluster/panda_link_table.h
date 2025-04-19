@@ -51,6 +51,8 @@ public:
     void remove_link(const model::panda_link_name& name);
     void remove_link(model::panda_link_id id);
 
+    void reset_links(map_t snap);
+
 private:
     struct name_less_cmp {
         using is_transparent = void;

@@ -119,6 +119,42 @@ void panda_link_table::remove_link(panda_link_id id) {
     _underlying.erase(it);
 }
 
+void panda_link_table::reset_links(panda_link_table::map_t snap) {
+    name_index_t snap_name_index;
+
+    ss::chunked_fifo<panda_link_id> all_deletes;
+    ss::chunked_fifo<panda_link_id> all_inserted;
+    ss::chunked_fifo<panda_link_id> all_changed;
+
+    for (const auto& [k, v] : _underlying) {
+        auto it = snap.find(k);
+        if (it == snap.end()) {
+            all_deletes.push_back(k);
+        } else {
+            all_changed.push_back(k);
+        }
+    }
+    for (const auto& [k, v] : snap) {
+        if (!_underlying.contains(k)) {
+            all_inserted.push_back(k);
+        }
+        auto it = snap_name_index.insert({v.name, k});
+        if (!it.second) {
+            throw std::logic_error(ss::format(
+              "transofmr meta id={} is attempting to use a name {} which is "
+              "already registered to {}",
+              k,
+              v.name,
+              it.first->first));
+        }
+    }
+
+    _underlying = std::move(snap);
+    _name_index = std::move(snap_name_index);
+}
+
+// Perform a map diff to figure out which
+
 bool panda_link_table::name_less_cmp::operator()(
   const panda_link_name& lhs, const panda_link_name& rhs) const {
     return lhs < rhs;

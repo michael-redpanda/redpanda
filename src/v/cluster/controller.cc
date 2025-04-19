@@ -53,6 +53,7 @@
 #include "cluster/metadata_dissemination_service.h"
 #include "cluster/metrics_reporter.h"
 #include "cluster/node_status_table.h"
+#include "cluster/panda_link_backend.h"
 #include "cluster/panda_link_frontend.h"
 #include "cluster/panda_link_table.h"
 #include "cluster/partition_balancer_backend.h"
@@ -290,6 +291,7 @@ ss::future<> controller::start(
     co_await _plugin_backend.start_single(&_plugin_table);
 
     co_await _panda_link_table.start();
+    co_await _panda_link_backend.start_single(&_panda_link_table);
 
     co_await _quota_store.start();
     co_await _quota_backend.start_single(std::ref(_quota_store));
@@ -384,7 +386,8 @@ ss::future<> controller::start(
           std::ref(_plugin_backend),
           std::ref(_recovery_manager),
           std::ref(_quota_backend),
-          std::ref(_data_migration_table.local()));
+          std::ref(_data_migration_table.local()),
+          std::ref(_panda_link_backend));
     }
 
     co_await _members_frontend.start(
@@ -924,6 +927,7 @@ ss::future<> controller::stop() {
     co_await _stm.stop();
     co_await _quota_backend.stop();
     co_await _quota_store.stop();
+    co_await _panda_link_backend.stop();
     co_await _panda_link_table.stop();
     co_await _plugin_backend.stop();
     co_await _plugin_table.stop();

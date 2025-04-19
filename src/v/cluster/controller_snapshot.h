@@ -257,6 +257,16 @@ struct plugins_t
     auto serde_fields() { return std::tie(transforms); }
 };
 
+struct panda_link_t
+  : public serde::
+      envelope<panda_link_t, serde::version<0>, serde::compat_version<0>> {
+    absl::btree_map<model::panda_link_id, model::panda_link_metadata> links;
+
+    friend bool operator==(const panda_link_t&, const panda_link_t&) = default;
+
+    auto serde_fields() { return std::tie(links); }
+};
+
 struct cluster_recovery_t
   : public serde::envelope<
       cluster_recovery_t,
@@ -314,6 +324,7 @@ struct controller_snapshot
     controller_snapshot_parts::cluster_recovery_t cluster_recovery;
     controller_snapshot_parts::client_quotas_t client_quotas;
     controller_snapshot_parts::data_migrations_t data_migrations;
+    controller_snapshot_parts::panda_link_t panda_links;
 
     friend bool
     operator==(const controller_snapshot&, const controller_snapshot&)
