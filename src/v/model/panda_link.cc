@@ -14,15 +14,14 @@
 #include <fmt/ranges.h>
 
 auto fmt::formatter<model::panda_link_metadata>::format(
-  const model::panda_link_metadata& m,
-  format_context& ctx) -> decltype(ctx.out()) {
+  const model::panda_link_metadata& m, format_context& ctx)
+  -> decltype(ctx.out()) {
     auto out = ctx.out();
     fmt::format_to(
       out,
-      "{{name: \"{}\", uuid: {}, source_cluster_bootstrap_server: "
+      "{{name: \"{}\", source_cluster_bootstrap_server: "
       "{}}}",
       m.name,
-      m.uuid,
       m.source_cluster_bootstrap_server);
     return out;
 }

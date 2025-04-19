@@ -71,8 +71,6 @@ service::create_link(model::panda_link_metadata meta) {
       meta.name,
       meta.source_cluster_bootstrap_server);
 
-    meta.uuid = model::panda_link_id{uuid_t::create()};
-
     auto name = meta.name;
     auto ec = co_await _pl_frontend->local().upsert_panda_link(
       std::move(meta), model::timeout_clock::now() + metadata_timeout);

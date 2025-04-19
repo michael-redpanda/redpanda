@@ -71,23 +71,22 @@ panda_link_table::find_by_id(panda_link_id id) const {
     return it->second;
 }
 
-void panda_link_table::upsert_link(panda_link_metadata meta) {
+void panda_link_table::upsert_link(panda_link_id id, panda_link_metadata meta) {
     auto it = _name_index.find(std::string_view(meta.name()));
     if (it != _name_index.end()) {
-        if (it->second != meta.uuid) {
+        if (it->second != id) {
             throw std::logic_error(ss::format(
               "Panda link meta id={} is attempting to use a name {} which is "
               "already registered to {}",
-              meta.uuid,
+              id,
               meta.name,
               it->second));
         }
     } else {
-        _name_index.emplace(meta.name, meta.uuid);
+        _name_index.emplace(meta.name, id);
     }
-    auto uuid = meta.uuid;
-    _underlying.insert_or_assign(uuid, std::move(meta));
-    run_callbacks(meta.uuid);
+    _underlying.insert_or_assign(id, std::move(meta));
+    run_callbacks(id);
 }
 
 void panda_link_table::remove_link(const panda_link_name& name) {

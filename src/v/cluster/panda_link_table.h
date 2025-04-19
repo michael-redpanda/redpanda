@@ -49,7 +49,7 @@ public:
     std::optional<model::panda_link_metadata>
       find_by_id(model::panda_link_id) const;
 
-    void upsert_link(model::panda_link_metadata meta);
+    void upsert_link(model::panda_link_id id, model::panda_link_metadata meta);
     void remove_link(const model::panda_link_name& name);
     void remove_link(model::panda_link_id id);
 

@@ -135,19 +135,18 @@ ss::future<mutation_result> panda_link_frontend::dispatch_mutation_to_remote(
             return ss::visit(
               std::move(cmd),
               [client, timeout](panda_link_update_cmd cmd) mutable {
-                  auto uuid = cmd.value.uuid;
                   return client
                     .upsert_panda_link(
                       upsert_panda_link_request{
                         .panda_link = std::move(cmd.value), .timeout = timeout},
                       rpc::client_opts(timeout))
                     .then(&rpc::get_ctx_data<upsert_panda_link_response>)
-                    .then([uuid](auto r) {
+                    .then([](auto r) {
                         if (r.has_error()) {
                             return result<mutation_result>(r.error());
                         }
                         return result<mutation_result>(
-                          mutation_result{.uuid = uuid, .ec = r.value().ec});
+                          mutation_result{.ec = r.value().ec});
                     });
               },
               [client, timeout](panda_link_remove_cmd cmd) mutable {
@@ -161,8 +160,8 @@ ss::future<mutation_result> panda_link_frontend::dispatch_mutation_to_remote(
                         if (r.has_error()) {
                             return result<mutation_result>(r.error());
                         }
-                        return result<mutation_result>(mutation_result{
-                          .uuid = r.value().uuid, .ec = r.value().ec});
+                        return result<mutation_result>(
+                          mutation_result{.ec = r.value().ec});
                     });
               });
         })
@@ -194,19 +193,12 @@ ss::future<mutation_result> panda_link_frontend::do_local_mutation(
     if (!ok) {
         co_return mutation_result{.ec = errc::throttling_quota_exceeded};
     }
-    auto uuid = ss::visit(
-      cmd,
-      [](const panda_link_update_cmd& cmd) { return cmd.value.uuid; },
-      [this](const panda_link_remove_cmd& cmd) {
-          // This is safe because we've validated the mutation above.
-          return _table->find_by_name(cmd.key)->uuid;
-      });
     auto b = std::visit(
       [](auto cmd) { return serde_serialize_cmd(std::move(cmd)); },
       std::move(cmd));
     auto err_code = co_await _controller->replicate_and_wait(
       std::move(b), timeout, *_as);
-    co_return mutation_result{.uuid = uuid, .ec = map_errc(err_code)};
+    co_return mutation_result{.ec = map_errc(err_code)};
 }
 
 errc panda_link_frontend::validate_mutation(const panda_link_cmd& cmd) {

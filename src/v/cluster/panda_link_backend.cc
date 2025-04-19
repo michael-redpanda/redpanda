@@ -24,12 +24,16 @@ bool panda_link_backend::is_batch_applicable(const model::record_batch& b) {
 
 ss::future<std::error_code>
 panda_link_backend::apply_update(model::record_batch b) {
+    auto offset = b.base_offset();
     auto cmd = co_await cluster::deserialize(std::move(b), accepted_commands);
-    co_await _table->invoke_on_all([&cmd](panda_link_table& table) {
+    co_await _table->invoke_on_all([&cmd, offset](panda_link_table& table) {
         return ss::visit(
           cmd,
-          [&table](panda_link_update_cmd update) {
-              table.upsert_link(update.value);
+          [&table, offset](panda_link_update_cmd update) {
+              auto existing_id = table.find_id_by_name(update.value.name);
+              table.upsert_link(
+                existing_id.value_or(model::panda_link_id{offset}),
+                update.value);
           },
           [&table](const panda_link_remove_cmd& removal) {
               table.remove_link(removal.key);

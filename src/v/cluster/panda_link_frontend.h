@@ -40,7 +40,6 @@ public:
     using notification_callback = panda_link_table::notification_callback;
 
     struct mutation_result {
-        uuid_t uuid;
         errc ec;
     };
 

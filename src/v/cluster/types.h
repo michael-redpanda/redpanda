@@ -3570,7 +3570,6 @@ struct delete_panda_link_response
       serde::compat_version<0>> {
     using rpc_adl_exempt = std::true_type;
 
-    uuid_t uuid;
     errc ec;
 
     friend bool operator==(

@@ -25,7 +25,7 @@
 namespace model {
 
 /// @brief Unique identifier for a panda link
-using panda_link_id = named_type<uuid_t, struct panda_link_id_tag>;
+using panda_link_id = named_type<int64_t, struct panda_link_id_tag>;
 
 /**
  * @brief Name of the link, which is provided by the user
@@ -40,8 +40,6 @@ struct panda_link_metadata
       serde::compat_version<0>> {
     /// Name of the link
     panda_link_name name;
-    /// UUID of each link
-    panda_link_id uuid;
     /// Bootstrap server of the source cluster
     ss::sstring source_cluster_bootstrap_server;
 
@@ -52,7 +50,7 @@ struct panda_link_metadata
     friend std::ostream& operator<<(std::ostream&, const panda_link_metadata&);
 
     auto serde_fields() {
-        return std::tie(name, uuid, source_cluster_bootstrap_server);
+        return std::tie(name, source_cluster_bootstrap_server);
     }
 };
 } // namespace model

@@ -872,6 +872,6 @@ ss::future<delete_panda_link_response> service::delete_panda_link(
     auto deadline = model::timeout_clock::now() + req.timeout;
     auto result = co_await _panda_link_frontend.local().delete_panda_link(
       std::move(name), deadline);
-    co_return delete_panda_link_response{.uuid = result.uuid, .ec = result.ec};
+    co_return delete_panda_link_response{.ec = result.ec};
 }
 } // namespace cluster
