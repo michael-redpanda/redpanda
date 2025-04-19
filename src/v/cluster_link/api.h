@@ -14,6 +14,7 @@
 #include "cluster/fwd.h"
 #include "cluster_link/fwd.h"
 #include "model/fundamental.h"
+#include "model/panda_link.h"
 
 #include <seastar/core/gate.hh>
 #include <seastar/core/sharded.hh>
@@ -33,6 +34,8 @@ public:
 
     ss::future<> start();
     ss::future<> stop();
+
+    ss::future<std::error_code> create_link(model::panda_link_metadata);
 
 private:
     void register_notifications();

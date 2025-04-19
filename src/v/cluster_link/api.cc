@@ -12,11 +12,15 @@
 #include "cluster_link/api.h"
 
 #include "cluster/panda_link_frontend.h"
+#include "cluster_link/logger.h"
 #include "cluster_link/panda_link_manager.h"
 
 #include <seastar/util/later.hh>
 
 namespace cluster_link {
+namespace {
+constexpr auto metadata_timeout = std::chrono::seconds(1);
+}
 
 class panda_link_registry_adapter : public panda_link_registry {
 public:
@@ -56,6 +60,24 @@ ss::future<> service::stop() {
     if (_manager) {
         co_await _manager->stop();
     }
+}
+
+ss::future<std::error_code>
+service::create_link(model::panda_link_metadata meta) {
+    auto _ = _gate.hold();
+    vlog(
+      cllog.info,
+      "attempting to create a link named \"{}\" to {}",
+      meta.name,
+      meta.source_cluster_bootstrap_server);
+
+    meta.uuid = model::panda_link_id{uuid_t::create()};
+
+    auto name = meta.name;
+    auto ec = co_await _pl_frontend->local().upsert_panda_link(
+      std::move(meta), model::timeout_clock::now() + metadata_timeout);
+    vlog(cllog.debug, "deploying link {} result: {}", name, ec);
+    co_return cluster::make_error_code(ec);
 }
 
 void service::register_notifications() {
