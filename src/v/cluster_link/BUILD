@@ -91,5 +91,7 @@ redpanda_cc_library(
         "//src/v/base",
         "//src/v/model",
         "//src/v/ssx:work_queue",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@seastar",
     ],
 )

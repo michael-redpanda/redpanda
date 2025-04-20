@@ -45,12 +45,43 @@ ss::future<> manager::handle_link_change(model::panda_link_id id) {
     vlog(cllog.trace, "handling link change for id {}", id);
 
     auto meta = _registry->lookup_by_id(id);
+    auto it = _links.find(id);
     if (!meta) {
         vlog(cllog.debug, "Detected link going down for {}", id);
+
+        if (it == _links.end()) {
+            vlog(cllog.debug, "Link {} not found, already shut down?", id);
+            co_return;
+        }
+        co_await it->second->stop();
+        _links.erase(it);
+        vlog(cllog.debug, "Link {} shut down", id);
         co_return;
     }
 
-    vlog(cllog.debug, "Change/addition of link {}: {}", id, meta.value());
+    if (it != _links.end()) {
+        vlog(cllog.debug, "Link {} already exists, not yet updating", id);
+        co_return;
+    }
+
+    vlog(
+      cllog.debug,
+      "Creating link {} named \"{}\" targeting {}",
+      id,
+      meta->name,
+      meta->source_cluster_bootstrap_server);
+
+    auto link = co_await _factory->create(
+      meta->source_cluster_bootstrap_server);
+    co_await link->start();
+    _links.emplace(id, std::move(link));
+    vlog(
+      cllog.info,
+      "Link {} named \"{}\" targeting {} created",
+      id,
+      meta->name,
+      meta->source_cluster_bootstrap_server);
+
     co_return;
 }
 } // namespace cluster_link

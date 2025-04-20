@@ -14,6 +14,8 @@
 #include "model/panda_link.h"
 #include "ssx/work_queue.h"
 
+#include <absl/container/flat_hash_map.h>
+
 namespace cluster_link {
 
 class panda_link_registry {
@@ -38,10 +40,15 @@ public:
     panda_link_factory& operator=(panda_link_factory&&) = default;
     virtual ~panda_link_factory() = default;
 
-    virtual ss::future<std::unique_ptr<panda_link>> create() = 0;
+    virtual ss::future<std::unique_ptr<panda_link>>
+    create(ss::sstring source_broker_bootstrap_server) = 0;
 };
 
 class manager {
+    /// Holds links, keyed by the link id
+    using link_container
+      = absl::flat_hash_map<model::panda_link_id, std::unique_ptr<panda_link>>;
+
 public:
     manager(
       model::node_id,
@@ -66,5 +73,6 @@ private:
     ssx::work_queue _queue;
     std::unique_ptr<panda_link_registry> _registry;
     std::unique_ptr<panda_link_factory> _factory;
+    link_container _links;
 };
 } // namespace cluster_link
