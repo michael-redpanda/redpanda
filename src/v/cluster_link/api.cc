@@ -20,7 +20,14 @@
 namespace cluster_link {
 namespace {
 constexpr auto metadata_timeout = std::chrono::seconds(1);
-}
+
+class pl_factory : public panda_link_factory {
+public:
+    ss::future<std::unique_ptr<panda_link>> create() override {
+        co_return std::make_unique<panda_link>();
+    }
+};
+} // namespace
 
 class panda_link_registry_adapter : public panda_link_registry {
 public:
@@ -46,7 +53,8 @@ service::~service() = default;
 ss::future<> service::start() {
     _manager = std::make_unique<manager>(
       _self,
-      std::make_unique<panda_link_registry_adapter>(&_pl_frontend->local()));
+      std::make_unique<panda_link_registry_adapter>(&_pl_frontend->local()),
+      std::make_unique<pl_factory>());
 
     co_await _manager->start();
 

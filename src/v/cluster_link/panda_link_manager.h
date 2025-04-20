@@ -10,6 +10,7 @@
  */
 #pragma once
 
+#include "cluster_link/panda_link.h"
 #include "model/panda_link.h"
 #include "ssx/work_queue.h"
 
@@ -28,9 +29,24 @@ public:
       lookup_by_id(model::panda_link_id) const = 0;
 };
 
+class panda_link_factory {
+public:
+    panda_link_factory() = default;
+    panda_link_factory(const panda_link_factory&) = delete;
+    panda_link_factory& operator=(const panda_link_factory&) = delete;
+    panda_link_factory(panda_link_factory&&) = default;
+    panda_link_factory& operator=(panda_link_factory&&) = default;
+    virtual ~panda_link_factory() = default;
+
+    virtual ss::future<std::unique_ptr<panda_link>> create() = 0;
+};
+
 class manager {
 public:
-    manager(model::node_id, std::unique_ptr<panda_link_registry>);
+    manager(
+      model::node_id,
+      std::unique_ptr<panda_link_registry>,
+      std::unique_ptr<panda_link_factory>);
     manager(const manager&) = delete;
     manager& operator=(const manager&) = delete;
     manager(manager&&) = delete;
@@ -49,5 +65,6 @@ private:
     model::node_id _self;
     ssx::work_queue _queue;
     std::unique_ptr<panda_link_registry> _registry;
+    std::unique_ptr<panda_link_factory> _factory;
 };
 } // namespace cluster_link

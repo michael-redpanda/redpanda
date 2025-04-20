@@ -74,9 +74,11 @@ redpanda_cc_library(
 redpanda_cc_library(
     name = "impl",
     srcs = [
+        "panda_link.cc",
         "panda_link_manager.cc",
     ],
     hdrs = [
+        "panda_link.h",
         "panda_link_manager.h",
     ],
     implementation_deps = [
