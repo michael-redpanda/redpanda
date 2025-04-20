@@ -1348,7 +1348,12 @@ void application::wire_up_runtime_services(
     }
 
     construct_service(
-      _cluster_link_service, node_id, &controller->get_panda_link_frontend())
+      _cluster_link_service,
+      node_id,
+      &controller->get_panda_link_frontend(),
+      ss::sharded_parameter([this] {
+          return transform::rpc::topic_creator::make_default(controller.get());
+      }))
       .get();
 
     if (datalake_enabled()) {

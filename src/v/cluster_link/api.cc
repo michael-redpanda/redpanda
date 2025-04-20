@@ -97,9 +97,12 @@ private:
 };
 
 service::service(
-  model::node_id self, ss::sharded<cluster::panda_link_frontend>* pl_frontend)
+  model::node_id self,
+  ss::sharded<cluster::panda_link_frontend>* pl_frontend,
+  std::unique_ptr<transform::rpc::topic_creator> topic_creator)
   : _self(self)
-  , _pl_frontend(pl_frontend) {}
+  , _pl_frontend(pl_frontend)
+  , _topic_creator(std::move(topic_creator)) {}
 
 service::~service() = default;
 
