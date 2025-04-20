@@ -175,6 +175,8 @@ public:
 
     configuration& config() { return _config; }
 
+    ss::future<metadata_response> get_metadata();
+
 private:
     ss::future<list_offsets_response>
     do_list_offsets(model::topic_partition tp);
@@ -182,6 +184,8 @@ private:
     ss::future<describe_configs_response> do_describe_topic(
       model::topic topic,
       std::optional<chunked_vector<ss::sstring>> configuration_keys);
+
+    ss::future<metadata_response> do_get_metadata();
 
     /// \brief Connect and update metdata.
     ss::future<> do_connect(net::unresolved_address addr);
