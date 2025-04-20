@@ -11,10 +11,12 @@
 
 #include "cluster_link/api.h"
 
+#include "base/outcome.h"
 #include "cluster/panda_link_frontend.h"
 #include "cluster_link/logger.h"
 #include "cluster_link/panda_link_manager.h"
 #include "kafka/client/client.h"
+#include "kafka/client/exceptions.h"
 #include "model/panda_link.h"
 #include "utils/unresolved_address.h"
 
@@ -44,23 +46,40 @@ std::unique_ptr<kc> create_kafka_client(
       config::to_yaml(cfg, config::redact_secrets::no));
 }
 
-ss::future<absl::flat_hash_map<model::topic, kafka::describe_configs_response>>
+ss::future<
+  result<absl::flat_hash_map<model::topic, kafka::describe_configs_response>>>
 get_topic_configs(const model::panda_link_metadata& meta) {
-    vlog(cllog.debug, "Attempting to get topic config for link {}", meta.name);
-    auto client = create_kafka_client(meta.source_cluster_bootstrap_server);
-    co_await client->connect();
-    auto topics = meta.mirrored_topics;
-    absl::flat_hash_map<model::topic, kafka::describe_configs_response> configs;
-    for (const auto& topic : topics) {
-        vlog(cllog.trace, "Getting config for topic {}", topic);
-        auto response = co_await client->describe_topic(topic, std::nullopt);
-        vlog(cllog.trace, "Got config for topic {}: {}", topic, response);
-        configs.emplace(topic, std::move(response));
+    try {
+        vlog(
+          cllog.debug, "Attempting to get topic config for link {}", meta.name);
+        auto client = create_kafka_client(meta.source_cluster_bootstrap_server);
+        co_await client->connect();
+        auto topics = meta.mirrored_topics;
+        absl::flat_hash_map<model::topic, kafka::describe_configs_response>
+          configs;
+        for (const auto& topic : topics) {
+            vlog(cllog.trace, "Getting config for topic {}", topic);
+            auto response = co_await client->describe_topic(
+              topic, std::nullopt);
+            vlog(cllog.trace, "Got config for topic {}: {}", topic, response);
+            configs.emplace(topic, std::move(response));
+        }
+        co_await client->stop();
+        client.reset(nullptr);
+        co_return configs;
+    } catch (const kafka::client::topic_error& e) {
+        co_return kafka::make_error_code(e.error);
+    } catch (const kafka::client::broker_error& e) {
+        co_return kafka::make_error_code(e.error);
+    } catch (const std::exception& e) {
+        co_return kafka::make_error_code(
+          kafka::error_code::unknown_server_error);
+    } catch (...) {
+        co_return kafka::make_error_code(
+          kafka::error_code::unknown_server_error);
     }
-    co_await client->stop();
-    client.reset(nullptr);
-    co_return configs;
 }
+
 } // namespace
 
 class panda_link_registry_adapter : public panda_link_registry {
@@ -113,7 +132,16 @@ service::create_link(model::panda_link_metadata meta) {
       meta.name,
       meta.source_cluster_bootstrap_server);
 
-    auto cfgs = co_await get_topic_configs(meta);
+    auto cfgs_rv = co_await get_topic_configs(meta);
+    if (cfgs_rv.has_error()) {
+        vlog(
+          cllog.error,
+          "failed to get topic configs for link {}: {}",
+          meta.name,
+          cfgs_rv.error().message());
+        co_return cfgs_rv.assume_error();
+    }
+    auto cfgs = std::move(cfgs_rv).assume_value();
 
     auto name = meta.name;
     auto ec = co_await _pl_frontend->local().upsert_panda_link(
