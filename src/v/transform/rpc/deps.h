@@ -136,6 +136,7 @@ public:
     virtual ss::future<cluster::errc> create_topic(
       model::topic_namespace_view,
       int32_t partition_count,
+      std::optional<int16_t> replication_factor,
       cluster::topic_properties)
       = 0;
 

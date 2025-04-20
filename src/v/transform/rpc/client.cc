@@ -488,6 +488,7 @@ ss::future<bool> client::try_create_wasm_binary_ntp() {
       _topic_creator->create_topic(
         model::topic_namespace_view(model::wasm_binaries_internal_ntp),
         /*partition_count=*/1,
+        std::nullopt,
         topic_props));
     if (fut.failed()) {
         vlog(
@@ -517,7 +518,7 @@ ss::future<bool> client::try_create_transform_offsets_topic() {
       = tristate<std::chrono::milliseconds>();
     auto fut = co_await ss::coroutine::as_future<cluster::errc>(
       _topic_creator->create_topic(
-        model::transform_offsets_nt, 1, std::move(properties)));
+        model::transform_offsets_nt, 1, std::nullopt, std::move(properties)));
     if (fut.failed()) {
         vlog(
           log.warn,
@@ -825,6 +826,7 @@ ss::future<cluster::errc> client::try_create_transform_logs_topic() {
       _topic_creator->create_topic(
         model::topic_namespace_view(model::transform_log_internal_nt),
         config::shard_local_cfg().default_topic_partitions(),
+        std::nullopt,
         std::move(topic_props)));
     if (fut.failed()) {
         throw std::runtime_error(fmt::format(
