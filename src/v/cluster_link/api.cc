@@ -14,11 +14,15 @@
 #include "cluster/panda_link_frontend.h"
 #include "cluster_link/logger.h"
 #include "cluster_link/panda_link_manager.h"
+#include "kafka/client/client.h"
+#include "model/panda_link.h"
 #include "utils/unresolved_address.h"
 
 #include <seastar/util/later.hh>
 
 namespace cluster_link {
+using kc_config = kafka::client::configuration;
+using kc = kafka::client::client;
 namespace {
 constexpr auto metadata_timeout = std::chrono::seconds(1);
 
@@ -31,6 +35,32 @@ public:
           std::move(source_broker_bootstrap_servers));
     }
 };
+
+std::unique_ptr<kc> create_kafka_client(
+  const std::vector<net::unresolved_address>& source_broker_bootstrap_servers) {
+    kc_config cfg;
+    cfg.brokers.set_value(source_broker_bootstrap_servers);
+    return std::make_unique<kc>(
+      config::to_yaml(cfg, config::redact_secrets::no));
+}
+
+ss::future<absl::flat_hash_map<model::topic, kafka::describe_configs_response>>
+get_topic_configs(const model::panda_link_metadata& meta) {
+    vlog(cllog.debug, "Attempting to get topic config for link {}", meta.name);
+    auto client = create_kafka_client(meta.source_cluster_bootstrap_server);
+    co_await client->connect();
+    auto topics = meta.mirrored_topics;
+    absl::flat_hash_map<model::topic, kafka::describe_configs_response> configs;
+    for (const auto& topic : topics) {
+        vlog(cllog.trace, "Getting config for topic {}", topic);
+        auto response = co_await client->describe_topic(topic, std::nullopt);
+        vlog(cllog.trace, "Got config for topic {}: {}", topic, response);
+        configs.emplace(topic, std::move(response));
+    }
+    co_await client->stop();
+    client.reset(nullptr);
+    co_return configs;
+}
 } // namespace
 
 class panda_link_registry_adapter : public panda_link_registry {
@@ -82,6 +112,8 @@ service::create_link(model::panda_link_metadata meta) {
       "attempting to create a link named \"{}\" to {}",
       meta.name,
       meta.source_cluster_bootstrap_server);
+
+    auto cfgs = co_await get_topic_configs(meta);
 
     auto name = meta.name;
     auto ec = co_await _pl_frontend->local().upsert_panda_link(

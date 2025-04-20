@@ -578,7 +578,8 @@ ss::future<kafka::fetch_response> client::consumer_fetch(
 }
 
 ss::future<kafka::describe_configs_response> client::describe_topic(
-  model::topic topic, chunked_vector<ss::sstring> configuration_keys) {
+  model::topic topic,
+  std::optional<chunked_vector<ss::sstring>> configuration_keys) {
     return gated_retry_with_mitigation(
       [this,
        topic = std::move(topic),
@@ -589,7 +590,8 @@ ss::future<kafka::describe_configs_response> client::describe_topic(
 }
 
 ss::future<kafka::describe_configs_response> client::do_describe_topic(
-  model::topic topic, chunked_vector<ss::sstring> configuration_keys) {
+  model::topic topic,
+  std::optional<chunked_vector<ss::sstring>> configuration_keys) {
     auto controller = _controller;
     auto broker = co_await _brokers.find(controller);
     chunked_vector<describe_configs_resource> dcr;

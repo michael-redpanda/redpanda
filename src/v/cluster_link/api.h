@@ -13,7 +13,6 @@
 #include "base/seastarx.h"
 #include "cluster/fwd.h"
 #include "cluster_link/fwd.h"
-#include "model/fundamental.h"
 #include "model/panda_link.h"
 
 #include <seastar/core/gate.hh>

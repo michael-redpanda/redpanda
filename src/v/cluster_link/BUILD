@@ -59,6 +59,7 @@ redpanda_cc_library(
     implementation_deps = [
         ":impl",
         ":logger",
+        "//src/v/kafka/client",
         "//src/v/utils:unresolved_address",
     ],
     include_prefix = "cluster_link",

@@ -103,6 +103,23 @@ result<T> from_json(const json::Value& v) {
             }
             return T{vv};
         }
+    } else if constexpr (detail::is_specialization_of_v<T, std::vector>) {
+        if (v.IsArray()) {
+            using V = T::value_type;
+            auto arr = v.GetArray();
+            std::vector<V> vec;
+            vec.reserve(arr.Size());
+            for (const auto& e : arr) {
+                auto r = from_json<V>(e);
+                if (r.has_value()) {
+                    vec.push_back(std::move(r).assume_value());
+                } else {
+                    return std::move(r).assume_error();
+                }
+            }
+            return std::move(vec);
+        }
+        return parse_error(": expected an array");
     } else {
         static_assert(always_false_v<T>, "Not implemented");
     }
@@ -194,6 +211,18 @@ ss::future<std::unique_ptr<ss::http::reply>> admin_server::post_panda_link(
           std::move(bootstrap_servers).assume_error(), std::move(rep));
     }
 
+    auto topics = from_json<std::vector<ss::sstring>>(obj, "topics", true);
+    if (topics.has_error()) {
+        co_return make_error_body(
+          std::move(topics).assume_error(), std::move(rep));
+    }
+
+    std::vector<model::topic> topics_array;
+    topics_array.reserve(topics.assume_value().size());
+    for (const auto& topic : topics.assume_value()) {
+        topics_array.emplace_back(topic);
+    }
+
     auto name_copy = name.assume_value();
     auto bootstrap_servers_copy = bootstrap_servers.assume_value();
 
@@ -201,7 +230,7 @@ ss::future<std::unique_ptr<ss::http::reply>> admin_server::post_panda_link(
       .name = std::move(name).assume_value(),
       .source_cluster_bootstrap_server = parse_addresses(
         bootstrap_servers.assume_value()),
-    };
+      .mirrored_topics = std::move(topics_array)};
 
     auto res = co_await _cluster_link_service.local().create_link(
       std::move(metadata));

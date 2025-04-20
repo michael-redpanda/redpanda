@@ -12,6 +12,7 @@
 #pragma once
 
 #include "base/seastarx.h"
+#include "model/metadata.h"
 #include "serde/envelope.h"
 #include "utils/named_type.h"
 #include "utils/unresolved_address.h"
@@ -40,6 +41,8 @@ struct panda_link_metadata
     panda_link_name name;
     /// Bootstrap server of the source cluster
     std::vector<net::unresolved_address> source_cluster_bootstrap_server;
+    /// The topics to mirror
+    std::vector<model::topic> mirrored_topics;
 
     friend bool
     operator==(const panda_link_metadata&, const panda_link_metadata&)
@@ -48,7 +51,7 @@ struct panda_link_metadata
     friend std::ostream& operator<<(std::ostream&, const panda_link_metadata&);
 
     auto serde_fields() {
-        return std::tie(name, source_cluster_bootstrap_server);
+        return std::tie(name, source_cluster_bootstrap_server, mirrored_topics);
     }
 };
 } // namespace model

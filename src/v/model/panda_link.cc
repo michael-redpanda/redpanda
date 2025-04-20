@@ -20,9 +20,10 @@ auto fmt::formatter<model::panda_link_metadata>::format(
     fmt::format_to(
       out,
       "{{name: \"{}\", source_cluster_bootstrap_server: "
-      "{}}}",
+      "{}, topics: {}}}",
       m.name,
-      m.source_cluster_bootstrap_server);
+      m.source_cluster_bootstrap_server,
+      m.mirrored_topics);
     return out;
 }
 

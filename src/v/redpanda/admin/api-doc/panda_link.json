@@ -13,10 +13,11 @@
                 "required": true,
                 "schema": {
                     "description": "Configuration for the link",
-                    "type": "objectr",
+                    "type": "object",
                     "required": [
                         "source_bootstrap_server",
-                        "link_name"
+                        "link_name",
+                        "topics"
                     ],
                     "properties": {
                         "link_name": {
@@ -26,6 +27,13 @@
                         "source_bootstrap_server": {
                             "description": "The bootstrap server of the source cluster",
                             "type": "string"
+                        },
+                        "topics": {
+                            "description": "The topics to mirror",
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
