@@ -132,6 +132,29 @@ result<T> from_json(
         return r;
     }
 }
+
+std::vector<net::unresolved_address>
+parse_addresses(std::string_view addresses) {
+    constexpr std::string_view delimiter = ",";
+    std::vector<net::unresolved_address> result;
+
+    auto split_view = addresses | std::views::split(delimiter);
+    for (auto&& part : split_view) {
+        std::string_view addr = std::string_view(
+          &*part.begin(), std::ranges::distance(part));
+        auto colon_pos = addr.find(':');
+        if (colon_pos == std::string_view::npos) {
+            throw std::invalid_argument(
+              fmt::format("Invalid address format: {}", addr));
+        }
+        auto host = addr.substr(0, colon_pos);
+        auto port_str = addr.substr(colon_pos + 1);
+        int port = std::stoi(std::string(port_str));
+        result.emplace_back(std::string(host), port);
+    }
+
+    return result;
+}
 } // namespace
 
 void admin_server::register_panda_link_routes() {
@@ -176,8 +199,8 @@ ss::future<std::unique_ptr<ss::http::reply>> admin_server::post_panda_link(
 
     model::panda_link_metadata metadata{
       .name = std::move(name).assume_value(),
-      .source_cluster_bootstrap_server
-      = std::move(bootstrap_servers).assume_value(),
+      .source_cluster_bootstrap_server = parse_addresses(
+        bootstrap_servers.assume_value()),
     };
 
     auto res = co_await _cluster_link_service.local().create_link(

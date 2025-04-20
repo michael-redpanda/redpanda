@@ -12,11 +12,9 @@
 #pragma once
 
 #include "base/seastarx.h"
-#include "container/fragmented_vector.h"
-#include "model/metadata.h"
 #include "serde/envelope.h"
 #include "utils/named_type.h"
-#include "utils/uuid.h"
+#include "utils/unresolved_address.h"
 
 #include <seastar/core/sstring.hh>
 
@@ -41,7 +39,7 @@ struct panda_link_metadata
     /// Name of the link
     panda_link_name name;
     /// Bootstrap server of the source cluster
-    ss::sstring source_cluster_bootstrap_server;
+    std::vector<net::unresolved_address> source_cluster_bootstrap_server;
 
     friend bool
     operator==(const panda_link_metadata&, const panda_link_metadata&)

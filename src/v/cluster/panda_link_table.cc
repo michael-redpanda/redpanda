@@ -11,6 +11,10 @@
 
 #include "cluster/panda_link_table.h"
 
+#include "base/vassert.h"
+
+#include <seastar/core/chunked_fifo.hh>
+
 namespace cluster {
 
 using model::panda_link_id;

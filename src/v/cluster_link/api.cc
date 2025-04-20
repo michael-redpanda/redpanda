@@ -14,6 +14,7 @@
 #include "cluster/panda_link_frontend.h"
 #include "cluster_link/logger.h"
 #include "cluster_link/panda_link_manager.h"
+#include "utils/unresolved_address.h"
 
 #include <seastar/util/later.hh>
 
@@ -24,9 +25,10 @@ constexpr auto metadata_timeout = std::chrono::seconds(1);
 class pl_factory : public panda_link_factory {
 public:
     ss::future<std::unique_ptr<panda_link>>
-    create(ss::sstring source_broker_bootstrap_server) override {
+    create(std::vector<net::unresolved_address> source_broker_bootstrap_servers)
+      override {
         co_return std::make_unique<panda_link>(
-          std::move(source_broker_bootstrap_server));
+          std::move(source_broker_bootstrap_servers));
     }
 };
 } // namespace

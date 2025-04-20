@@ -41,7 +41,8 @@ public:
     virtual ~panda_link_factory() = default;
 
     virtual ss::future<std::unique_ptr<panda_link>>
-    create(ss::sstring source_broker_bootstrap_server) = 0;
+    create(std::vector<net::unresolved_address> source_broker_bootstrap_servers)
+      = 0;
 };
 
 class manager {

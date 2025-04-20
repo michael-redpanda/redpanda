@@ -59,6 +59,7 @@ redpanda_cc_library(
     implementation_deps = [
         ":impl",
         ":logger",
+        "//src/v/utils:unresolved_address",
     ],
     include_prefix = "cluster_link",
     visibility = ["//visibility:public"],
@@ -89,8 +90,10 @@ redpanda_cc_library(
     deps = [
         ":fwd",
         "//src/v/base",
+        "//src/v/kafka/client",
         "//src/v/model",
         "//src/v/ssx:work_queue",
+        "//src/v/utils:unresolved_address",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@seastar",
     ],
