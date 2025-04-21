@@ -282,7 +282,7 @@ ss::future<produce_response> client::produce_records(
     auto responses = co_await ssx::parallel_transform(
       std::move(partitions),
       [this, topic](kafka::produce_request::partition p) mutable
-        -> ss::future<produce_response::partition> {
+      -> ss::future<produce_response::partition> {
           return produce_record_batch(
             model::topic_partition(topic, p.partition_index),
             std::move(*p.records->adapter.batch));
@@ -615,12 +615,20 @@ ss::future<kafka::describe_configs_response> client::do_describe_topic(
 }
 
 ss::future<metadata_response> client::get_metadata() {
-    return gated_retry_with_mitigation([this]() { return do_get_metadata(); });
+    return gated_retry_with_mitigation([this]() {
+        return do_get_metadata(metadata_request{.list_all_topics = true});
+    });
 }
 
-ss::future<metadata_response> client::do_get_metadata() {
+ss::future<metadata_response> client::get_metadata(metadata_request req) {
+    return gated_retry_with_mitigation([this, req{std::move(req)}]() mutable {
+        return do_get_metadata(std::move(req));
+    });
+}
+
+ss::future<metadata_response> client::do_get_metadata(metadata_request req) {
     auto br = co_await _brokers.any();
-    co_return co_await br->dispatch(metadata_request{.list_all_topics = true});
+    co_return co_await br->dispatch(std::move(req));
 }
 
 } // namespace kafka::client
