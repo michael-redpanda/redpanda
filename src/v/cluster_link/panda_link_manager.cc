@@ -82,18 +82,39 @@ ss::future<> manager::handle_link_change(model::panda_link_id id) {
     auto link = co_await _factory->create(
       meta->source_cluster_bootstrap_server, meta->mirrored_topics);
     co_await link->start();
-    _links.emplace(id, std::move(link));
+    auto [links_it, _] = _links.emplace(id, std::move(link));
+    if (_is_controller_leader) {
+        vlog(cllog.debug, "Starting topic monitoring for link {}", id);
+        co_await links_it->second->start_topic_monitoring();
+    }
     vlog(
       cllog.info,
       "Link {} named \"{}\" targeting {} created",
       id,
       meta->name,
       meta->source_cluster_bootstrap_server);
-
-    co_return;
 }
 
 void manager::on_controller_leadership_change(ntp_leader is_leader) {
     vlog(cllog.trace, "Detected controller leadership change: {}", is_leader);
+    _is_controller_leader = is_leader;
+    _queue.submit([this, is_leader] {
+        return handle_controller_leadership_change(is_leader);
+    });
+}
+
+ss::future<>
+manager::handle_controller_leadership_change(ntp_leader is_leader) {
+    if (is_leader == ntp_leader::yes) {
+        vlog(cllog.info, "Controller is leader, starting topic monitoring");
+        for (auto& [_, link] : _links) {
+            co_await link->start_topic_monitoring();
+        }
+    } else {
+        vlog(cllog.info, "Controller is not leader, stopping topic monitoring");
+        for (auto& [_, link] : _links) {
+            co_await link->stop_topic_monitoring();
+        }
+    }
 }
 } // namespace cluster_link

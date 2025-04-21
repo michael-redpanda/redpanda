@@ -78,11 +78,14 @@ private:
 
     void on_controller_leadership_change(ntp_leader);
 
+    ss::future<> handle_controller_leadership_change(ntp_leader);
+
 private:
     model::node_id _self;
     ssx::work_queue _queue;
     std::unique_ptr<panda_link_registry> _registry;
     std::unique_ptr<panda_link_factory> _factory;
     link_container _links;
+    ntp_leader _is_controller_leader{ntp_leader::no};
 };
 } // namespace cluster_link

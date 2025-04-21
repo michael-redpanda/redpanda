@@ -88,6 +88,7 @@ redpanda_cc_library(
     ],
     implementation_deps = [
         ":logger",
+        "//src/v/ssx:future_util",
     ],
     include_prefix = "cluster_link",
     visibility = ["//src/v/cluster_link:__subpackages__"],

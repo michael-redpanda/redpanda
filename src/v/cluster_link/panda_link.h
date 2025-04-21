@@ -35,16 +35,38 @@ public:
     virtual ss::future<> start();
     virtual ss::future<> stop();
 
+    virtual ss::future<> start_topic_monitoring();
+    virtual ss::future<> stop_topic_monitoring();
+
 private:
     static kafka::client::configuration
     create_kafka_client_config(const std::vector<net::unresolved_address>&
                                  source_broker_bootstrap_servers);
+
+    class topic_monitor {
+    public:
+        topic_monitor(
+          kafka::client::client* client, ss::lowres_clock::duration interval);
+        ss::future<> start();
+        ss::future<> stop();
+
+    private:
+        ss::future<> monitor_topics();
+
+    private:
+        kafka::client::client* _client;
+        ss::lowres_clock::duration _monitor_interval{std::chrono::seconds(5)};
+
+        ss::abort_source _as;
+        ss::gate _gate;
+    };
 
 private:
     std::vector<net::unresolved_address> _source_broker_bootstrap_servers;
     std::vector<model::topic> _mirrored_topics;
     kafka::client::configuration _kc_config;
     std::unique_ptr<kafka::client::client> _client;
+    std::optional<topic_monitor> _topic_monitor;
     ss::gate _gate;
 };
 } // namespace cluster_link
