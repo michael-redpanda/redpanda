@@ -26,7 +26,8 @@ public:
     explicit panda_link(
       std::vector<net::unresolved_address> _source_broker_bootstrap_servers,
       std::vector<model::topic> mirrored_topics,
-      std::unique_ptr<transform::rpc::topic_metadata_cache> topic_metadata);
+      std::unique_ptr<transform::rpc::topic_metadata_cache> topic_metadata,
+      std::unique_ptr<transform::rpc::topic_creator> topic_creator);
     panda_link(const panda_link&) = delete;
     panda_link& operator=(const panda_link&) = delete;
     panda_link(panda_link&&) = delete;
@@ -51,7 +52,8 @@ private:
           kafka::client::client* client,
           ss::lowres_clock::duration interval,
           std::vector<model::topic> topics,
-          transform::rpc::topic_metadata_cache* topic_metadata);
+          transform::rpc::topic_metadata_cache* topic_metadata,
+          transform::rpc::topic_creator* topic_creator);
         ss::future<> start();
         ss::future<> stop();
 
@@ -63,6 +65,7 @@ private:
         ss::lowres_clock::duration _monitor_interval{std::chrono::seconds(5)};
         std::vector<model::topic> _topics;
         transform::rpc::topic_metadata_cache* _topic_metadata;
+        transform::rpc::topic_creator* _topic_creator;
 
         ss::abort_source _as;
         ss::gate _gate;
@@ -72,6 +75,7 @@ private:
     std::vector<net::unresolved_address> _source_broker_bootstrap_servers;
     std::vector<model::topic> _mirrored_topics;
     std::unique_ptr<transform::rpc::topic_metadata_cache> _topic_metadata;
+    std::unique_ptr<transform::rpc::topic_creator> _topic_creator;
     kafka::client::configuration _kc_config;
     std::unique_ptr<kafka::client::client> _client;
     std::optional<topic_monitor> _topic_monitor;

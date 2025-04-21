@@ -27,10 +27,12 @@ namespace cluster_link {
 panda_link::panda_link(
   std::vector<net::unresolved_address> source_broker_bootstrap_servers,
   std::vector<model::topic> mirrored_topics,
-  std::unique_ptr<transform::rpc::topic_metadata_cache> topic_metadata)
+  std::unique_ptr<transform::rpc::topic_metadata_cache> topic_metadata,
+  std::unique_ptr<transform::rpc::topic_creator> topic_creator)
   : _source_broker_bootstrap_servers(std::move(source_broker_bootstrap_servers))
   , _mirrored_topics(std::move(mirrored_topics))
   , _topic_metadata(std::move(topic_metadata))
+  , _topic_creator(std::move(topic_creator))
   , _kc_config(create_kafka_client_config(_source_broker_bootstrap_servers)) {}
 
 ss::future<> panda_link::start() {
@@ -72,7 +74,8 @@ ss::future<> panda_link::start_topic_monitoring() {
       _client.get(),
       std::chrono::seconds(5),
       _mirrored_topics,
-      _topic_metadata.get());
+      _topic_metadata.get(),
+      _topic_creator.get());
     co_await _topic_monitor->start();
 }
 
@@ -99,11 +102,13 @@ panda_link::topic_monitor::topic_monitor(
   kafka::client::client* client,
   ss::lowres_clock::duration interval,
   std::vector<model::topic> topics,
-  transform::rpc::topic_metadata_cache* topic_metadata)
+  transform::rpc::topic_metadata_cache* topic_metadata,
+  transform::rpc::topic_creator* topic_creator)
   : _client(client)
   , _monitor_interval(interval)
   , _topics(std::move(topics))
-  , _topic_metadata(topic_metadata) {}
+  , _topic_metadata(topic_metadata)
+  , _topic_creator(topic_creator) {}
 
 ss::future<> panda_link::topic_monitor::start() {
     vlog(cllog.trace, "Starting topic monitor");
@@ -183,6 +188,24 @@ ss::future<> panda_link::topic_monitor::monitor_topics() {
                       remote_partition_count,
                       local_topic_metadata->partition_count);
                     continue;
+                }
+                auto res = co_await _topic_creator->create_partitions(
+                  {model::topic_namespace{
+                     model::ns{model::kafka_ns_view}, topic},
+                   remote_partition_count});
+                if (res != cluster::errc::success) {
+                    vlog(
+                      cllog.warn,
+                      "Failed to create partitions for topic {}: {}",
+                      topic,
+                      res);
+                    continue;
+                } else {
+                    vlog(
+                      cllog.info,
+                      "Successfully updated partition count for topic {} to {}",
+                      topic,
+                      remote_partition_count);
                 }
             }
         }
