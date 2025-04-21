@@ -562,4 +562,41 @@ struct write_at_offset_reply
     friend std::ostream&
     operator<<(std::ostream&, const write_at_offset_reply&);
 };
+
+struct list_offset_request
+  : serde::envelope<
+      list_offset_request,
+      serde::version<0>,
+      serde::compat_version<0>> {
+    using rpc_adl_exempt = std::true_type;
+
+    list_offset_request() = default;
+    explicit list_offset_request(model::ntp ntp)
+      : ntp(std::move(ntp)) {}
+
+    auto serde_fields() { return std::tie(ntp); }
+
+    friend std::ostream& operator<<(std::ostream&, const list_offset_request&);
+
+    model::ntp ntp;
+};
+
+struct list_offset_reply
+  : serde::
+      envelope<list_offset_reply, serde::version<0>, serde::compat_version<0>> {
+    using rpc_adl_exempt = std::true_type;
+
+    list_offset_reply() = default;
+    explicit list_offset_reply(cluster::errc err)
+      : err(err) {}
+    explicit list_offset_reply(model::offset offset)
+      : offset(offset) {}
+
+    auto serde_fields() { return std::tie(err, offset); }
+
+    friend std::ostream& operator<<(std::ostream&, const list_offset_reply&);
+
+    cluster::errc err{cluster::errc::success};
+    model::offset offset{};
+};
 } // namespace transform::rpc

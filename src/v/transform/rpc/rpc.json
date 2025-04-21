@@ -59,6 +59,11 @@
             "name": "write_at_offset",
             "input_type": "write_at_offset_request",
             "output_type": "write_at_offset_reply"
+        },
+        {
+            "name": "list_offset",
+            "input_type": "list_offset_request",
+            "output_type": "list_offset_reply"
         }
     ]
 }

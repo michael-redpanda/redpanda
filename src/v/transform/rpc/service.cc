@@ -13,6 +13,7 @@
 
 #include "cluster/types.h"
 #include "kafka/data/partition_proxy.h"
+#include "model/fundamental.h"
 #include "model/ktp.h"
 #include "model/metadata.h"
 #include "model/namespace.h"
@@ -531,6 +532,12 @@ ss::future<write_at_offset_reply> network_service::write_at_offset(
       req.prev_log_offset,
       req.timeout);
     co_return resp;
+}
+
+ss::future<list_offset_reply>
+network_service::list_offset(list_offset_request, ::rpc::streaming_context&) {
+    co_await ss::coroutine::switch_to(get_scheduling_group());
+    co_return list_offset_reply(cluster::errc::not_leader);
 }
 
 } // namespace transform::rpc

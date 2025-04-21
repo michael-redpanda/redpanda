@@ -138,6 +138,9 @@ public:
     ss::future<write_at_offset_reply> write_at_offset(
       write_at_offset_request, ::rpc::streaming_context&) override;
 
+    ss::future<list_offset_reply>
+    list_offset(list_offset_request, ::rpc::streaming_context&) override;
+
 private:
     ss::sharded<local_service>* _service;
 };

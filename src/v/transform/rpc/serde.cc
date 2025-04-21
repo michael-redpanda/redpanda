@@ -223,4 +223,14 @@ std::ostream& operator<<(std::ostream& os, const write_at_offset_reply& reply) {
     return os;
 }
 
+std::ostream& operator<<(std::ostream& os, const list_offset_request& req) {
+    fmt::print(os, "{{ ntp: {} }}", req.ntp);
+    return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const list_offset_reply& reply) {
+    fmt::print(os, "{{ err: {} offset: {} }}", reply.err, reply.offset);
+    return os;
+}
+
 } // namespace transform::rpc
