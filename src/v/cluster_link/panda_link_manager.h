@@ -75,6 +75,8 @@ public:
 private:
     ss::future<> handle_link_change(model::panda_link_id);
 
+    void on_controller_leadership_change(ntp_leader);
+
 private:
     model::node_id _self;
     ssx::work_queue _queue;

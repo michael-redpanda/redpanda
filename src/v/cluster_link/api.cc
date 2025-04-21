@@ -252,10 +252,7 @@ void service::register_notifications() {
             bool node_is_leader = leader.has_value() && leader == _self;
             if (!node_is_leader) {
                 _manager->on_leadership_change(
-                  partition->ntp(), ntp_leader::yes);
-                return;
-            }
-            if (partition->ntp().ns != model::kafka_namespace) {
+                  partition->ntp(), ntp_leader::no);
                 return;
             }
             ntp_leader is_leader = partition && partition->is_elected_leader()

@@ -12,6 +12,7 @@
 #include "cluster_link/panda_link_manager.h"
 
 #include "cluster_link/logger.h"
+#include "model/namespace.h"
 
 namespace cluster_link {
 
@@ -43,6 +44,9 @@ void manager::on_link_change(model::panda_link_id id) {
 
 void manager::on_leadership_change(model::ntp ntp, ntp_leader is_leader) {
     vlog(cllog.trace, "ntp: {}, is_leader: {}", ntp, is_leader);
+    if (ntp == model::controller_ntp) {
+        on_controller_leadership_change(is_leader);
+    }
 }
 
 ss::future<> manager::handle_link_change(model::panda_link_id id) {
@@ -87,5 +91,9 @@ ss::future<> manager::handle_link_change(model::panda_link_id id) {
       meta->source_cluster_bootstrap_server);
 
     co_return;
+}
+
+void manager::on_controller_leadership_change(ntp_leader is_leader) {
+    vlog(cllog.trace, "Detected controller leadership change: {}", is_leader);
 }
 } // namespace cluster_link
