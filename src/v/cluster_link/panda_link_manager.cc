@@ -145,15 +145,15 @@ ss::future<> manager::handle_kafka_topic_leadership_change(
               "Alerting panda link {} to start fetching topic {}",
               id,
               ntp);
+            co_await link->start_ntp_mirroring(ntp);
         } else {
             vlog(
               cllog.debug,
               "Alerting panda link {} to stop fetching topic {}",
               id,
               ntp);
+            co_await link->stop_ntp_mirroring(ntp);
         }
     }
-
-    return ss::now();
 }
 } // namespace cluster_link

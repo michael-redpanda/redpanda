@@ -293,9 +293,9 @@ ss::future<> panda_link::topic_mirroring::mirror_topics() {
         for (const auto& ntp : _mirrored_ntps) {
             list_offsets_futures.emplace_back(_client->list_offsets(ntp.tp));
         }
-        co_await ss::when_all(
+        auto list_offset_results = co_await ss::when_all(
           list_offsets_futures.begin(), list_offsets_futures.end());
-        for (auto& f : list_offsets_futures) {
+        for (auto& f : list_offset_results) {
             try {
                 auto res = f.get();
                 if (res.data.topics.empty()) {
