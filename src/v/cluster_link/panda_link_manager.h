@@ -78,7 +78,11 @@ private:
 
     void on_controller_leadership_change(ntp_leader);
 
+    void on_kafka_topic_leadership_change(model::ntp, ntp_leader);
+
     ss::future<> handle_controller_leadership_change(ntp_leader);
+
+    ss::future<> handle_kafka_topic_leadership_change(model::ntp, ntp_leader);
 
 private:
     model::node_id _self;

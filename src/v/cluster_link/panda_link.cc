@@ -91,6 +91,10 @@ ss::future<> panda_link::stop_topic_monitoring() {
     _topic_monitor.reset();
 }
 
+const std::vector<model::topic_namespace>& panda_link::mirrored_topics() const {
+    return _mirrored_topics;
+}
+
 kc_config panda_link::create_kafka_client_config(
   const std::vector<net::unresolved_address>& source_broker_bootstrap_servers) {
     kc_config cfg;

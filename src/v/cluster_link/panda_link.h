@@ -41,6 +41,8 @@ public:
     virtual ss::future<> start_topic_monitoring();
     virtual ss::future<> stop_topic_monitoring();
 
+    const std::vector<model::topic_namespace>& mirrored_topics() const;
+
 private:
     static kafka::client::configuration
     create_kafka_client_config(const std::vector<net::unresolved_address>&

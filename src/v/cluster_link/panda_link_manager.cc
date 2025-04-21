@@ -46,6 +46,8 @@ void manager::on_leadership_change(model::ntp ntp, ntp_leader is_leader) {
     vlog(cllog.trace, "ntp: {}, is_leader: {}", ntp, is_leader);
     if (ntp == model::controller_ntp) {
         on_controller_leadership_change(is_leader);
+    } else {
+        on_kafka_topic_leadership_change(std::move(ntp), is_leader);
     }
 }
 
@@ -103,6 +105,13 @@ void manager::on_controller_leadership_change(ntp_leader is_leader) {
     });
 }
 
+void manager::on_kafka_topic_leadership_change(
+  model::ntp ntp, ntp_leader is_leader) {
+    _queue.submit([this, ntp = std::move(ntp), is_leader]() mutable {
+        return handle_kafka_topic_leadership_change(std::move(ntp), is_leader);
+    });
+}
+
 ss::future<>
 manager::handle_controller_leadership_change(ntp_leader is_leader) {
     if (is_leader == ntp_leader::yes) {
@@ -116,5 +125,35 @@ manager::handle_controller_leadership_change(ntp_leader is_leader) {
             co_await link->stop_topic_monitoring();
         }
     }
+}
+
+ss::future<> manager::handle_kafka_topic_leadership_change(
+  model::ntp ntp, ntp_leader is_leader) {
+    auto range = _links | std::views::filter([&](const auto& pair) {
+                     const auto& link = pair.second;
+                     return std::find(
+                              link->mirrored_topics().begin(),
+                              link->mirrored_topics().end(),
+                              model::topic_namespace(ntp.ns, ntp.tp.topic))
+                            != link->mirrored_topics().end();
+                 });
+
+    for (const auto& [id, link] : range) {
+        if (is_leader == ntp_leader::yes) {
+            vlog(
+              cllog.debug,
+              "Alerting panda link {} to start fetching topic {}",
+              id,
+              ntp);
+        } else {
+            vlog(
+              cllog.debug,
+              "Alerting panda link {} to stop fetching topic {}",
+              id,
+              ntp);
+        }
+    }
+
+    return ss::now();
 }
 } // namespace cluster_link
