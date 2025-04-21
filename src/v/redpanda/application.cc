@@ -1357,7 +1357,8 @@ void application::wire_up_runtime_services(
       &partition_manager,
       &raft_group_manager,
       &metadata_cache,
-      controller.get())
+      controller.get(),
+      &_transform_rpc_client)
       .get();
 
     if (datalake_enabled()) {

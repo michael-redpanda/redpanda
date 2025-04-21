@@ -15,6 +15,7 @@
 #include "cluster_link/fwd.h"
 #include "model/panda_link.h"
 #include "raft/group_manager.h"
+#include "transform/rpc/client.h"
 #include "transform/rpc/deps.h"
 
 #include <seastar/core/gate.hh>
@@ -31,7 +32,8 @@ public:
       ss::sharded<cluster::partition_manager>* partition_manager,
       ss::sharded<raft::group_manager>* group_manager,
       ss::sharded<cluster::metadata_cache>* metadata_cache,
-      cluster::controller* controller);
+      cluster::controller* controller,
+      ss::sharded<transform::rpc::client>* rpc_client);
     service(const service&) = delete;
     service& operator=(const service&) = delete;
     service(service&&) = delete;
@@ -56,6 +58,7 @@ private:
     ss::sharded<raft::group_manager>* _group_manager;
     ss::sharded<cluster::metadata_cache>* _metadata_cache;
     cluster::controller* _controller;
+    ss::sharded<transform::rpc::client>* _rpc_client;
     std::unique_ptr<manager> _manager;
     std::vector<ss::deferred_action<ss::noncopyable_function<void()>>>
       _notification_cleanups;

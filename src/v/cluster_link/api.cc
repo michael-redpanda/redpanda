@@ -35,9 +35,11 @@ class pl_factory : public panda_link_factory {
 public:
     pl_factory(
       ss::sharded<cluster::metadata_cache>* metadata_cache,
-      cluster::controller* controller)
+      cluster::controller* controller,
+      ss::sharded<transform::rpc::client>* rpc_client)
       : _metadata_cache(metadata_cache)
-      , _controller(controller) {}
+      , _controller(controller)
+      , _rpc_client(rpc_client) {}
 
     ss::future<std::unique_ptr<panda_link>> create(
       std::vector<net::unresolved_address> source_broker_bootstrap_servers,
@@ -46,12 +48,14 @@ public:
           std::move(source_broker_bootstrap_servers),
           std::move(mirrored_topics),
           transform::rpc::topic_metadata_cache::make_default(_metadata_cache),
-          transform::rpc::topic_creator::make_default(_controller));
+          transform::rpc::topic_creator::make_default(_controller),
+          _rpc_client);
     }
 
 private:
     ss::sharded<cluster::metadata_cache>* _metadata_cache;
     cluster::controller* _controller;
+    ss::sharded<transform::rpc::client>* _rpc_client;
 };
 
 std::unique_ptr<kc> create_kafka_client(
@@ -165,14 +169,16 @@ service::service(
   ss::sharded<cluster::partition_manager>* partition_manager,
   ss::sharded<raft::group_manager>* group_manager,
   ss::sharded<cluster::metadata_cache>* metadata_cache,
-  cluster::controller* controller)
+  cluster::controller* controller,
+  ss::sharded<transform::rpc::client>* rpc_client)
   : _self(self)
   , _pl_frontend(pl_frontend)
   , _topic_creator(std::move(topic_creator))
   , _partition_manager(partition_manager)
   , _group_manager(group_manager)
   , _metadata_cache(metadata_cache)
-  , _controller(controller) {}
+  , _controller(controller)
+  , _rpc_client(rpc_client) {}
 
 service::~service() = default;
 
@@ -180,7 +186,7 @@ ss::future<> service::start() {
     _manager = std::make_unique<manager>(
       _self,
       std::make_unique<panda_link_registry_adapter>(&_pl_frontend->local()),
-      std::make_unique<pl_factory>(_metadata_cache, _controller));
+      std::make_unique<pl_factory>(_metadata_cache, _controller, _rpc_client));
 
     co_await _manager->start();
 

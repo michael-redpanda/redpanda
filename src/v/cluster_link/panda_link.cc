@@ -32,11 +32,13 @@ panda_link::panda_link(
   std::vector<net::unresolved_address> source_broker_bootstrap_servers,
   std::vector<model::topic_namespace> mirrored_topics,
   std::unique_ptr<transform::rpc::topic_metadata_cache> topic_metadata,
-  std::unique_ptr<transform::rpc::topic_creator> topic_creator)
+  std::unique_ptr<transform::rpc::topic_creator> topic_creator,
+  ss::sharded<transform::rpc::client>* rpc_client)
   : _source_broker_bootstrap_servers(std::move(source_broker_bootstrap_servers))
   , _mirrored_topics(std::move(mirrored_topics))
   , _topic_metadata(std::move(topic_metadata))
   , _topic_creator(std::move(topic_creator))
+  , _rpc_client(rpc_client)
   , _kc_config(create_kafka_client_config(_source_broker_bootstrap_servers)) {}
 
 ss::future<> panda_link::start() {
@@ -106,7 +108,7 @@ ss::future<> panda_link::start_ntp_mirroring(model::ntp ntp) {
     vlog(cllog.debug, "Starting topic mirroring for ntp {}", ntp);
     absl::flat_hash_set<model::ntp> ntps;
     ntps.insert(ntp);
-    _topic_mirroring.emplace(_client.get(), std::move(ntps));
+    _topic_mirroring.emplace(_client.get(), std::move(ntps), _rpc_client);
     co_await _topic_mirroring->start();
 }
 
@@ -256,7 +258,9 @@ ss::future<> panda_link::topic_monitor::monitor_topics() {
 }
 
 panda_link::topic_mirroring::topic_mirroring(
-  kafka::client::client* client, absl::flat_hash_set<model::ntp> ntps)
+  kafka::client::client* client,
+  absl::flat_hash_set<model::ntp> ntps,
+  ss::sharded<transform::rpc::client>*)
   : _client(client)
   , _mirrored_ntps(std::move(ntps)) {}
 

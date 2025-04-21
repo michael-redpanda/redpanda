@@ -14,6 +14,7 @@
 #include "base/seastarx.h"
 #include "kafka/client/client.h"
 #include "kafka/client/configuration.h"
+#include "transform/rpc/client.h"
 #include "transform/rpc/deps.h"
 #include "utils/unresolved_address.h"
 
@@ -29,7 +30,8 @@ public:
       std::vector<net::unresolved_address> _source_broker_bootstrap_servers,
       std::vector<model::topic_namespace> mirrored_topics,
       std::unique_ptr<transform::rpc::topic_metadata_cache> topic_metadata,
-      std::unique_ptr<transform::rpc::topic_creator> topic_creator);
+      std::unique_ptr<transform::rpc::topic_creator> topic_creator,
+      ss::sharded<transform::rpc::client>* rpc_client);
     panda_link(const panda_link&) = delete;
     panda_link& operator=(const panda_link&) = delete;
     panda_link(panda_link&&) = delete;
@@ -82,7 +84,9 @@ private:
     class topic_mirroring {
     public:
         topic_mirroring(
-          kafka::client::client* client, absl::flat_hash_set<model::ntp> ntps);
+          kafka::client::client* client,
+          absl::flat_hash_set<model::ntp> ntps,
+          ss::sharded<transform::rpc::client>* rpc_client);
 
         ss::future<> start();
         ss::future<> stop();
@@ -108,6 +112,7 @@ private:
     std::vector<model::topic_namespace> _mirrored_topics;
     std::unique_ptr<transform::rpc::topic_metadata_cache> _topic_metadata;
     std::unique_ptr<transform::rpc::topic_creator> _topic_creator;
+    ss::sharded<transform::rpc::client>* _rpc_client;
     kafka::client::configuration _kc_config;
     std::unique_ptr<kafka::client::client> _client;
     std::optional<topic_mirroring> _topic_mirroring;
