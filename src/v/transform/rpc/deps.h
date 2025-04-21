@@ -145,6 +145,12 @@ public:
      */
     virtual ss::future<cluster::errc>
       update_topic(cluster::topic_properties_update) = 0;
+
+    /**
+     * Create partitions for a topic
+     */
+    virtual ss::future<cluster::errc>
+      create_partitions(cluster::create_partitions_configuration) = 0;
 };
 
 /**

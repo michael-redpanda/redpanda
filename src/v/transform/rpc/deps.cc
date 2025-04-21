@@ -362,6 +362,29 @@ public:
         }
     }
 
+    ss::future<cluster::errc>
+    create_partitions(cluster::create_partitions_configuration cfg) final {
+        try {
+            auto res
+              = co_await _controller->get_topics_frontend()
+                  .local()
+                  .create_partitions(
+                    {cfg},
+                    ss::lowres_clock::now()
+                      + config::shard_local_cfg().create_topic_timeout_ms());
+            vassert(res.size() == 1, "expected a single result");
+            co_return res[0].ec;
+        } catch (const std::exception& ex) {
+            vlog(
+              log.warn,
+              "unable to create {} partitions on {}: {}",
+              cfg.tp_ns,
+              cfg.new_total_partition_count,
+              ex);
+            co_return cluster::errc::topic_operation_error;
+        }
+    }
+
 private:
     cluster::controller* _controller;
 };

@@ -257,6 +257,11 @@ public:
         co_return cluster::errc::success;
     }
 
+    ss::future<cluster::errc>
+    create_partitions(cluster::create_partitions_configuration) final {
+        co_return cluster::errc::success;
+    }
+
     void set_default_new_topic_leader(model::node_id node_id) {
         _default_new_topic_leader = node_id;
     }
