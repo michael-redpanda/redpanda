@@ -46,7 +46,9 @@ private:
     class topic_monitor {
     public:
         topic_monitor(
-          kafka::client::client* client, ss::lowres_clock::duration interval);
+          kafka::client::client* client,
+          ss::lowres_clock::duration interval,
+          std::vector<model::topic> topics);
         ss::future<> start();
         ss::future<> stop();
 
@@ -56,6 +58,7 @@ private:
     private:
         kafka::client::client* _client;
         ss::lowres_clock::duration _monitor_interval{std::chrono::seconds(5)};
+        std::vector<model::topic> _topics;
 
         ss::abort_source _as;
         ss::gate _gate;

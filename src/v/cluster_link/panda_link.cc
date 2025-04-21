@@ -13,6 +13,7 @@
 
 #include "base/vlog.h"
 #include "cluster_link/logger.h"
+#include "kafka/protocol/metadata.h"
 #include "ssx/future-util.h"
 #include "utils/unresolved_address.h"
 
@@ -64,7 +65,8 @@ ss::future<> panda_link::start_topic_monitoring() {
         vlog(cllog.info, "Topic monitor already started");
         co_return;
     }
-    _topic_monitor.emplace(_client.get(), std::chrono::seconds(5));
+    _topic_monitor.emplace(
+      _client.get(), std::chrono::seconds(5), _mirrored_topics);
     co_await _topic_monitor->start();
 }
 
@@ -88,9 +90,12 @@ kc_config panda_link::create_kafka_client_config(
 }
 
 panda_link::topic_monitor::topic_monitor(
-  kafka::client::client* client, ss::lowres_clock::duration interval)
+  kafka::client::client* client,
+  ss::lowres_clock::duration interval,
+  std::vector<model::topic> topics)
   : _client(client)
-  , _monitor_interval(interval) {}
+  , _monitor_interval(interval)
+  , _topics(std::move(topics)) {}
 
 ss::future<> panda_link::topic_monitor::start() {
     vlog(cllog.trace, "Starting topic monitor");
@@ -105,10 +110,38 @@ ss::future<> panda_link::topic_monitor::stop() {
 }
 
 ss::future<> panda_link::topic_monitor::monitor_topics() {
+    const auto create_metadata_request =
+      [](const std::vector<model::topic>& topics) {
+          chunked_vector<kafka::metadata_request_topic> req_topics;
+          req_topics.reserve(topics.size());
+          std::ranges::for_each(topics, [&req_topics](const auto& topic) {
+              req_topics.emplace_back(
+                kafka::metadata_request_topic{.name = topic});
+          });
+          return kafka::metadata_request{
+            .data = {
+              .topics = std::move(req_topics),
+              .allow_auto_topic_creation = false,
+              .include_cluster_authorized_operations = false,
+              .include_topic_authorized_operations = false,
+            },
+            .list_all_topics = false};
+      };
     while (!_as.abort_requested()) {
         vlog(cllog.trace, "monitor topics loop run");
-        auto resp = co_await _client->get_metadata();
+
+        auto resp = co_await _client->get_metadata(
+          create_metadata_request(_topics));
         vlog(cllog.trace, "metadata response: {}", resp);
+        absl::flat_hash_map<model::topic, kafka::describe_configs_response>
+          configs;
+        configs.reserve(_topics.size());
+        for (const auto& topic : _topics) {
+            auto resp = co_await _client->describe_topic(topic, std::nullopt);
+            vlog(
+              cllog.trace, "describe topic response for {}: {}", topic, resp);
+            configs.emplace(topic, std::move(resp));
+        }
         co_await ss::sleep_abortable(_monitor_interval, _as);
     }
 }
