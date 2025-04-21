@@ -25,6 +25,8 @@
 using kc = kafka::client::client;
 using kc_config = kafka::client::configuration;
 
+using namespace std::chrono_literals;
+
 namespace cluster_link {
 panda_link::panda_link(
   std::vector<net::unresolved_address> source_broker_bootstrap_servers,
@@ -286,60 +288,132 @@ void panda_link::topic_mirroring::remove_ntp(model::ntp ntp) {
 ss::future<> panda_link::topic_mirroring::mirror_topics() {
     while (!_as.abort_requested()) {
         vlog(cllog.trace, "mirror topics run loop: {}", _mirrored_ntps);
-        chunked_vector<ss::future<kafka::list_offsets_response>>
-          list_offsets_futures;
-        list_offsets_futures.reserve(_mirrored_ntps.size());
-        vlog(cllog.trace, "fetching offsets for ntps");
-        for (const auto& ntp : _mirrored_ntps) {
-            list_offsets_futures.emplace_back(_client->list_offsets(ntp.tp));
-        }
-        auto list_offset_results = co_await ss::when_all(
-          list_offsets_futures.begin(), list_offsets_futures.end());
-        for (auto& f : list_offset_results) {
-            try {
-                auto res = f.get();
-                if (res.data.topics.empty()) {
-                    vlog(
-                      cllog.warn,
-                      "No topics found in list offsets response: {}",
-                      res);
-                    continue;
-                }
-                auto topic_it = std::ranges::find_if(
-                  res.data.topics,
-                  [](const auto& t) { return t.partitions.size() > 0; });
-                if (topic_it == res.data.topics.end()) {
-                    vlog(
-                      cllog.warn,
-                      "No partitions found in list offsets response: {}",
-                      res);
-                    continue;
-                }
-                auto partition_it = std::ranges::find_if(
-                  topic_it->partitions, [](const auto& p) {
-                      return p.error_code != kafka::error_code::none;
-                  });
-                if (partition_it != topic_it->partitions.end()) {
-                    vlog(
-                      cllog.warn,
-                      "Error in list offsets response: {}",
-                      partition_it->error_code);
-                }
+        auto offsets = co_await fetch_offsets();
+        chunked_vector<ss::future<kafka::fetch_response>> fetch_futures;
+        for (const auto& [ntp, offset] : offsets) {
+            if (offset != model::offset(0)) {
+                // auto fetch_offset = offset - model::offset(1);
+                auto fetch_offset = model::offset{0};
                 vlog(
-                  cllog.info,
-                  "Offset for {}: {}",
-                  model::ntp(
-                    model::kafka_namespace,
-                    res.data.topics[0].name,
-                    res.data.topics[0].partitions[0].partition_index),
-                  res.data.topics[0].partitions[0].offset);
-            } catch (const std::exception& e) {
-                vlog(cllog.error, "Error fetching offsets: {}", e.what());
+                  cllog.debug,
+                  "Fetching offset {} from ntp {}",
+                  fetch_offset,
+                  ntp);
+                fetch_futures.emplace_back(_client->fetch_partition(
+                  ntp.tp, fetch_offset, 1024 * 1024, 5s));
             }
         }
 
+        auto fetch_results = co_await ss::when_all(
+          fetch_futures.begin(), fetch_futures.end());
+        for (auto& f : fetch_results) {
+            try {
+                auto res = f.get();
+                if (res.data.error_code != kafka::error_code::none) {
+                    vlog(
+                      cllog.warn,
+                      "Error in fetch response: {}",
+                      res.data.error_code);
+                    continue;
+                }
+                const auto& topics = res.data.topics;
+                if (topics.size() != 1 || topics[0].partitions.size() != 1) {
+                    vlog(
+                      cllog.warn,
+                      "Invalid fetch response: {}",
+                      res.data.error_code);
+                    continue;
+                }
+                const auto& part = topics[0].partitions[0];
+                if (part.error_code != kafka::error_code::none) {
+                    vlog(
+                      cllog.warn,
+                      "Error in fetch response: {}",
+                      part.error_code);
+                    continue;
+                }
+                vlog(cllog.info, "Fetch response HWM: {}", part.high_watermark);
+                if (part.records.has_value()) {
+                    auto batch_size = part.records->size_bytes();
+                    auto is_end_of_stream = part.records->is_end_of_stream();
+                    auto last_offset = part.records->last_offset();
+                    vlog(
+                      cllog.info,
+                      "batch_size: {}, is_end_of_stream: {}, last_offset: {}",
+                      batch_size,
+                      is_end_of_stream,
+                      last_offset);
+                    // Process the batch here
+
+                } else {
+                    vlog(cllog.warn, "No records in fetch response");
+                }
+            } catch (const std::exception& e) {
+                vlog(cllog.error, "Error fetching topic: {}", e.what());
+            }
+        }
         co_await ss::sleep_abortable(std::chrono::seconds(5), _as);
     }
+}
+
+ss::future<absl::flat_hash_map<model::ntp, model::offset>>
+panda_link::topic_mirroring::fetch_offsets() {
+    absl::flat_hash_map<model::ntp, model::offset> offsets;
+    chunked_vector<ss::future<kafka::list_offsets_response>>
+      list_offsets_futures;
+    list_offsets_futures.reserve(_mirrored_ntps.size());
+    vlog(cllog.trace, "fetching offsets for ntps");
+    for (const auto& ntp : _mirrored_ntps) {
+        list_offsets_futures.emplace_back(_client->list_offsets(ntp.tp));
+    }
+    auto list_offset_results = co_await ss::when_all(
+      list_offsets_futures.begin(), list_offsets_futures.end());
+    for (auto& f : list_offset_results) {
+        try {
+            auto res = f.get();
+            if (res.data.topics.empty()) {
+                vlog(
+                  cllog.warn,
+                  "No topics found in list offsets response: {}",
+                  res);
+                continue;
+            }
+            auto topic_it = std::ranges::find_if(
+              res.data.topics,
+              [](const auto& t) { return t.partitions.size() > 0; });
+            if (topic_it == res.data.topics.end()) {
+                vlog(
+                  cllog.warn,
+                  "No partitions found in list offsets response: {}",
+                  res);
+                continue;
+            }
+            auto partition_it = std::ranges::find_if(
+              topic_it->partitions, [](const auto& p) {
+                  return p.error_code != kafka::error_code::none;
+              });
+            if (partition_it != topic_it->partitions.end()) {
+                vlog(
+                  cllog.warn,
+                  "Error in list offsets response: {}",
+                  partition_it->error_code);
+            }
+            model::ntp ntp(
+              model::kafka_namespace,
+              res.data.topics[0].name,
+              res.data.topics[0].partitions[0].partition_index);
+            vlog(
+              cllog.info,
+              "Offset for {}: {}",
+              ntp,
+              res.data.topics[0].partitions[0].offset);
+            offsets.emplace(ntp, res.data.topics[0].partitions[0].offset);
+        } catch (const std::exception& e) {
+            vlog(cllog.error, "Error fetching offsets: {}", e.what());
+        }
+    }
+
+    co_return offsets;
 }
 
 } // namespace cluster_link

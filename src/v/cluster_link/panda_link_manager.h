@@ -91,5 +91,6 @@ private:
     std::unique_ptr<panda_link_factory> _factory;
     link_container _links;
     ntp_leader _is_controller_leader{ntp_leader::no};
+    absl::flat_hash_set<model::ntp> _ntp_leaders;
 };
 } // namespace cluster_link

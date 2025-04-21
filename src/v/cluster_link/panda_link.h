@@ -93,6 +93,8 @@ private:
 
     private:
         ss::future<> mirror_topics();
+        ss::future<absl::flat_hash_map<model::ntp, model::offset>>
+        fetch_offsets();
 
     private:
         kafka::client::client* _client;

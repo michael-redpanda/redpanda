@@ -89,6 +89,21 @@ ss::future<> manager::handle_link_change(model::panda_link_id id) {
         vlog(cllog.debug, "Starting topic monitoring for link {}", id);
         co_await links_it->second->start_topic_monitoring();
     }
+    for (const auto& ntp : _ntp_leaders) {
+        if (
+          std::find(
+            links_it->second->mirrored_topics().begin(),
+            links_it->second->mirrored_topics().end(),
+            model::topic_namespace(ntp.ns, ntp.tp.topic))
+          != links_it->second->mirrored_topics().end()) {
+            vlog(
+              cllog.debug,
+              "Starting topic mirroring for link {} and ntp {}",
+              id,
+              ntp);
+            co_await links_it->second->start_ntp_mirroring(ntp);
+        }
+    }
     vlog(
       cllog.info,
       "Link {} named \"{}\" targeting {} created",
@@ -107,6 +122,11 @@ void manager::on_controller_leadership_change(ntp_leader is_leader) {
 
 void manager::on_kafka_topic_leadership_change(
   model::ntp ntp, ntp_leader is_leader) {
+    if (is_leader) {
+        _ntp_leaders.insert(ntp);
+    } else {
+        _ntp_leaders.erase(ntp);
+    }
     _queue.submit([this, ntp = std::move(ntp), is_leader]() mutable {
         return handle_kafka_topic_leadership_change(std::move(ntp), is_leader);
     });
