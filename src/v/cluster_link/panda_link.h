@@ -20,6 +20,8 @@
 #include <seastar/core/future.hh>
 #include <seastar/core/sstring.hh>
 
+#include <absl/container/flat_hash_set.h>
+
 namespace cluster_link {
 class panda_link {
 public:
@@ -40,6 +42,10 @@ public:
 
     virtual ss::future<> start_topic_monitoring();
     virtual ss::future<> stop_topic_monitoring();
+
+    virtual ss::future<> start_ntp_mirroring(model::ntp);
+    virtual ss::future<> stop_ntp_mirroring();
+    virtual ss::future<> stop_ntp_mirroring(model::ntp);
 
     const std::vector<model::topic_namespace>& mirrored_topics() const;
 
@@ -73,6 +79,28 @@ private:
         ss::gate _gate;
     };
 
+    class topic_mirroring {
+    public:
+        topic_mirroring(
+          kafka::client::client* client, absl::flat_hash_set<model::ntp> ntps);
+
+        ss::future<> start();
+        ss::future<> stop();
+        const absl::flat_hash_set<model::ntp>& mirrored_ntps() const;
+
+        void add_ntp(model::ntp);
+        void remove_ntp(model::ntp);
+
+    private:
+        ss::future<> mirror_topics();
+
+    private:
+        kafka::client::client* _client;
+        absl::flat_hash_set<model::ntp> _mirrored_ntps;
+        ss::abort_source _as;
+        ss::gate _gate;
+    };
+
 private:
     std::vector<net::unresolved_address> _source_broker_bootstrap_servers;
     std::vector<model::topic_namespace> _mirrored_topics;
@@ -80,6 +108,7 @@ private:
     std::unique_ptr<transform::rpc::topic_creator> _topic_creator;
     kafka::client::configuration _kc_config;
     std::unique_ptr<kafka::client::client> _client;
+    std::optional<topic_mirroring> _topic_mirroring;
     std::optional<topic_monitor> _topic_monitor;
     ss::gate _gate;
 };

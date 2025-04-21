@@ -20,6 +20,8 @@
 
 #include <seastar/util/later.hh>
 
+#include <fmt/ranges.h>
+
 using kc = kafka::client::client;
 using kc_config = kafka::client::configuration;
 
@@ -50,6 +52,7 @@ ss::future<> panda_link::stop() {
       cllog.trace,
       "Stopping panda link to {}",
       _source_broker_bootstrap_servers);
+    co_await stop_ntp_mirroring();
     co_await stop_topic_monitoring();
     if (_client) {
         co_await _client->stop();
@@ -89,6 +92,39 @@ ss::future<> panda_link::stop_topic_monitoring() {
     }
     co_await _topic_monitor->stop();
     _topic_monitor.reset();
+}
+
+ss::future<> panda_link::start_ntp_mirroring(model::ntp ntp) {
+    auto _ = _gate.hold();
+    if (_topic_mirroring.has_value()) {
+        vlog(cllog.debug, "Topic mirroring already started, adding {}", ntp);
+        _topic_mirroring->add_ntp(ntp);
+        co_return;
+    }
+    vlog(cllog.debug, "Starting topic mirroring for ntp {}", ntp);
+    absl::flat_hash_set<model::ntp> ntps;
+    ntps.insert(ntp);
+    _topic_mirroring.emplace(_client.get(), std::move(ntps));
+    co_await _topic_mirroring->start();
+}
+
+ss::future<> panda_link::stop_ntp_mirroring() {
+    auto _ = _gate.hold();
+    if (_topic_mirroring.has_value()) {
+        co_await _topic_mirroring->stop();
+        _topic_mirroring.reset();
+    }
+}
+
+ss::future<> panda_link::stop_ntp_mirroring(model::ntp ntp) {
+    auto _ = _gate.hold();
+    if (_topic_mirroring.has_value()) {
+        vlog(cllog.debug, "Halting mirroring for ntp {}", ntp);
+        _topic_mirroring->remove_ntp(ntp);
+        if (_topic_mirroring->mirrored_ntps().empty()) {
+            co_await stop_ntp_mirroring();
+        }
+    }
 }
 
 const std::vector<model::topic_namespace>& panda_link::mirrored_topics() const {
@@ -214,6 +250,95 @@ ss::future<> panda_link::topic_monitor::monitor_topics() {
             }
         }
         co_await ss::sleep_abortable(_monitor_interval, _as);
+    }
+}
+
+panda_link::topic_mirroring::topic_mirroring(
+  kafka::client::client* client, absl::flat_hash_set<model::ntp> ntps)
+  : _client(client)
+  , _mirrored_ntps(std::move(ntps)) {}
+
+ss::future<> panda_link::topic_mirroring::start() {
+    vlog(cllog.trace, "Starting topic mirroring for ntps {}", _mirrored_ntps);
+    ssx::spawn_with_gate(_gate, [this] { return mirror_topics(); });
+    return ss::now();
+}
+
+ss::future<> panda_link::topic_mirroring::stop() {
+    vlog(cllog.trace, "Stopping topic mirroring for ntps {}", _mirrored_ntps);
+    _as.request_abort();
+    co_await _gate.close();
+}
+
+const absl::flat_hash_set<model::ntp>&
+panda_link::topic_mirroring::mirrored_ntps() const {
+    return _mirrored_ntps;
+}
+
+void panda_link::topic_mirroring::add_ntp(model::ntp ntp) {
+    _mirrored_ntps.insert(std::move(ntp));
+}
+
+void panda_link::topic_mirroring::remove_ntp(model::ntp ntp) {
+    _mirrored_ntps.erase(ntp);
+}
+
+ss::future<> panda_link::topic_mirroring::mirror_topics() {
+    while (!_as.abort_requested()) {
+        vlog(cllog.trace, "mirror topics run loop: {}", _mirrored_ntps);
+        chunked_vector<ss::future<kafka::list_offsets_response>>
+          list_offsets_futures;
+        list_offsets_futures.reserve(_mirrored_ntps.size());
+        vlog(cllog.trace, "fetching offsets for ntps");
+        for (const auto& ntp : _mirrored_ntps) {
+            list_offsets_futures.emplace_back(_client->list_offsets(ntp.tp));
+        }
+        co_await ss::when_all(
+          list_offsets_futures.begin(), list_offsets_futures.end());
+        for (auto& f : list_offsets_futures) {
+            try {
+                auto res = f.get();
+                if (res.data.topics.empty()) {
+                    vlog(
+                      cllog.warn,
+                      "No topics found in list offsets response: {}",
+                      res);
+                    continue;
+                }
+                auto topic_it = std::ranges::find_if(
+                  res.data.topics,
+                  [](const auto& t) { return t.partitions.size() > 0; });
+                if (topic_it == res.data.topics.end()) {
+                    vlog(
+                      cllog.warn,
+                      "No partitions found in list offsets response: {}",
+                      res);
+                    continue;
+                }
+                auto partition_it = std::ranges::find_if(
+                  topic_it->partitions, [](const auto& p) {
+                      return p.error_code != kafka::error_code::none;
+                  });
+                if (partition_it != topic_it->partitions.end()) {
+                    vlog(
+                      cllog.warn,
+                      "Error in list offsets response: {}",
+                      partition_it->error_code);
+                }
+                vlog(
+                  cllog.info,
+                  "Offset for {}: {}",
+                  model::ntp(
+                    model::kafka_namespace,
+                    res.data.topics[0].name,
+                    res.data.topics[0].partitions[0].partition_index),
+                  res.data.topics[0].partitions[0].offset);
+            } catch (const std::exception& e) {
+                vlog(cllog.error, "Error fetching offsets: {}", e.what());
+            }
+        }
+
+        co_await ss::sleep_abortable(std::chrono::seconds(5), _as);
     }
 }
 

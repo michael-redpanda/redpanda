@@ -90,6 +90,7 @@ redpanda_cc_library(
         ":logger",
         "//src/v/kafka/protocol:metadata",
         "//src/v/ssx:future_util",
+        "@fmt",
     ],
     include_prefix = "cluster_link",
     visibility = ["//src/v/cluster_link:__subpackages__"],
@@ -102,6 +103,7 @@ redpanda_cc_library(
         "//src/v/transform/rpc",
         "//src/v/utils:unresolved_address",
         "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
         "@seastar",
     ],
 )
