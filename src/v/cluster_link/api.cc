@@ -13,6 +13,7 @@
 
 #include "base/outcome.h"
 #include "cluster/panda_link_frontend.h"
+#include "cluster/partition_manager.h"
 #include "cluster_link/logger.h"
 #include "cluster_link/panda_link_manager.h"
 #include "kafka/client/client.h"
@@ -147,11 +148,13 @@ service::service(
   model::node_id self,
   ss::sharded<cluster::panda_link_frontend>* pl_frontend,
   std::unique_ptr<transform::rpc::topic_creator> topic_creator,
-  ss::sharded<cluster::partition_manager>* partition_manager)
+  ss::sharded<cluster::partition_manager>* partition_manager,
+  ss::sharded<raft::group_manager>* group_manager)
   : _self(self)
   , _pl_frontend(pl_frontend)
   , _topic_creator(std::move(topic_creator))
-  , _partition_manager(partition_manager) {}
+  , _partition_manager(partition_manager)
+  , _group_manager(group_manager) {}
 
 service::~service() = default;
 
@@ -224,6 +227,74 @@ void service::register_notifications() {
       [this](model::panda_link_id id) { _manager->on_link_change(id); });
     _notification_cleanups.emplace_back([this, pl_notif_id] {
         _pl_frontend->local().unregister_for_updates(pl_notif_id);
+    });
+    auto leadership_notif_id
+      = _group_manager->local().register_leadership_notification(
+        [this](
+          raft::group_id group_id,
+          model::term_id,
+          std::optional<model::node_id> leader) {
+            vlog(
+              cllog.trace,
+              "leadership_notification: group_id: {}, leader: {}",
+              group_id,
+              leader);
+            auto partition = _partition_manager->local().partition_for(
+              group_id);
+            if (!partition) {
+                vlog(
+                  cllog.debug,
+                  "got leadership notification for unknown partition: {}",
+                  group_id);
+                return;
+            }
+            vlog(cllog.trace, "ntp: {}", partition->ntp());
+            bool node_is_leader = leader.has_value() && leader == _self;
+            if (!node_is_leader) {
+                _manager->on_leadership_change(
+                  partition->ntp(), ntp_leader::yes);
+                return;
+            }
+            if (partition->ntp().ns != model::kafka_namespace) {
+                return;
+            }
+            ntp_leader is_leader = partition && partition->is_elected_leader()
+                                     ? ntp_leader::yes
+                                     : ntp_leader::no;
+            _manager->on_leadership_change(partition->ntp(), is_leader);
+        });
+    _notification_cleanups.emplace_back([this, leadership_notif_id] {
+        _group_manager->local().unregister_leadership_notification(
+          leadership_notif_id);
+    });
+    auto unmanage_notification_id
+      = _partition_manager->local().register_unmanage_notification(
+        model::kafka_namespace, [this](model::topic_partition_view tp) {
+            vlog(
+              cllog.trace,
+              "unmanage_notification: {}:{}",
+              tp.topic,
+              tp.partition);
+            _manager->on_leadership_change(
+              model::ntp(model::kafka_namespace, tp.topic, tp.partition),
+              ntp_leader::no);
+        });
+    _notification_cleanups.emplace_back([this, unmanage_notification_id] {
+        _partition_manager->local().unregister_unmanage_notification(
+          unmanage_notification_id);
+    });
+    auto manage_notifications_id
+      = _partition_manager->local().register_manage_notification(
+        model::kafka_namespace,
+        [this](const ss::lw_shared_ptr<cluster::partition>& p) {
+            vlog(cllog.trace, "manage_notification: {}", p->ntp());
+            ntp_leader is_leader = p->is_elected_leader() ? ntp_leader::yes
+                                                          : ntp_leader::no;
+            _manager->on_leadership_change(p->ntp(), is_leader);
+        });
+    _notification_cleanups.emplace_back([this, manage_notifications_id] {
+        _partition_manager->local().unregister_manage_notification(
+          manage_notifications_id);
     });
 }
 

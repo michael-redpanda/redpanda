@@ -32,13 +32,17 @@ ss::future<void> manager::start() {
 }
 
 ss::future<void> manager::stop() {
-    vlog(cllog.info, , "Stopping panda link manager");
+    vlog(cllog.info, "Stopping panda link manager");
     co_await _queue.shutdown();
     vlog(cllog.info, "Stopped panda link manager");
 }
 
 void manager::on_link_change(model::panda_link_id id) {
     _queue.submit([this, id] { return handle_link_change(id); });
+}
+
+void manager::on_leadership_change(model::ntp ntp, ntp_leader is_leader) {
+    vlog(cllog.trace, "ntp: {}, is_leader: {}", ntp, is_leader);
 }
 
 ss::future<> manager::handle_link_change(model::panda_link_id id) {

@@ -14,9 +14,13 @@
 #include "model/panda_link.h"
 #include "ssx/work_queue.h"
 
+#include <seastar/util/bool_class.hh>
+
 #include <absl/container/flat_hash_map.h>
 
 namespace cluster_link {
+
+using ntp_leader = ss::bool_class<struct is_ntp_leader_tag>;
 
 class panda_link_registry {
 public:
@@ -65,6 +69,8 @@ public:
     ss::future<void> stop();
 
     void on_link_change(model::panda_link_id);
+
+    void on_leadership_change(model::ntp, ntp_leader);
 
 private:
     ss::future<> handle_link_change(model::panda_link_id);
