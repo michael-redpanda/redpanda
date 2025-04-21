@@ -428,6 +428,13 @@ public:
         kafka::partition_proxy*)> fn) final {
         return invoke_on_shard_impl(shard_id, ntp, std::move(fn));
     }
+    ss::future<result<kafka::offset, cluster::errc>> invoke_on_shard(
+      ss::shard_id shard,
+      const model::ntp& ntp,
+      ss::noncopyable_function<ss::future<result<kafka::offset, cluster::errc>>(
+        kafka::partition_proxy*)> fn) final {
+        return invoke_on_shard_impl(shard, ntp, std::move(fn));
+    }
 
     ss::future<find_coordinator_response> invoke_on_shard(
       ss::shard_id shard_id,

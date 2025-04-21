@@ -61,6 +61,13 @@ public:
     ss::future<cluster::errc> delete_committed_offsets(
       model::partition_id, absl::btree_set<model::transform_id>);
 
+    ss::future<write_at_offset_reply> write_at_offset(
+      model::topic_partition,
+      model::record_batch,
+      kafka::offset,
+      std::optional<kafka::offset>,
+      model::timeout_clock::duration);
+
 private:
     ss::future<transformed_topic_data_result>
       produce(transformed_topic_data, model::timeout_clock::duration);
@@ -73,6 +80,13 @@ private:
     ss::future<result<model::wasm_binary_iobuf, cluster::errc>>
       consume_wasm_binary_reader(
         model::record_batch_reader, model::timeout_clock::duration);
+
+    ss::future<result<kafka::offset, cluster::errc>> write_at_offset(
+      model::any_ntp auto,
+      model::record_batch,
+      kafka::offset,
+      std::optional<kafka::offset>,
+      model::timeout_clock::duration);
 
     std::unique_ptr<topic_metadata_cache> _metadata_cache;
     std::unique_ptr<partition_manager> _partition_manager;

@@ -21,6 +21,7 @@
 #include "model/timeout_clock.h"
 #include "model/transform.h"
 #include "raft/errc.h"
+#include "raft/replicate.h"
 #include "resource_mgmt/io_priority.h"
 #include "storage/record_batch_builder.h"
 #include "storage/types.h"
@@ -279,6 +280,54 @@ local_service::consume_wasm_binary_reader(
       std::make_unique<iobuf>(std::move(data)));
 }
 
+ss::future<result<kafka::offset, cluster::errc>> local_service::write_at_offset(
+  model::any_ntp auto ntp,
+  model::record_batch batch,
+  kafka::offset expected_base_offset,
+  std::optional<kafka::offset> prev_log_offset,
+  model::timeout_clock::duration timeout) {
+    auto shard = _partition_manager->shard_owner(ntp);
+    if (!shard) {
+        co_return cluster::errc::not_leader;
+    }
+    auto topic_cfg = _metadata_cache->find_topic_cfg(
+      model::topic_namespace_view(ntp));
+    if (!topic_cfg) {
+        co_return cluster::errc::topic_not_exists;
+    }
+    uint32_t max_batch_size = topic_cfg->properties.batch_max_bytes.value_or(
+      _metadata_cache->get_default_batch_max_bytes());
+    if (static_cast<uint32_t>(batch.size_bytes()) > max_batch_size)
+      [[unlikely]] {
+        co_return cluster::errc::invalid_request;
+    }
+
+    co_return co_await _partition_manager->invoke_on_shard(
+      *shard,
+      ntp,
+      [timeout,
+       batch = std::move(batch),
+       expected_base_offset,
+       prev_log_offset](kafka::partition_proxy* partition) mutable
+      -> ss::future<result<kafka::offset, cluster::errc>> {
+          auto [dispatched, replicated] = partition->write_at_offset(
+            std::move(batch), expected_base_offset, prev_log_offset, timeout);
+          return dispatched
+            .then([replicated = std::move(replicated)]() mutable {
+                return std::move(replicated);
+            })
+            .then(
+              [](result<raft::replicate_result> r)
+                -> result<kafka::offset, cluster::errc> {
+                  if (r.has_error()) {
+                      return map_errc(r.assume_error());
+                  }
+                  auto res = r.value();
+                  return kafka::offset(res.last_offset());
+              });
+      });
+}
+
 ss::future<find_coordinator_response>
 local_service::find_coordinator(find_coordinator_request request) {
     model::ntp ntp(
@@ -357,6 +406,31 @@ ss::future<cluster::errc> local_service::delete_committed_offsets(
     }
     co_return co_await _partition_manager->delete_committed_offsets_on_shard(
       *shard, ntp, std::move(ids));
+}
+
+ss::future<write_at_offset_reply> local_service::write_at_offset(
+  model::topic_partition tp,
+  model::record_batch batch,
+  kafka::offset expected_base_offset,
+  std::optional<kafka::offset> prev_log_offset,
+  model::timeout_clock::duration timeout) {
+    model::ntp ntp(model::kafka_namespace, tp.topic, tp.partition);
+    auto shard = _partition_manager->shard_owner(ntp);
+    if (!shard) {
+        co_return write_at_offset_reply(
+          cluster::errc::not_leader, kafka::offset{-1});
+    }
+    auto res = co_await write_at_offset(
+      std::move(ntp),
+      std::move(batch),
+      expected_base_offset,
+      prev_log_offset,
+      timeout);
+    if (res.has_error()) {
+        co_return write_at_offset_reply(res.error(), kafka::offset{-1});
+    } else {
+        co_return write_at_offset_reply(cluster::errc::success, res.value());
+    }
 }
 
 ss::future<produce_reply>
@@ -444,8 +518,19 @@ ss::future<generate_report_reply> network_service::generate_report(
 }
 
 ss::future<write_at_offset_reply> network_service::write_at_offset(
-  write_at_offset_request, ::rpc::streaming_context&) {
-    co_return write_at_offset_reply(cluster::errc::not_leader, kafka::offset{});
+  write_at_offset_request req, ::rpc::streaming_context&) {
+    if (!req.batch.has_value()) {
+        co_return write_at_offset_reply(
+          cluster::errc::success, kafka::offset{-1});
+    }
+    co_await ss::coroutine::switch_to(get_scheduling_group());
+    auto resp = co_await _service->local().write_at_offset(
+      std::move(req.tp),
+      std::move(req.batch.value()),
+      req.expected_base_offset,
+      req.prev_log_offset,
+      req.timeout);
+    co_return resp;
 }
 
 } // namespace transform::rpc

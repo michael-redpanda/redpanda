@@ -176,6 +176,14 @@ public:
           });
     }
 
+    ss::future<result<kafka::offset, cluster::errc>> invoke_on_shard(
+      ss::shard_id shard,
+      const model::ntp& ntp,
+      ss::noncopyable_function<ss::future<result<kafka::offset, cluster::errc>>(
+        kafka::partition_proxy*)> fn) final {
+        return invoke_on_shard_impl(shard, ntp, std::move(fn));
+    }
+
 private:
     static constexpr auto coordinator_partition = model::partition_id{0};
 

@@ -228,6 +228,13 @@ public:
     virtual ss::future<cluster::errc> delete_committed_offsets_on_shard(
       ss::shard_id, const model::ntp&, absl::btree_set<model::transform_id>)
       = 0;
+
+    virtual ss::future<result<kafka::offset, cluster::errc>> invoke_on_shard(
+      ss::shard_id,
+      const model::ntp&,
+      ss::noncopyable_function<ss::future<result<kafka::offset, cluster::errc>>(
+        kafka::partition_proxy*)>)
+      = 0;
 };
 
 }; // namespace transform::rpc
