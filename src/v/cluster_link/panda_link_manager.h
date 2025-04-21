@@ -46,7 +46,7 @@ public:
 
     virtual ss::future<std::unique_ptr<panda_link>> create(
       std::vector<net::unresolved_address> source_broker_bootstrap_servers,
-      std::vector<model::topic> mirrored_topics)
+      std::vector<model::topic_namespace> mirrored_topics)
       = 0;
 };
 

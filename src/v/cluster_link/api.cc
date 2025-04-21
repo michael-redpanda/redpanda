@@ -41,7 +41,7 @@ public:
 
     ss::future<std::unique_ptr<panda_link>> create(
       std::vector<net::unresolved_address> source_broker_bootstrap_servers,
-      std::vector<model::topic> mirrored_topics) override {
+      std::vector<model::topic_namespace> mirrored_topics) override {
         co_return std::make_unique<panda_link>(
           std::move(source_broker_bootstrap_servers),
           std::move(mirrored_topics),
@@ -68,7 +68,7 @@ struct topic_data {
     cluster::topic_properties properties{};
 };
 
-ss::future<result<absl::flat_hash_map<model::topic, topic_data>>>
+ss::future<result<absl::flat_hash_map<model::topic_namespace, topic_data>>>
 get_topic_configs(const model::panda_link_metadata& meta) {
     try {
         vlog(
@@ -108,15 +108,15 @@ get_topic_configs(const model::panda_link_metadata& meta) {
               return ct;
           };
         auto topics = meta.mirrored_topics;
-        absl::flat_hash_map<model::topic, topic_data> configs;
+        absl::flat_hash_map<model::topic_namespace, topic_data> configs;
         for (const auto& topic : topics) {
             vlog(cllog.trace, "Getting config for topic {}", topic);
             auto response = co_await client->describe_topic(
-              topic, std::nullopt);
+              topic.tp, std::nullopt);
             vlog(cllog.trace, "Got config for topic {}: {}", topic, response);
-            auto td = get_topic_data(topic);
+            auto td = get_topic_data(topic.tp);
             auto ct = create_creatable_topic_config(
-              topic, td, response.data.results[0]);
+              topic.tp, td, response.data.results[0]);
             auto cluster_type = kafka::to_cluster_type(ct);
             configs.emplace(
               topic,
@@ -218,7 +218,7 @@ service::create_link(model::panda_link_metadata meta) {
 
     for (const auto& [topic, topic_data] : cfgs) {
         auto ec = co_await _topic_creator->create_topic(
-          model::topic_namespace{model::ns{model::kafka_ns_view}, topic},
+          topic,
           topic_data.partition_count,
           topic_data.replication_factor,
           topic_data.properties);

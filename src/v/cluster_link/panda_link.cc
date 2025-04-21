@@ -26,7 +26,7 @@ using kc_config = kafka::client::configuration;
 namespace cluster_link {
 panda_link::panda_link(
   std::vector<net::unresolved_address> source_broker_bootstrap_servers,
-  std::vector<model::topic> mirrored_topics,
+  std::vector<model::topic_namespace> mirrored_topics,
   std::unique_ptr<transform::rpc::topic_metadata_cache> topic_metadata,
   std::unique_ptr<transform::rpc::topic_creator> topic_creator)
   : _source_broker_bootstrap_servers(std::move(source_broker_bootstrap_servers))
@@ -101,7 +101,7 @@ kc_config panda_link::create_kafka_client_config(
 panda_link::topic_monitor::topic_monitor(
   kafka::client::client* client,
   ss::lowres_clock::duration interval,
-  std::vector<model::topic> topics,
+  std::vector<model::topic_namespace> topics,
   transform::rpc::topic_metadata_cache* topic_metadata,
   transform::rpc::topic_creator* topic_creator)
   : _client(client)
@@ -124,12 +124,12 @@ ss::future<> panda_link::topic_monitor::stop() {
 
 ss::future<> panda_link::topic_monitor::monitor_topics() {
     const auto create_metadata_request =
-      [](const std::vector<model::topic>& topics) {
+      [](const std::vector<model::topic_namespace>& topics) {
           chunked_vector<kafka::metadata_request_topic> req_topics;
           req_topics.reserve(topics.size());
-          std::ranges::for_each(topics, [&req_topics](const auto& topic) {
+          std::ranges::for_each(topics, [&req_topics](const auto& tp_ns) {
               req_topics.emplace_back(
-                kafka::metadata_request_topic{.name = topic});
+                kafka::metadata_request_topic{.name = tp_ns.tp});
           });
           return kafka::metadata_request{
             .data = {
@@ -146,11 +146,14 @@ ss::future<> panda_link::topic_monitor::monitor_topics() {
         auto resp = co_await _client->get_metadata(
           create_metadata_request(_topics));
         vlog(cllog.trace, "metadata response: {}", resp);
-        absl::flat_hash_map<model::topic, kafka::describe_configs_response>
+        absl::flat_hash_map<
+          model::topic_namespace,
+          kafka::describe_configs_response>
           configs;
         configs.reserve(_topics.size());
         for (const auto& topic : _topics) {
-            auto resp = co_await _client->describe_topic(topic, std::nullopt);
+            auto resp = co_await _client->describe_topic(
+              topic.tp, std::nullopt);
             vlog(
               cllog.trace, "describe topic response for {}: {}", topic, resp);
             configs.emplace(topic, std::move(resp));
@@ -158,14 +161,13 @@ ss::future<> panda_link::topic_monitor::monitor_topics() {
         for (const auto& topic : _topics) {
             auto metadata_it = std::ranges::find_if(
               resp.data.topics,
-              [&topic](const auto& t) { return t.name == topic; });
+              [&topic](const auto& t) { return t.name == topic.tp; });
             if (metadata_it == resp.data.topics.end()) {
                 vlog(
                   cllog.warn, "Topic {} not found in metadata response", topic);
                 continue;
             }
-            auto local_topic_metadata = _topic_metadata->find_topic_cfg(
-              {model::ns{model::kafka_ns_view}, topic});
+            auto local_topic_metadata = _topic_metadata->find_topic_cfg(topic);
             if (!local_topic_metadata.has_value()) {
                 vlog(cllog.warn, "Topic {} not found locally", topic);
                 continue;
@@ -190,9 +192,7 @@ ss::future<> panda_link::topic_monitor::monitor_topics() {
                     continue;
                 }
                 auto res = co_await _topic_creator->create_partitions(
-                  {model::topic_namespace{
-                     model::ns{model::kafka_ns_view}, topic},
-                   remote_partition_count});
+                  {topic, remote_partition_count});
                 if (res != cluster::errc::success) {
                     vlog(
                       cllog.warn,

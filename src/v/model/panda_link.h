@@ -42,7 +42,7 @@ struct panda_link_metadata
     /// Bootstrap server of the source cluster
     std::vector<net::unresolved_address> source_cluster_bootstrap_server;
     /// The topics to mirror
-    std::vector<model::topic> mirrored_topics;
+    std::vector<model::topic_namespace> mirrored_topics;
 
     friend bool
     operator==(const panda_link_metadata&, const panda_link_metadata&)

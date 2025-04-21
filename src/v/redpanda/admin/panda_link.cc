@@ -11,6 +11,7 @@
 
 #include "base/outcome.h"
 #include "cluster_link/api.h"
+#include "model/namespace.h"
 #include "redpanda/admin/api-doc/panda_link.json.hh"
 #include "redpanda/admin/server.h"
 
@@ -217,10 +218,10 @@ ss::future<std::unique_ptr<ss::http::reply>> admin_server::post_panda_link(
           std::move(topics).assume_error(), std::move(rep));
     }
 
-    std::vector<model::topic> topics_array;
+    std::vector<model::topic_namespace> topics_array;
     topics_array.reserve(topics.assume_value().size());
     for (const auto& topic : topics.assume_value()) {
-        topics_array.emplace_back(topic);
+        topics_array.emplace_back(model::kafka_namespace, model::topic{topic});
     }
 
     auto name_copy = name.assume_value();
