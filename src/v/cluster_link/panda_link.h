@@ -23,7 +23,8 @@ namespace cluster_link {
 class panda_link {
 public:
     explicit panda_link(
-      std::vector<net::unresolved_address> _source_broker_bootstrap_servers);
+      std::vector<net::unresolved_address> _source_broker_bootstrap_servers,
+      std::vector<model::topic> mirrored_topics);
     panda_link(const panda_link&) = delete;
     panda_link& operator=(const panda_link&) = delete;
     panda_link(panda_link&&) = delete;
@@ -41,7 +42,9 @@ private:
 
 private:
     std::vector<net::unresolved_address> _source_broker_bootstrap_servers;
+    std::vector<model::topic> _mirrored_topics;
     kafka::client::configuration _kc_config;
     std::unique_ptr<kafka::client::client> _client;
+    ss::gate _gate;
 };
 } // namespace cluster_link

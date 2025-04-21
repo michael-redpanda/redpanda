@@ -32,11 +32,12 @@ constexpr auto metadata_timeout = std::chrono::seconds(1);
 
 class pl_factory : public panda_link_factory {
 public:
-    ss::future<std::unique_ptr<panda_link>>
-    create(std::vector<net::unresolved_address> source_broker_bootstrap_servers)
-      override {
+    ss::future<std::unique_ptr<panda_link>> create(
+      std::vector<net::unresolved_address> source_broker_bootstrap_servers,
+      std::vector<model::topic> mirrored_topics) override {
         co_return std::make_unique<panda_link>(
-          std::move(source_broker_bootstrap_servers));
+          std::move(source_broker_bootstrap_servers),
+          std::move(mirrored_topics));
     }
 };
 

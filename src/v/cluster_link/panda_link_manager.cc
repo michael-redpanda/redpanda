@@ -80,7 +80,7 @@ ss::future<> manager::handle_link_change(model::panda_link_id id) {
       meta->source_cluster_bootstrap_server);
 
     auto link = co_await _factory->create(
-      meta->source_cluster_bootstrap_server);
+      meta->source_cluster_bootstrap_server, meta->mirrored_topics);
     co_await link->start();
     _links.emplace(id, std::move(link));
     vlog(

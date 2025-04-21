@@ -44,8 +44,9 @@ public:
     panda_link_factory& operator=(panda_link_factory&&) = default;
     virtual ~panda_link_factory() = default;
 
-    virtual ss::future<std::unique_ptr<panda_link>>
-    create(std::vector<net::unresolved_address> source_broker_bootstrap_servers)
+    virtual ss::future<std::unique_ptr<panda_link>> create(
+      std::vector<net::unresolved_address> source_broker_bootstrap_servers,
+      std::vector<model::topic> mirrored_topics)
       = 0;
 };
 

@@ -22,8 +22,10 @@ using kc_config = kafka::client::configuration;
 
 namespace cluster_link {
 panda_link::panda_link(
-  std::vector<net::unresolved_address> source_broker_bootstrap_servers)
+  std::vector<net::unresolved_address> source_broker_bootstrap_servers,
+  std::vector<model::topic> mirrored_topics)
   : _source_broker_bootstrap_servers(std::move(source_broker_bootstrap_servers))
+  , _mirrored_topics(std::move(mirrored_topics))
   , _kc_config(create_kafka_client_config(_source_broker_bootstrap_servers)) {}
 
 ss::future<> panda_link::start() {
@@ -45,6 +47,7 @@ ss::future<> panda_link::stop() {
         co_await _client->stop();
         _client.reset();
     }
+    co_await _gate.close();
     vlog(
       cllog.trace,
       "Panda link to {} stopped",
