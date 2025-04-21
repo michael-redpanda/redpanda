@@ -26,7 +26,8 @@ public:
     service(
       model::node_id self,
       ss::sharded<cluster::panda_link_frontend>* pl_frontend,
-      std::unique_ptr<transform::rpc::topic_creator> topic_creator);
+      std::unique_ptr<transform::rpc::topic_creator> topic_creator,
+      ss::sharded<cluster::partition_manager>* partition_manager);
     service(const service&) = delete;
     service& operator=(const service&) = delete;
     service(service&&) = delete;
@@ -47,6 +48,7 @@ private:
     model::node_id _self;
     ss::sharded<cluster::panda_link_frontend>* _pl_frontend;
     std::unique_ptr<transform::rpc::topic_creator> _topic_creator;
+    ss::sharded<cluster::partition_manager>* _partition_manager;
     std::unique_ptr<manager> _manager;
     std::vector<ss::deferred_action<ss::noncopyable_function<void()>>>
       _notification_cleanups;

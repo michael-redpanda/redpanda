@@ -17,6 +17,7 @@
 #include "cluster_link/panda_link_manager.h"
 #include "kafka/client/client.h"
 #include "kafka/client/exceptions.h"
+#include "kafka/server/handlers/topics/types.h"
 #include "model/panda_link.h"
 #include "utils/unresolved_address.h"
 
@@ -46,23 +47,69 @@ std::unique_ptr<kc> create_kafka_client(
       config::to_yaml(cfg, config::redact_secrets::no));
 }
 
-ss::future<
-  result<absl::flat_hash_map<model::topic, kafka::describe_configs_response>>>
+struct topic_data {
+    int32_t partition_count{-1};
+    int16_t replication_factor{-1};
+    cluster::topic_properties properties{};
+};
+
+ss::future<result<absl::flat_hash_map<model::topic, topic_data>>>
 get_topic_configs(const model::panda_link_metadata& meta) {
     try {
         vlog(
           cllog.debug, "Attempting to get topic config for link {}", meta.name);
         auto client = create_kafka_client(meta.source_cluster_bootstrap_server);
         co_await client->connect();
+        auto metadata_resp = co_await client->get_metadata();
+        auto metadata_topics = std::move(metadata_resp.data.topics);
+        const auto get_topic_data = [&metadata_topics](model::topic_view tp) {
+            auto it = std::ranges::find_if(
+              metadata_topics,
+              [&tp](const auto& topic) { return topic.name == tp; });
+            if (it == metadata_topics.end()) {
+                throw kafka::client::topic_error(
+                  tp, kafka::error_code::unknown_topic_or_partition);
+            }
+            return topic_data{
+              .partition_count = static_cast<int32_t>(it->partitions.size()),
+              .replication_factor = static_cast<int16_t>(
+                it->partitions[0].replica_nodes.size()),
+            };
+        };
+        const auto create_creatable_topic_config =
+          [](
+            model::topic_view topic,
+            const topic_data& td,
+            const kafka::describe_configs_result& configs) {
+              kafka::creatable_topic ct;
+              ct.name = topic;
+              ct.num_partitions = td.partition_count;
+              ct.replication_factor = td.replication_factor;
+              ct.configs.reserve(configs.configs.size());
+              for (const auto& config : configs.configs) {
+                  ct.configs.emplace_back(kafka::createable_topic_config{
+                    .name = config.name, .value = config.value});
+              }
+              return ct;
+          };
         auto topics = meta.mirrored_topics;
-        absl::flat_hash_map<model::topic, kafka::describe_configs_response>
-          configs;
+        absl::flat_hash_map<model::topic, topic_data> configs;
         for (const auto& topic : topics) {
             vlog(cllog.trace, "Getting config for topic {}", topic);
             auto response = co_await client->describe_topic(
               topic, std::nullopt);
             vlog(cllog.trace, "Got config for topic {}: {}", topic, response);
-            configs.emplace(topic, std::move(response));
+            auto td = get_topic_data(topic);
+            auto ct = create_creatable_topic_config(
+              topic, td, response.data.results[0]);
+            auto cluster_type = kafka::to_cluster_type(ct);
+            configs.emplace(
+              topic,
+              topic_data{
+                .partition_count = cluster_type.cfg.partition_count,
+                .replication_factor = cluster_type.cfg.replication_factor,
+                .properties = std::move(cluster_type.cfg.properties),
+              });
         }
         co_await client->stop();
         client.reset(nullptr);
@@ -99,10 +146,12 @@ private:
 service::service(
   model::node_id self,
   ss::sharded<cluster::panda_link_frontend>* pl_frontend,
-  std::unique_ptr<transform::rpc::topic_creator> topic_creator)
+  std::unique_ptr<transform::rpc::topic_creator> topic_creator,
+  ss::sharded<cluster::partition_manager>* partition_manager)
   : _self(self)
   , _pl_frontend(pl_frontend)
-  , _topic_creator(std::move(topic_creator)) {}
+  , _topic_creator(std::move(topic_creator))
+  , _partition_manager(partition_manager) {}
 
 service::~service() = default;
 
@@ -145,6 +194,23 @@ service::create_link(model::panda_link_metadata meta) {
         co_return cfgs_rv.assume_error();
     }
     auto cfgs = std::move(cfgs_rv).assume_value();
+
+    for (const auto& [topic, topic_data] : cfgs) {
+        auto ec = co_await _topic_creator->create_topic(
+          model::topic_namespace{model::ns{model::kafka_ns_view}, topic},
+          topic_data.partition_count,
+          topic_data.replication_factor,
+          topic_data.properties);
+        if (ec != cluster::errc::success) {
+            vlog(
+              cllog.error,
+              "failed to create topic {} for link {}: {}",
+              topic,
+              meta.name,
+              cluster::make_error_code(ec).message());
+            co_return cluster::make_error_code(ec);
+        }
+    }
 
     auto name = meta.name;
     auto ec = co_await _pl_frontend->local().upsert_panda_link(
