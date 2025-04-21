@@ -20,6 +20,7 @@
 #include "kafka/client/exceptions.h"
 #include "kafka/server/handlers/topics/types.h"
 #include "model/panda_link.h"
+#include "transform/rpc/deps.h"
 #include "utils/unresolved_address.h"
 
 #include <seastar/util/later.hh>
@@ -32,13 +33,20 @@ constexpr auto metadata_timeout = std::chrono::seconds(1);
 
 class pl_factory : public panda_link_factory {
 public:
+    explicit pl_factory(ss::sharded<cluster::metadata_cache>* metadata_cache)
+      : _metadata_cache(metadata_cache) {}
+
     ss::future<std::unique_ptr<panda_link>> create(
       std::vector<net::unresolved_address> source_broker_bootstrap_servers,
       std::vector<model::topic> mirrored_topics) override {
         co_return std::make_unique<panda_link>(
           std::move(source_broker_bootstrap_servers),
-          std::move(mirrored_topics));
+          std::move(mirrored_topics),
+          transform::rpc::topic_metadata_cache::make_default(_metadata_cache));
     }
+
+private:
+    ss::sharded<cluster::metadata_cache>* _metadata_cache;
 };
 
 std::unique_ptr<kc> create_kafka_client(
@@ -150,12 +158,14 @@ service::service(
   ss::sharded<cluster::panda_link_frontend>* pl_frontend,
   std::unique_ptr<transform::rpc::topic_creator> topic_creator,
   ss::sharded<cluster::partition_manager>* partition_manager,
-  ss::sharded<raft::group_manager>* group_manager)
+  ss::sharded<raft::group_manager>* group_manager,
+  ss::sharded<cluster::metadata_cache>* metadata_cache)
   : _self(self)
   , _pl_frontend(pl_frontend)
   , _topic_creator(std::move(topic_creator))
   , _partition_manager(partition_manager)
-  , _group_manager(group_manager) {}
+  , _group_manager(group_manager)
+  , _metadata_cache(metadata_cache) {}
 
 service::~service() = default;
 
@@ -163,7 +173,7 @@ ss::future<> service::start() {
     _manager = std::make_unique<manager>(
       _self,
       std::make_unique<panda_link_registry_adapter>(&_pl_frontend->local()),
-      std::make_unique<pl_factory>());
+      std::make_unique<pl_factory>(_metadata_cache));
 
     co_await _manager->start();
 

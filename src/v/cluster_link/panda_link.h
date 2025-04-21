@@ -14,6 +14,7 @@
 #include "base/seastarx.h"
 #include "kafka/client/client.h"
 #include "kafka/client/configuration.h"
+#include "transform/rpc/deps.h"
 #include "utils/unresolved_address.h"
 
 #include <seastar/core/future.hh>
@@ -24,7 +25,8 @@ class panda_link {
 public:
     explicit panda_link(
       std::vector<net::unresolved_address> _source_broker_bootstrap_servers,
-      std::vector<model::topic> mirrored_topics);
+      std::vector<model::topic> mirrored_topics,
+      std::unique_ptr<transform::rpc::topic_metadata_cache> topic_metadata);
     panda_link(const panda_link&) = delete;
     panda_link& operator=(const panda_link&) = delete;
     panda_link(panda_link&&) = delete;
@@ -48,7 +50,8 @@ private:
         topic_monitor(
           kafka::client::client* client,
           ss::lowres_clock::duration interval,
-          std::vector<model::topic> topics);
+          std::vector<model::topic> topics,
+          transform::rpc::topic_metadata_cache* topic_metadata);
         ss::future<> start();
         ss::future<> stop();
 
@@ -59,6 +62,7 @@ private:
         kafka::client::client* _client;
         ss::lowres_clock::duration _monitor_interval{std::chrono::seconds(5)};
         std::vector<model::topic> _topics;
+        transform::rpc::topic_metadata_cache* _topic_metadata;
 
         ss::abort_source _as;
         ss::gate _gate;
@@ -67,6 +71,7 @@ private:
 private:
     std::vector<net::unresolved_address> _source_broker_bootstrap_servers;
     std::vector<model::topic> _mirrored_topics;
+    std::unique_ptr<transform::rpc::topic_metadata_cache> _topic_metadata;
     kafka::client::configuration _kc_config;
     std::unique_ptr<kafka::client::client> _client;
     std::optional<topic_monitor> _topic_monitor;

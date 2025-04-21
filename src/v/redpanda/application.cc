@@ -1355,7 +1355,8 @@ void application::wire_up_runtime_services(
           return transform::rpc::topic_creator::make_default(controller.get());
       }),
       &partition_manager,
-      &raft_group_manager)
+      &raft_group_manager,
+      &metadata_cache)
       .get();
 
     if (datalake_enabled()) {

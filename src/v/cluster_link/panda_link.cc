@@ -15,6 +15,7 @@
 #include "cluster_link/logger.h"
 #include "kafka/protocol/metadata.h"
 #include "ssx/future-util.h"
+#include "transform/rpc/deps.h"
 #include "utils/unresolved_address.h"
 
 #include <seastar/util/later.hh>
@@ -25,9 +26,11 @@ using kc_config = kafka::client::configuration;
 namespace cluster_link {
 panda_link::panda_link(
   std::vector<net::unresolved_address> source_broker_bootstrap_servers,
-  std::vector<model::topic> mirrored_topics)
+  std::vector<model::topic> mirrored_topics,
+  std::unique_ptr<transform::rpc::topic_metadata_cache> topic_metadata)
   : _source_broker_bootstrap_servers(std::move(source_broker_bootstrap_servers))
   , _mirrored_topics(std::move(mirrored_topics))
+  , _topic_metadata(std::move(topic_metadata))
   , _kc_config(create_kafka_client_config(_source_broker_bootstrap_servers)) {}
 
 ss::future<> panda_link::start() {
@@ -66,7 +69,10 @@ ss::future<> panda_link::start_topic_monitoring() {
         co_return;
     }
     _topic_monitor.emplace(
-      _client.get(), std::chrono::seconds(5), _mirrored_topics);
+      _client.get(),
+      std::chrono::seconds(5),
+      _mirrored_topics,
+      _topic_metadata.get());
     co_await _topic_monitor->start();
 }
 
@@ -92,10 +98,12 @@ kc_config panda_link::create_kafka_client_config(
 panda_link::topic_monitor::topic_monitor(
   kafka::client::client* client,
   ss::lowres_clock::duration interval,
-  std::vector<model::topic> topics)
+  std::vector<model::topic> topics,
+  transform::rpc::topic_metadata_cache* topic_metadata)
   : _client(client)
   , _monitor_interval(interval)
-  , _topics(std::move(topics)) {}
+  , _topics(std::move(topics))
+  , _topic_metadata(topic_metadata) {}
 
 ss::future<> panda_link::topic_monitor::start() {
     vlog(cllog.trace, "Starting topic monitor");
@@ -141,6 +149,42 @@ ss::future<> panda_link::topic_monitor::monitor_topics() {
             vlog(
               cllog.trace, "describe topic response for {}: {}", topic, resp);
             configs.emplace(topic, std::move(resp));
+        }
+        for (const auto& topic : _topics) {
+            auto metadata_it = std::ranges::find_if(
+              resp.data.topics,
+              [&topic](const auto& t) { return t.name == topic; });
+            if (metadata_it == resp.data.topics.end()) {
+                vlog(
+                  cllog.warn, "Topic {} not found in metadata response", topic);
+                continue;
+            }
+            auto local_topic_metadata = _topic_metadata->find_topic_cfg(
+              {model::ns{model::kafka_ns_view}, topic});
+            if (!local_topic_metadata.has_value()) {
+                vlog(cllog.warn, "Topic {} not found locally", topic);
+                continue;
+            }
+            auto remote_partition_count = static_cast<int32_t>(
+              metadata_it->partitions.size());
+            if (
+              remote_partition_count != local_topic_metadata->partition_count) {
+                vlog(
+                  cllog.info,
+                  "Topic {} partition count has changed: {}",
+                  topic,
+                  remote_partition_count);
+                if (
+                  remote_partition_count
+                  < local_topic_metadata->partition_count) {
+                    vlog(
+                      cllog.warn,
+                      "Shrinking partition count not supported: {} < {}",
+                      remote_partition_count,
+                      local_topic_metadata->partition_count);
+                    continue;
+                }
+            }
         }
         co_await ss::sleep_abortable(_monitor_interval, _as);
     }

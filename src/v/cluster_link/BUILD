@@ -99,6 +99,7 @@ redpanda_cc_library(
         "//src/v/kafka/client",
         "//src/v/model",
         "//src/v/ssx:work_queue",
+        "//src/v/transform/rpc",
         "//src/v/utils:unresolved_address",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@seastar",
