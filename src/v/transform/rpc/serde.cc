@@ -17,6 +17,8 @@
 
 #include <fmt/format.h>
 
+#include <ostream>
+
 namespace transform::rpc {
 transformed_topic_data::transformed_topic_data(
   model::topic_partition tp, model::record_batch b)
@@ -200,6 +202,24 @@ std::ostream& operator<<(std::ostream& os, const delete_commits_request& req) {
 
 std::ostream& operator<<(std::ostream& os, const delete_commits_reply& reply) {
     fmt::print(os, "{{ ec: {} }}", reply.errc);
+    return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const write_at_offset_request& req) {
+    fmt::print(
+      os,
+      "{{ tp: {}, batch_size: {}, expected_base_offset: {}, "
+      "prev_log_offset: {}, timeout: {} }}",
+      req.tp,
+      req.batch.has_value() ? req.batch->size_bytes() : 0,
+      req.expected_base_offset,
+      req.prev_log_offset,
+      req.timeout);
+    return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const write_at_offset_reply& reply) {
+    fmt::print(os, "{{ err: {}, offset: {} }}", reply.err, reply.offset);
     return os;
 }
 

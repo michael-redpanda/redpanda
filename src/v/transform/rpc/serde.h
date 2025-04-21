@@ -17,6 +17,7 @@
 #include "model/record.h"
 #include "model/timeout_clock.h"
 #include "model/transform.h"
+#include "rpc/parse_utils.h"
 #include "serde/envelope.h"
 #include "utils/uuid.h"
 
@@ -503,5 +504,62 @@ struct delete_commits_reply
     friend std::ostream& operator<<(std::ostream&, const delete_commits_reply&);
 
     cluster::errc errc{cluster::errc::success};
+};
+
+struct write_at_offset_request
+  : serde::envelope<
+      write_at_offset_request,
+      serde::version<0>,
+      serde::compat_version<0>> {
+    using rpc_adl_exempt = std::true_type;
+
+    write_at_offset_request() = default;
+
+    write_at_offset_request(
+      model::topic_partition tp,
+      model::record_batch b,
+      kafka::offset expected_base_offset,
+      std::optional<kafka::offset> prev_log_offset,
+      model::timeout_clock::duration timeout)
+      : tp(std::move(tp))
+      , batch(std::move(b))
+      , expected_base_offset(expected_base_offset)
+      , prev_log_offset(prev_log_offset)
+      , timeout(timeout) {}
+
+    auto serde_fields() {
+        return std::tie(
+          tp, batch, expected_base_offset, prev_log_offset, timeout);
+    }
+
+    model::topic_partition tp;
+    std::optional<model::record_batch> batch;
+    kafka::offset expected_base_offset;
+    std::optional<kafka::offset> prev_log_offset;
+    model::timeout_clock::duration timeout{};
+
+    friend std::ostream&
+    operator<<(std::ostream&, const write_at_offset_request&);
+};
+
+struct write_at_offset_reply
+  : serde::envelope<
+      write_at_offset_reply,
+      serde::version<0>,
+      serde::compat_version<0>> {
+    using rpc_adl_exempt = std::true_type;
+
+    write_at_offset_reply() = default;
+    explicit write_at_offset_reply(cluster::errc err, kafka::offset offset)
+      : err(err)
+      , offset(offset) {}
+
+    cluster::errc err{cluster::errc::success};
+    kafka::offset offset{};
+
+    auto serde_fields() { return std::tie(err, offset); }
+
+    friend std::ostream&
+    operator<<(std::ostream&, const write_at_offset_reply&);
 };
 } // namespace transform::rpc

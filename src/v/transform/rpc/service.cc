@@ -443,4 +443,9 @@ ss::future<generate_report_reply> network_service::generate_report(
     co_return generate_report_reply(std::move(report));
 }
 
+ss::future<write_at_offset_reply> network_service::write_at_offset(
+  write_at_offset_request, ::rpc::streaming_context&) {
+    co_return write_at_offset_reply(cluster::errc::not_leader, kafka::offset{});
+}
+
 } // namespace transform::rpc
