@@ -50,7 +50,7 @@ inline offset next_offset(offset p) {
 
 inline constexpr offset prev_offset(offset o) {
     if (o <= offset{0}) {
-        return offset{-1};
+        return offset{};
     }
     return o - offset{1};
 }
