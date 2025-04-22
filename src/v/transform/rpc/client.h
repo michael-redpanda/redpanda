@@ -150,6 +150,8 @@ public:
     ss::future<cluster::errc>
     delete_committed_offsets(absl::btree_set<model::transform_id> ids);
 
+    ss::future<result<model::offset, cluster::errc>> list_offset(model::ntp);
+
     ss::future<> start();
     ss::future<> stop();
 
@@ -247,6 +249,12 @@ private:
       model::partition_id,
       absl::btree_set<model::transform_id>,
       model::timeout_clock::duration timeout);
+
+    ss::future<result<model::offset, cluster::errc>> do_list_offset(model::ntp);
+    ss::future<result<model::offset, cluster::errc>>
+      do_local_list_offset(model::ntp);
+    ss::future<result<model::offset, cluster::errc>> do_remote_list_offset(
+      model::node_id, model::ntp, model::timeout_clock::duration timeout);
 
     template<typename Func>
     std::invoke_result_t<Func> retry(Func&&);

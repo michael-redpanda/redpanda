@@ -997,6 +997,57 @@ client::delete_committed_offsets(absl::btree_set<model::transform_id> ids) {
       });
 }
 
+ss::future<result<model::offset, cluster::errc>>
+client::list_offset(model::ntp ntp) {
+    return retry([this, ntp = std::move(ntp)] mutable {
+        return do_list_offset(std::move(ntp));
+    });
+}
+
+ss::future<result<model::offset, cluster::errc>>
+client::do_list_offset(model::ntp ntp) {
+    auto leader = _leaders->get_leader_node(ntp);
+    if (!leader) {
+        co_return cluster::errc::not_leader;
+    }
+    if (leader == _self) {
+        co_return co_await do_local_list_offset(std::move(ntp));
+    } else {
+        co_return co_await do_remote_list_offset(
+          *leader, std::move(ntp), timeout);
+    }
+}
+ss::future<result<model::offset, cluster::errc>>
+client::do_local_list_offset(model::ntp ntp) {
+    return _local_service->local().list_offset(std::move(ntp));
+}
+ss::future<result<model::offset, cluster::errc>> client::do_remote_list_offset(
+  model::node_id node, model::ntp ntp, model::timeout_clock::duration timeout) {
+    vlog(log.trace, "list_offset(node={}): {}", node, ntp);
+    auto resp
+      = co_await _connections->local()
+          .with_node_client<impl::transform_rpc_client_protocol>(
+            _self,
+            ss::this_shard_id(),
+            node,
+            timeout,
+            [ntp, timeout](impl::transform_rpc_client_protocol proto) mutable {
+                return proto.list_offset(
+                  list_offset_request(ntp),
+                  ::rpc::client_opts(model::timeout_clock::now() + timeout));
+            })
+          .then(&::rpc::get_ctx_data<list_offset_reply>);
+    vlog(log.trace, "list_offset(node={}): {}", node, resp);
+    if (resp.has_error()) {
+        co_return map_errc(resp.error());
+    }
+    if (resp.value().err != cluster::errc::success) {
+        co_return resp.value().err;
+    } else {
+        co_return resp.value().offset;
+    }
+}
+
 ss::future<cluster::errc> client::do_delete_committed_offsets(
   model::partition_id partition, absl::btree_set<model::transform_id> ids) {
     return retry([this, partition, ids = std::move(ids)] {
