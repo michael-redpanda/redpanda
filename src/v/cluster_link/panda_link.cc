@@ -14,6 +14,7 @@
 #include "base/vlog.h"
 #include "cluster_link/logger.h"
 #include "kafka/protocol/metadata.h"
+#include "model/fundamental.h"
 #include "ssx/future-util.h"
 #include "transform/rpc/deps.h"
 #include "utils/unresolved_address.h"
@@ -21,6 +22,8 @@
 #include <seastar/util/later.hh>
 
 #include <fmt/ranges.h>
+
+#include <variant>
 
 using kc = kafka::client::client;
 using kc_config = kafka::client::configuration;
@@ -260,9 +263,10 @@ ss::future<> panda_link::topic_monitor::monitor_topics() {
 panda_link::topic_mirroring::topic_mirroring(
   kafka::client::client* client,
   absl::flat_hash_set<model::ntp> ntps,
-  ss::sharded<transform::rpc::client>*)
+  ss::sharded<transform::rpc::client>* rpc_client)
   : _client(client)
-  , _mirrored_ntps(std::move(ntps)) {}
+  , _mirrored_ntps(std::move(ntps))
+  , _rpc_client(rpc_client) {}
 
 ss::future<> panda_link::topic_mirroring::start() {
     vlog(cllog.trace, "Starting topic mirroring for ntps {}", _mirrored_ntps);
@@ -293,19 +297,14 @@ ss::future<> panda_link::topic_mirroring::mirror_topics() {
     while (!_as.abort_requested()) {
         vlog(cllog.trace, "mirror topics run loop: {}", _mirrored_ntps);
         auto offsets = co_await fetch_offsets();
+        auto mirror_offsets = co_await get_mirror_topic_offsets();
+        auto fetch_plan = make_fetch_plan(std::move(offsets), mirror_offsets);
+        vlog(cllog.trace, "fetch plan: {}", fetch_plan);
         chunked_vector<ss::future<kafka::fetch_response>> fetch_futures;
-        for (const auto& [ntp, offset] : offsets) {
-            if (offset != model::offset(0)) {
-                // auto fetch_offset = offset - model::offset(1);
-                auto fetch_offset = model::offset{0};
-                vlog(
-                  cllog.debug,
-                  "Fetching offset {} from ntp {}",
-                  fetch_offset,
-                  ntp);
-                fetch_futures.emplace_back(_client->fetch_partition(
-                  ntp.tp, fetch_offset, 1024 * 1024, 5s));
-            }
+        for (const auto& [ntp, offset] : fetch_plan) {
+            vlog(cllog.debug, "Fetching offset {} from ntp {}", offset, ntp);
+            fetch_futures.emplace_back(
+              _client->fetch_partition(ntp.tp, offset, 1024 * 1024, 5s));
         }
 
         auto fetch_results = co_await ss::when_all(
@@ -320,7 +319,7 @@ ss::future<> panda_link::topic_mirroring::mirror_topics() {
                       res.data.error_code);
                     continue;
                 }
-                const auto& topics = res.data.topics;
+                auto& topics = res.data.topics;
                 if (topics.size() != 1 || topics[0].partitions.size() != 1) {
                     vlog(
                       cllog.warn,
@@ -328,7 +327,7 @@ ss::future<> panda_link::topic_mirroring::mirror_topics() {
                       res.data.error_code);
                     continue;
                 }
-                const auto& part = topics[0].partitions[0];
+                auto& part = topics[0].partitions[0];
                 if (part.error_code != kafka::error_code::none) {
                     vlog(
                       cllog.warn,
@@ -336,21 +335,114 @@ ss::future<> panda_link::topic_mirroring::mirror_topics() {
                       part.error_code);
                     continue;
                 }
+                model::ntp fetch_ntp(
+                  model::kafka_namespace, topics[0].name, part.partition_index);
+                vlog(cllog.info, "Processing fetch response for {}", fetch_ntp);
                 vlog(cllog.info, "Fetch response HWM: {}", part.high_watermark);
                 if (part.records.has_value()) {
                     auto batch_size = part.records->size_bytes();
                     auto is_end_of_stream = part.records->is_end_of_stream();
                     auto last_offset = part.records->last_offset();
+                    auto log_start = part.log_start_offset;
                     vlog(
                       cllog.info,
-                      "batch_size: {}, is_end_of_stream: {}, last_offset: {}",
+                      "batch_size: {}, is_end_of_stream: {}, last_offset: {}, "
+                      "log_start: {}",
                       batch_size,
                       is_end_of_stream,
-                      last_offset);
+                      last_offset,
+                      log_start);
                     // Process the batch here
+                    while (!part.records->is_end_of_stream()) {
+                        auto batch_adapter = part.records->consume_batch();
+                        // Process the batch
+                        if (!batch_adapter.batch.has_value()) {
+                            vlog(cllog.info, "Encoutered an empty batch");
+                            continue;
+                        }
+                        auto batch = std::move(batch_adapter.batch.value());
+                        auto base_offset = batch.base_offset();
+                        auto last_offset = batch.last_offset();
+                        const auto& mirrored_offset_it = mirror_offsets.find(
+                          fetch_ntp);
+                        if (mirrored_offset_it == mirror_offsets.end()) {
+                            vlog(
+                              cllog.warn,
+                              "No offset found for {} in mirror offsets",
+                              fetch_ntp);
+                            continue;
+                        }
+                        auto current_offset = mirrored_offset_it->second;
+                        vlog(
+                          cllog.info,
+                          "Processing batch: {} - {}, mirrored offset {}",
+                          base_offset,
+                          last_offset,
+                          current_offset);
 
+                        if (base_offset < current_offset) {
+                            vlog(
+                              cllog.info,
+                              "Skipping batch {} - {}, base offset is less "
+                              "than mirrored offset {}",
+                              base_offset,
+                              last_offset,
+                              current_offset);
+                            continue;
+                        }
+                        vlog(cllog.info, "Performing write at offset");
+                        auto write_res
+                          = co_await _rpc_client->local().write_at_offset(
+                            fetch_ntp,
+                            std::move(batch),
+                            kafka::offset{base_offset()},
+                            std::nullopt,
+                            5s);
+                        if (write_res.has_error()) {
+                            vlog(
+                              cllog.error,
+                              "Write failed: {}",
+                              write_res.error());
+                            break;
+                        }
+                        vlog(
+                          cllog.info,
+                          "Write succeeded, next offset: {}",
+                          write_res.value());
+                    }
+                    vlog(
+                      cllog.info,
+                      "Finished processing batch for {}",
+                      fetch_ntp);
+                    // auto batches_var = co_await
+                    // part.records->do_load_slice(
+                    //   model::timeout_clock::now() + 5s);
+                    // if (!std::holds_alternative<
+                    //       model::record_batch_reader::data_t>(batches_var))
+                    //       {
+                    //     vlog(
+                    //       cllog.warn, "Invalid batch - contains foreign
+                    //       data");
+                    //     continue;
+                    // }
+                    // auto batches =
+                    // std::get<model::record_batch_reader::data_t>(
+                    //   std::move(batches_var));
+                    // while (!batches.empty()) {
+                    //     auto batch = std::move(batches.front());
+                    //     batches.pop_front();
+                    //     // Process the batch
+                    //     auto base_offset = batch.base_offset();
+                    //     auto last_offset = batch.last_offset();
+                    //     vlog(
+                    //       cllog.info,
+                    //       "Processing batch: {} - {}",
+                    //       base_offset,
+                    //       last_offset);
+                    // }
                 } else {
                     vlog(cllog.warn, "No records in fetch response");
+                    continue;
                 }
             } catch (const std::exception& e) {
                 vlog(cllog.error, "Error fetching topic: {}", e.what());
@@ -418,6 +510,42 @@ panda_link::topic_mirroring::fetch_offsets() {
     }
 
     co_return offsets;
+}
+
+ss::future<absl::flat_hash_map<model::ntp, model::offset>>
+panda_link::topic_mirroring::get_mirror_topic_offsets() {
+    absl::flat_hash_map<model::ntp, model::offset> offsets;
+    offsets.reserve(_mirrored_ntps.size());
+
+    for (const auto& ntp : _mirrored_ntps) {
+        vlog(cllog.debug, "Fetching offset for {}", ntp);
+        auto res = co_await _rpc_client->local().list_offset(ntp);
+        if (res.has_error()) {
+            vlog(
+              cllog.warn, "Error fetching offset for {}: {}", ntp, res.error());
+            continue;
+        }
+        vlog(cllog.debug, "Offset for {}: {}", ntp, res.value());
+        offsets.emplace(ntp, res.value());
+    }
+
+    co_return offsets;
+}
+
+absl::flat_hash_map<model::ntp, model::offset>
+panda_link::topic_mirroring::make_fetch_plan(
+  absl::flat_hash_map<model::ntp, model::offset> source_offsets,
+  absl::flat_hash_map<model::ntp, model::offset> mirror_offsets) {
+    absl::flat_hash_map<model::ntp, model::offset> fetch_plan;
+    for (const auto& [ntp, offset] : source_offsets) {
+        auto it = mirror_offsets.find(ntp);
+        if (it != mirror_offsets.end()) {
+            if (it->second < offset) {
+                fetch_plan.emplace(ntp, it->second);
+            }
+        }
+    }
+    return fetch_plan;
 }
 
 } // namespace cluster_link

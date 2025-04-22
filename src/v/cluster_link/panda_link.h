@@ -99,10 +99,16 @@ private:
         ss::future<> mirror_topics();
         ss::future<absl::flat_hash_map<model::ntp, model::offset>>
         fetch_offsets();
+        ss::future<absl::flat_hash_map<model::ntp, model::offset>>
+        get_mirror_topic_offsets();
+        absl::flat_hash_map<model::ntp, model::offset> make_fetch_plan(
+          absl::flat_hash_map<model::ntp, model::offset>,
+          absl::flat_hash_map<model::ntp, model::offset>);
 
     private:
         kafka::client::client* _client;
         absl::flat_hash_set<model::ntp> _mirrored_ntps;
+        ss::sharded<transform::rpc::client>* _rpc_client;
         ss::abort_source _as;
         ss::gate _gate;
     };
