@@ -1048,6 +1048,119 @@ ss::future<result<model::offset, cluster::errc>> client::do_remote_list_offset(
     }
 }
 
+ss::future<result<kafka::offset, cluster::errc>> client::write_at_offset(
+  model::ntp ntp,
+  model::record_batch batch,
+  kafka::offset expected_base_offset,
+  std::optional<kafka::offset> prev_log_offset,
+  model::timeout_clock::duration write_timeout) {
+    return retry([this,
+                  ntp = std::move(ntp),
+                  batch = std::move(batch),
+                  expected_base_offset,
+                  prev_log_offset,
+                  write_timeout] mutable {
+        return do_write_at_offset(
+          std::move(ntp),
+          std::move(batch),
+          expected_base_offset,
+          prev_log_offset,
+          write_timeout);
+    });
+}
+
+ss::future<result<kafka::offset, cluster::errc>> client::do_write_at_offset(
+  model::ntp ntp,
+  model::record_batch batch,
+  kafka::offset expected_base_offset,
+  std::optional<kafka::offset> prev_log_offset,
+  model::timeout_clock::duration write_timeout) {
+    auto leader = _leaders->get_leader_node(ntp);
+    if (!leader) {
+        co_return cluster::errc::not_leader;
+    }
+    if (leader == _self) {
+        co_return co_await do_local_write_at_offset(
+          std::move(ntp),
+          std::move(batch),
+          expected_base_offset,
+          prev_log_offset,
+          write_timeout);
+    } else {
+        co_return co_await do_remote_write_at_offset(
+          *leader,
+          std::move(ntp),
+          std::move(batch),
+          expected_base_offset,
+          prev_log_offset,
+          write_timeout,
+          timeout);
+    }
+}
+
+ss::future<result<kafka::offset, cluster::errc>>
+client::do_local_write_at_offset(
+  model::ntp ntp,
+  model::record_batch batch,
+  kafka::offset expected_base_offset,
+  std::optional<kafka::offset> prev_log_offset,
+  model::timeout_clock::duration write_timeout) {
+    auto res = co_await _local_service->local().write_at_offset(
+      ntp.tp,
+      std::move(batch),
+      expected_base_offset,
+      prev_log_offset,
+      write_timeout);
+    if (res.err != cluster::errc::success) {
+        co_return res.err;
+    }
+    co_return res.offset;
+}
+
+ss::future<result<kafka::offset, cluster::errc>>
+client::do_remote_write_at_offset(
+  model::node_id node,
+  model::ntp ntp,
+  model::record_batch batch,
+  kafka::offset expected_base_offset,
+  std::optional<kafka::offset> prev_log_offset,
+  model::timeout_clock::duration write_timeout,
+  model::timeout_clock::duration rpc_timeout) {
+    auto resp = co_await _connections->local()
+                  .with_node_client<impl::transform_rpc_client_protocol>(
+                    _self,
+                    ss::this_shard_id(),
+                    node,
+                    timeout,
+                    [ntp = std::move(ntp),
+                     batch = std::move(batch),
+                     expected_base_offset,
+                     prev_log_offset,
+                     write_timeout,
+                     rpc_timeout](
+                      impl::transform_rpc_client_protocol proto) mutable {
+                        return proto.write_at_offset(
+                          write_at_offset_request(
+                            ntp.tp,
+                            std::move(batch),
+                            expected_base_offset,
+                            prev_log_offset,
+                            write_timeout),
+                          ::rpc::client_opts(
+                            model::timeout_clock::now() + rpc_timeout));
+                    })
+                  .then(&::rpc::get_ctx_data<write_at_offset_reply>);
+    if (resp.has_error()) {
+        co_return map_errc(resp.error());
+    }
+    auto reply = std::move(resp).value();
+    if (reply.err != cluster::errc::success) {
+        co_return reply.err;
+    } else {
+        co_return reply.offset;
+    }
+}
+
 ss::future<cluster::errc> client::do_delete_committed_offsets(
   model::partition_id partition, absl::btree_set<model::transform_id> ids) {
     return retry([this, partition, ids = std::move(ids)] {

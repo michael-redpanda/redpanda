@@ -152,6 +152,13 @@ public:
 
     ss::future<result<model::offset, cluster::errc>> list_offset(model::ntp);
 
+    ss::future<result<kafka::offset, cluster::errc>> write_at_offset(
+      model::ntp,
+      model::record_batch,
+      kafka::offset,
+      std::optional<kafka::offset>,
+      model::timeout_clock::duration);
+
     ss::future<> start();
     ss::future<> stop();
 
@@ -254,7 +261,29 @@ private:
     ss::future<result<model::offset, cluster::errc>>
       do_local_list_offset(model::ntp);
     ss::future<result<model::offset, cluster::errc>> do_remote_list_offset(
-      model::node_id, model::ntp, model::timeout_clock::duration timeout);
+      model::node_id, model::ntp, model::timeout_clock::duration);
+
+    ss::future<result<kafka::offset, cluster::errc>> do_write_at_offset(
+      model::ntp,
+      model::record_batch,
+      kafka::offset,
+      std::optional<kafka::offset>,
+      model::timeout_clock::duration);
+
+    ss::future<result<kafka::offset, cluster::errc>> do_local_write_at_offset(
+      model::ntp,
+      model::record_batch,
+      kafka::offset,
+      std::optional<kafka::offset>,
+      model::timeout_clock::duration);
+    ss::future<result<kafka::offset, cluster::errc>> do_remote_write_at_offset(
+      model::node_id,
+      model::ntp,
+      model::record_batch,
+      kafka::offset,
+      std::optional<kafka::offset>,
+      model::timeout_clock::duration,
+      model::timeout_clock::duration);
 
     template<typename Func>
     std::invoke_result_t<Func> retry(Func&&);
