@@ -126,11 +126,11 @@ private:
 
     kafka::offset expected_last_offset() const {
         return std::max(
-          _last_offset, _inflight_last_offset.value_or(kafka::offset{}));
+          _last_offset, _inflight_last_offset.value_or(kafka::offset{-1}));
     }
 
     std::vector<model::record_batch_type> _offset_translated_batches;
-    kafka::offset _last_offset{};
+    kafka::offset _last_offset{-1};
     std::optional<kafka::offset> _inflight_last_offset;
     mutex _sync_lock;
 };
