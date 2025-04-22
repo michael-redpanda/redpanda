@@ -435,6 +435,10 @@ public:
         kafka::partition_proxy*)> fn) final {
         return invoke_on_shard_impl(shard, ntp, std::move(fn));
     }
+    ss::future<result<model::offset, cluster::errc>>
+    list_offset(ss::shard_id, const model::ntp&) final {
+        throw std::runtime_error("unimplemented");
+    }
 
     ss::future<find_coordinator_response> invoke_on_shard(
       ss::shard_id shard_id,

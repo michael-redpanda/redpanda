@@ -68,6 +68,8 @@ public:
       std::optional<kafka::offset>,
       model::timeout_clock::duration);
 
+    ss::future<result<model::offset, cluster::errc>> list_offset(model::ntp);
+
 private:
     ss::future<transformed_topic_data_result>
       produce(transformed_topic_data, model::timeout_clock::duration);

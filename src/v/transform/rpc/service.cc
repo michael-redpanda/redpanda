@@ -329,6 +329,16 @@ ss::future<result<kafka::offset, cluster::errc>> local_service::write_at_offset(
       });
 }
 
+ss::future<result<model::offset, cluster::errc>>
+local_service::list_offset(model::ntp ntp) {
+    auto shard = _partition_manager->shard_owner(ntp);
+    if (!shard) {
+        co_return cluster::errc::not_leader;
+    }
+
+    co_return co_await _partition_manager->list_offset(*shard, ntp);
+}
+
 ss::future<find_coordinator_response>
 local_service::find_coordinator(find_coordinator_request request) {
     model::ntp ntp(
@@ -534,10 +544,16 @@ ss::future<write_at_offset_reply> network_service::write_at_offset(
     co_return resp;
 }
 
-ss::future<list_offset_reply>
-network_service::list_offset(list_offset_request, ::rpc::streaming_context&) {
+ss::future<list_offset_reply> network_service::list_offset(
+  list_offset_request req, ::rpc::streaming_context&) {
     co_await ss::coroutine::switch_to(get_scheduling_group());
     co_return list_offset_reply(cluster::errc::not_leader);
+    auto resp = co_await _service->local().list_offset(std::move(req.ntp));
+    if (resp.has_error()) {
+        co_return list_offset_reply(resp.assume_error());
+    } else {
+        co_return list_offset_reply(resp.assume_value());
+    }
 }
 
 } // namespace transform::rpc

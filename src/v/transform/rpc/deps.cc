@@ -184,6 +184,23 @@ public:
         return invoke_on_shard_impl(shard, ntp, std::move(fn));
     }
 
+    ss::future<result<model::offset, cluster::errc>>
+    list_offset(ss::shard_id shard, const model::ntp& ntp) final {
+        return invoke_on_shard_impl(
+          shard,
+          ntp,
+          ss::noncopyable_function<ss::future<
+            result<model::offset, cluster::errc>>(kafka::partition_proxy*)>(
+            [](kafka::partition_proxy* pp)
+              -> ss::future<result<model::offset, cluster::errc>> {
+                auto err = co_await pp->linearizable_barrier();
+                if (err) {
+                    co_return cluster::errc::not_leader;
+                }
+                co_return pp->high_watermark();
+            }));
+    }
+
 private:
     static constexpr auto coordinator_partition = model::partition_id{0};
 

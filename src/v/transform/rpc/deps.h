@@ -235,6 +235,9 @@ public:
       ss::noncopyable_function<ss::future<result<kafka::offset, cluster::errc>>(
         kafka::partition_proxy*)>)
       = 0;
+
+    virtual ss::future<result<model::offset, cluster::errc>>
+    list_offset(ss::shard_id, const model::ntp&) = 0;
 };
 
 }; // namespace transform::rpc
