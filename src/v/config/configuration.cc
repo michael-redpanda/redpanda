@@ -183,7 +183,7 @@ configuration::configuration()
       "resources are available for transform functions when they are needed, "
       "but it also means that some memory is allocated regardless of usage.",
       {.needs_restart = needs_restart::yes, .visibility = visibility::user},
-      false)
+      true)
   , data_transforms_commit_interval_ms(
       *this,
       "data_transforms_commit_interval_ms",
