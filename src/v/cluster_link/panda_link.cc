@@ -23,8 +23,6 @@
 
 #include <fmt/ranges.h>
 
-#include <variant>
-
 using kc = kafka::client::client;
 using kc_config = kafka::client::configuration;
 
@@ -409,6 +407,7 @@ ss::future<> panda_link::topic_mirroring::mirror_topics() {
                           cllog.info,
                           "Write succeeded, next offset: {}",
                           write_res.value());
+                        current_offset = model::offset{write_res.value()()};
                     }
                     vlog(
                       cllog.info,
