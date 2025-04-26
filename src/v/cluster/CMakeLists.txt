@@ -251,6 +251,7 @@ v_cc_library(
     data_migration_backend.cc
     inventory_service.cc
     partition_properties_stm.cc
+    panda_link_table.cc
   DEPS
     Seastar::seastar
     bootstrap_rpc
