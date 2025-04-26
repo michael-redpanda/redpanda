@@ -7,7 +7,7 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0
 
-#include "kafka/server/write_at_offset_stm.h"
+#include "panda_link/write_at_offset_stm.h"
 #include "raft/tests/stm_test_fixture.h"
 #include "test_utils/test.h"
 
@@ -16,10 +16,10 @@
 static ss::logger t_log{"test_log"};
 using namespace testing;
 struct write_at_offset_stm_fixture
-  : public raft::stm_raft_fixture<kafka::write_at_offset_stm> {
-    std::tuple<ss::shared_ptr<kafka::write_at_offset_stm>> create_stms(
+  : public raft::stm_raft_fixture<panda_link::write_at_offset_stm> {
+    std::tuple<ss::shared_ptr<panda_link::write_at_offset_stm>> create_stms(
       state_machine_manager_builder& builder, raft_node_instance& node) {
-        return builder.create_stm<kafka::write_at_offset_stm>(
+        return builder.create_stm<panda_link::write_at_offset_stm>(
           node.raft().get(),
           t_log,
           node.get_kvstore(),
@@ -125,7 +125,8 @@ struct write_at_offset_stm_fixture
         return filtered_batches;
     }
 
-    std::optional<ss::shared_ptr<kafka::write_at_offset_stm>> get_leader_stm() {
+    std::optional<ss::shared_ptr<panda_link::write_at_offset_stm>>
+    get_leader_stm() {
         auto leader_id = get_leader();
         if (!leader_id) {
             return std::nullopt;
@@ -133,7 +134,7 @@ struct write_at_offset_stm_fixture
         return node(*leader_id)
           .raft()
           ->stm_manager()
-          ->get<kafka::write_at_offset_stm>();
+          ->get<panda_link::write_at_offset_stm>();
     }
 };
 
@@ -249,7 +250,7 @@ TEST_F(write_at_offset_stm_fixture, test_writes_out_of_order) {
     auto stm = node(leader_id)
                  .raft()
                  ->stm_manager()
-                 ->get<kafka::write_at_offset_stm>();
+                 ->get<panda_link::write_at_offset_stm>();
 
     auto batches = make_gaps(generate_batches(
       kafka::offset{0}, 30, random_generators::get_int(1, 10)));

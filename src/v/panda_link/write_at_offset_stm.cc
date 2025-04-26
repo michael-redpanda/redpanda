@@ -8,17 +8,17 @@
  * the Business Source License, use of this software will be governed
  * by the Apache License, Version 2.0
  */
-#include "kafka/server/write_at_offset_stm.h"
+#include "panda_link/write_at_offset_stm.h"
 
 #include "cluster/snapshot.h"
-#include "kafka/server/logger.h"
 #include "model/batch_utils.h"
+#include "panda_link/logger.h"
 
 #include <seastar/coroutine/as_future.hh>
 
 #include <algorithm>
 
-namespace kafka {
+namespace panda_link {
 
 namespace {
 struct local_snapshot
@@ -112,7 +112,7 @@ ss::future<result<raft::replicate_result>> write_at_offset_stm::do_replicate(
 
     const auto stm_last_offset = expected_last_offset();
     vlog(
-      _log.trace,
+      pllog.trace,
       "Requested replicate at offset: {} with previous log offset: {}. "
       "stm last offset: {}",
       expected_base_offset,
@@ -128,7 +128,7 @@ ss::future<result<raft::replicate_result>> write_at_offset_stm::do_replicate(
     if (effective_prev_log_offset != stm_last_offset) {
         enqueued_promise.set_value();
         vlog(
-          _log.debug,
+          pllog.debug,
           "Expected last log offset: {} does not match with last stm"
           "tracked offset: {}",
           effective_prev_log_offset,
@@ -174,7 +174,7 @@ ss::future<result<raft::replicate_result>> write_at_offset_stm::do_replicate(
     if (r_fut.failed()) {
         // if the replication failed, reset the last offset
         vlog(
-          _log.warn,
+          pllog.warn,
           "Replication failed with exception: {}",
           r_fut.get_exception());
         _inflight_last_offset.reset();
@@ -186,7 +186,8 @@ ss::future<result<raft::replicate_result>> write_at_offset_stm::do_replicate(
     auto result = r_fut.get();
 
     if (result.has_error()) {
-        vlog(_log.warn, "Replication failed with an error: {}", result.error());
+        vlog(
+          pllog.warn, "Replication failed with an error: {}", result.error());
 
         _inflight_last_offset.reset();
         if (result.error() != raft::errc::not_leader) {
@@ -280,9 +281,11 @@ bool write_at_offset_stm_factory::is_applicable_for(
 }
 
 void write_at_offset_stm_factory::create(
-  raft::state_machine_manager_builder& builder, raft::consensus* raft) {
+  raft::state_machine_manager_builder& builder,
+  raft::consensus* raft,
+  const cluster::stm_instance_config&) {
     auto stm = builder.create_stm<write_at_offset_stm>(
-      raft, klog, _kvstore, _offset_translated_batches);
+      raft, pllog, _kvstore, _offset_translated_batches);
     raft->log()->stm_manager()->add_stm(stm);
 }
-} // namespace kafka
+} // namespace panda_link
