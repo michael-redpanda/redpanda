@@ -96,6 +96,12 @@ public:
       model::record_batch batch,
       raft::replicate_options);
 
+    raft::replicate_stages write_at_offset(
+      model::record_batch,
+      kafka::offset expected_base_offset,
+      std::optional<kafka::offset> prev_log_offset,
+      model::timeout_clock::duration timeout);
+
     /**
      * The reader is modified such that the max offset is configured to be
      * the minimum of the max offset requested and the committed index of the

@@ -355,6 +355,15 @@ ss::future<result<kafka_result>> partition::replicate(
       kafka::offset(log()->from_log_offset(res.value().last_offset)())});
 }
 
+raft::replicate_stages partition::write_at_offset(
+  model::record_batch batch,
+  kafka::offset expected_base_offset,
+  std::optional<kafka::offset> prev_log_offset,
+  model::timeout_clock::duration timeout) {
+    return _write_at_offset_stm->replicate(
+      std::move(batch), expected_base_offset, prev_log_offset, timeout);
+}
+
 ss::shared_ptr<cluster::rm_stm> partition::rm_stm() {
     if (!_rm_stm) {
         vlog(
