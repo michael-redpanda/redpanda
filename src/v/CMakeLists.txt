@@ -107,6 +107,7 @@ add_subdirectory(transform)
 add_subdirectory(net)
 add_subdirectory(rpc)
 add_subdirectory(debug_bundle)
+add_subdirectory(panda_link)
 
 # libraries
 add_subdirectory(test_utils)
