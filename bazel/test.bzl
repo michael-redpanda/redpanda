@@ -191,7 +191,7 @@ def _redpanda_cc_fuzz_test(
         ],
         target_compatible_with = select({
             "//bazel:enable_fuzz_testing": [],
-            "//conditions:default": ["@platforms//:incompatible"],
+            "//conditions:default": [],
         }),
     )
 
