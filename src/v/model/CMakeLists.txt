@@ -10,6 +10,7 @@ v_cc_library(
     transform.cc
     record.cc
     batch_utils.cc
+    panda_link.cc
   DEPS
     v::bytes
     v::utils
