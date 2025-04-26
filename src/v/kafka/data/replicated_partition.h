@@ -72,6 +72,12 @@ public:
       model::record_batch,
       raft::replicate_options) final;
 
+    raft::replicate_stages write_at_offset(
+      model::record_batch,
+      kafka::offset,
+      std::optional<kafka::offset>,
+      model::timeout_clock::duration) final;
+
     ss::future<storage::translating_reader> make_reader(
       storage::log_reader_config cfg,
       std::optional<model::timeout_clock::time_point>) final;

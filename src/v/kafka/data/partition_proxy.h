@@ -87,6 +87,12 @@ public:
         virtual raft::replicate_stages replicate(
           model::batch_identity, model::record_batch, raft::replicate_options)
           = 0;
+        virtual raft::replicate_stages write_at_offset(
+          model::record_batch,
+          kafka::offset,
+          std::optional<kafka::offset>,
+          model::timeout_clock::duration)
+          = 0;
 
         virtual result<partition_info> get_partition_info() const = 0;
         virtual size_t estimate_size_between(kafka::offset, kafka::offset) const
@@ -187,6 +193,15 @@ public:
       model::record_batch batch,
       raft::replicate_options opts) {
         return _impl->replicate(bi, std::move(batch), opts);
+    }
+
+    raft::replicate_stages write_at_offset(
+      model::record_batch batch,
+      kafka::offset expected_base_offset,
+      std::optional<kafka::offset> prev_log_offset,
+      model::timeout_clock::duration timeout) {
+        return _impl->write_at_offset(
+          std::move(batch), expected_base_offset, prev_log_offset, timeout);
     }
 
 private:

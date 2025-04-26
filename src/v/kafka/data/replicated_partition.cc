@@ -17,6 +17,7 @@
 #include "kafka/server/errors.h"
 #include "logger.h"
 #include "model/fundamental.h"
+#include "model/record.h"
 #include "model/timeout_clock.h"
 #include "raft/consensus_utils.h"
 #include "raft/errc.h"
@@ -374,6 +375,15 @@ raft::replicate_stages replicated_partition::replicate(
             raft::replicate_result{model::offset(r.value().last_offset())});
       });
     return out;
+}
+
+raft::replicate_stages replicated_partition::write_at_offset(
+  model::record_batch batch,
+  kafka::offset expected_base_offset,
+  std::optional<kafka::offset> expected_last_offset,
+  model::timeout_clock::duration timeout) {
+    return _partition->write_at_offset(
+      std::move(batch), expected_base_offset, expected_last_offset, timeout);
 }
 
 model::offset replicated_partition::partition_kafka_start_offset() const {
