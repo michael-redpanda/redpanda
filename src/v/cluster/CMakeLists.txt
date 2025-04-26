@@ -278,6 +278,7 @@ v_cc_library(
     v::features
     v::version
     v::enterprise_features
+    v::write_at_offset_stm
   )
 add_subdirectory(tests)
 add_subdirectory(cloud_metadata/tests)

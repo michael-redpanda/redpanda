@@ -680,6 +680,7 @@ redpanda_cc_library(
         "//src/v/model",
         "//src/v/model:fips_config",
         "//src/v/net",
+        "//src/v/panda_link:write_at_offset_stm",
         "//src/v/pandaproxy:config",
         "//src/v/pandaproxy:subject_name_strategy",
         "//src/v/raft",
