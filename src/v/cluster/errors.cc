@@ -182,6 +182,8 @@ std::ostream& operator<<(std::ostream& o, cluster::errc err) {
         return o << "cluster::errc::resource_is_being_migrated";
     case errc::invalid_target_node_id:
         return o << "cluster::errc::invalid_target_node_id";
+    case errc::topic_already_being_mirrored:
+        return o << "cluster::errc::topic_already_being_mirrored";
     }
 }
 } // namespace cluster
