@@ -36,3 +36,12 @@ redpanda_cc_library(
         "@seastar",
     ],
 )
+
+redpanda_cc_library(
+    name = "fwd",
+    hdrs = [
+        "fwd.h",
+    ],
+    include_prefix = "panda_link",
+    visibility = ["//visibility:public"],
+)

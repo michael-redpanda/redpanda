@@ -18,4 +18,10 @@ v_cc_library(
         v::raft_fixture
 )
 
+v_cc_library(
+    NAME panda_link_fwd
+    SRCS
+        fwd.h
+)
+
 add_subdirectory(tests)
