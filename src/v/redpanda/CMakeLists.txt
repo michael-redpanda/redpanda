@@ -82,6 +82,7 @@ v_cc_library(
     v::transform
     v::version 
     v::wasm
+    v::write_at_offset_stm
     v::cloud_topics_app
     v::cloud_topics_dl_stm
   )

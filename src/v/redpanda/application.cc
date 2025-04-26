@@ -120,6 +120,7 @@
 #include "net/dns.h"
 #include "net/server.h"
 #include "net/tls_certificate_probe.h"
+#include "panda_link/write_at_offset_stm.h"
 #include "pandaproxy/rest/api.h"
 #include "pandaproxy/rest/configuration.h"
 #include "pandaproxy/schema_registry/api.h"
@@ -2943,6 +2944,8 @@ void application::start_runtime_services(
           if (config::shard_local_cfg().development_enable_cloud_topics()) {
               pm.register_factory<experimental::cloud_topics::dl_stm_factory>();
           }
+          pm.register_factory<panda_link::write_at_offset_stm_factory>(
+            storage.local().kvs(), model::offset_translator_batch_types());
       })
       .get();
     partition_manager.invoke_on_all(&cluster::partition_manager::start).get();

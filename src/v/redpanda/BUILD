@@ -13,6 +13,9 @@ redpanda_cc_library(
         "cli_parser.h",
         "monitor_unsafe.h",
     ],
+    implementation_deps = [
+        "//src/v/panda_link:write_at_offset_stm",
+    ],
     include_prefix = "redpanda",
     visibility = ["//visibility:public"],
     deps = [
