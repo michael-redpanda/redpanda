@@ -11,7 +11,7 @@
 #pragma once
 
 #include "base/seastarx.h"
-#include "container/fragmented_vector.h"
+#include "model/metadata.h"
 #include "serde/envelope.h"
 #include "utils/named_type.h"
 #include "utils/unresolved_address.h"
@@ -28,6 +28,9 @@ using panda_link_id = named_type<int64_t, struct panda_link_id_tag>;
 /// Name of the panda link
 using panda_link_name = named_type<ss::sstring, struct panda_link_name_tag>;
 
+using panda_link_name_view
+  = named_type<std::string_view, struct panda_link_name_view_tag>;
+
 using panda_link_auto_create_topics_t
   = ss::bool_class<struct panda_link_auto_create_topics_tag>;
 
@@ -40,7 +43,7 @@ struct panda_link_config
     panda_link_auto_create_topics_t panda_link_auto_create_topics{true};
     /// List of topics to mirror - ignored if panda_link_auto_create_topics is
     /// true
-    std::vector<ss::sstring> mirrored_topics;
+    std::vector<model::topic_namespace> mirrored_topics;
 
     friend bool operator==(const panda_link_config&, const panda_link_config&)
       = default;
