@@ -17,6 +17,7 @@
 namespace cluster {
 using model::panda_link_id;
 using model::panda_link_name;
+using model::topic_namespace;
 
 panda_link_table::map_t panda_link_table::all_links() const {
     return _underlying;
@@ -29,17 +30,17 @@ void panda_link_table::reset_links(map_t links) {
 }
 
 bool panda_link_table::name_less_cmp::operator()(
-  const model::panda_link_name& lhs, const model::panda_link_name& rhs) const {
+  const panda_link_name& lhs, const panda_link_name& rhs) const {
     return lhs < rhs;
 }
 
 bool panda_link_table::name_less_cmp::operator()(
-  const model::panda_link_name& lhs, const std::string_view& rhs) const {
+  const panda_link_name& lhs, const std::string_view& rhs) const {
     return lhs() < rhs;
 }
 
 bool panda_link_table::name_less_cmp::operator()(
-  const std::string_view& lhs, const model::panda_link_name& rhs) const {
+  const std::string_view& lhs, const panda_link_name& rhs) const {
     return lhs < rhs();
 }
 
@@ -48,11 +49,11 @@ bool panda_link_table::topic_map_less_cmp::operator()(
     return ss::visit(
       lhs,
       [](const all_topics_tag&) { return true; },
-      [&rhs](const model::topic_namespace& lhs) {
+      [&rhs](const topic_namespace& lhs) {
           return ss::visit(
             rhs,
             [](const all_topics_tag&) { return false; },
-            [&lhs](const model::topic_namespace& rhs) { return lhs < rhs; });
+            [&lhs](const topic_namespace& rhs) { return lhs < rhs; });
       });
 }
 } // namespace cluster

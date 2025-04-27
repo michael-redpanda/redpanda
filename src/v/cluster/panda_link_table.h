@@ -41,7 +41,7 @@ public:
 
 private:
     struct name_less_cmp {
-        using is_transparaent = void;
+        using is_transparent = void;
         bool operator()(
           const model::panda_link_name& lhs,
           const model::panda_link_name& rhs) const;
