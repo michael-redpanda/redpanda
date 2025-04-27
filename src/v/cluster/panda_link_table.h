@@ -39,6 +39,22 @@ public:
     /// Restores the panda link table from a snapshot
     void reset_links(map_t);
 
+    std::optional<model::panda_link_metadata>
+      find_by_name(std::string_view) const;
+    std::optional<model::panda_link_metadata>
+    find_by_name(const model::panda_link_name&) const;
+    std::optional<model::panda_link_id> find_id_by_name(std::string_view) const;
+    std::optional<model::panda_link_id>
+    find_id_by_name(const model::panda_link_name&) const;
+    std::optional<model::panda_link_metadata>
+      find_by_id(model::panda_link_id) const;
+
+    std::error_code
+    upsert_link(model::panda_link_id id, model::panda_link_metadata meta);
+    void remove_link(const model::panda_link_name& name);
+    std::optional<model::panda_link_id>
+      find_by_topic(model::topic_namespace_view) const;
+
 private:
     struct name_less_cmp {
         using is_transparent = void;
@@ -70,6 +86,8 @@ private:
 
     using topic_index_t = absl::
       btree_map<topic_map_entry, model::panda_link_id, topic_map_less_cmp>;
+
+    bool topic_already_being_mirrored(const topic_map_entry&) const;
 
     map_t _underlying;
     name_index_t _name_index;
