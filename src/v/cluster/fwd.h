@@ -80,6 +80,7 @@ class id_allocator_stm;
 class tm_stm;
 class rm_stm;
 class panda_link_table;
+class panda_link_backend;
 namespace data_migrations {
 class migrated_resources;
 class migration_frontend;

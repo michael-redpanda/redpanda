@@ -252,6 +252,7 @@ v_cc_library(
     inventory_service.cc
     partition_properties_stm.cc
     panda_link_table.cc
+    panda_link_backend.cc
   DEPS
     Seastar::seastar
     bootstrap_rpc
