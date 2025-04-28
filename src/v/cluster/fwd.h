@@ -79,6 +79,7 @@ class shard_balancer;
 class id_allocator_stm;
 class tm_stm;
 class rm_stm;
+class panda_link_table;
 namespace data_migrations {
 class migrated_resources;
 class migration_frontend;
