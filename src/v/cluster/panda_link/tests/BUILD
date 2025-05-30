@@ -29,3 +29,24 @@ redpanda_cc_gtest(
         "@seastar",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "panda_link_frontend_validation_test",
+    timeout = "short",
+    srcs = [
+        "panda_link_frontend_validation_test.cc",
+    ],
+    deps = [
+        ":panda_link_test_lib",
+        "//src/v/cluster",
+        "//src/v/model",
+        "//src/v/raft",
+        "//src/v/test_utils:gtest",
+        "//src/v/utils:unresolved_address",
+        "//src/v/utils:uuid",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@boost//:range",
+        "@googletest//:gtest",
+        "@seastar",
+    ],
+)

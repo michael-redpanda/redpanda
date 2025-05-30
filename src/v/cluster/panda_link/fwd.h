@@ -12,5 +12,6 @@
 #pragma once
 
 namespace panda_link {
+class frontend;
 class table;
-}
+} // namespace panda_link
