@@ -12,6 +12,7 @@
 #pragma once
 #include "cluster/controller_service.h"
 #include "cluster/fwd.h"
+#include "cluster/panda_link/fwd.h"
 #include "cluster/types.h"
 #include "features/fwd.h"
 #include "rpc/fwd.h"
@@ -43,7 +44,8 @@ public:
       ss::sharded<rpc::connection_cache>&,
       ss::sharded<partition_manager>&,
       ss::sharded<node_status_backend>&,
-      ss::sharded<client_quota::frontend>&);
+      ss::sharded<client_quota::frontend>&,
+      ss::sharded<panda_link::frontend>&);
 
     virtual ss::future<join_node_reply>
     join_node(join_node_request, rpc::streaming_context&) override;
@@ -204,5 +206,6 @@ private:
     ss::sharded<plugin_frontend>& _plugin_frontend;
     ss::sharded<node_status_backend>& _node_status_backend;
     ss::sharded<client_quota::frontend>& _quotas_frontend;
+    ss::sharded<panda_link::frontend>& _panda_link_frontend;
 };
 } // namespace cluster
