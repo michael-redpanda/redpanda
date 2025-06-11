@@ -30,3 +30,17 @@ redpanda_cc_gtest(
         "@googletest//:gtest",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "base_task_test",
+    timeout = "short",
+    srcs = [
+        "base_task_test.cc",
+    ],
+    deps = [
+        "//src/v/cluster_link:impl",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+        "@seastar",
+    ],
+)
