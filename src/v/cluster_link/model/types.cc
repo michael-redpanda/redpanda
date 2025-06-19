@@ -13,6 +13,43 @@
 
 #include <seastar/util/variant_utils.hh>
 
+#include <fmt/ranges.h>
+
+namespace cluster_link::model {
+void link_state::set_mirror_topics(
+  const chunked_hash_map<::model::topic, mirror_topic_state>& topics) {
+    mirror_topics.reserve(topics.size());
+    for (const auto& [topic, state] : topics) {
+        mirror_topics.emplace(topic, state);
+    }
+}
+
+link_state link_state::copy() const {
+    link_state copy;
+    copy.mirror_topics.reserve(mirror_topics.size());
+    for (const auto& [topic, state] : mirror_topics) {
+        copy.mirror_topics.emplace(topic, state);
+    }
+    return copy;
+}
+
+metadata metadata::copy() const {
+    metadata copy;
+    copy.name = name;
+    copy.uuid = uuid;
+    copy.connection = connection;
+    copy.paused = paused;
+    copy.state = state.copy();
+    return copy;
+}
+} // namespace cluster_link::model
+
+auto fmt::formatter<cluster_link::model::mirror_topic_state>::format(
+  cluster_link::model::mirror_topic_state s, format_context& ctx)
+  -> decltype(ctx.out()) {
+    return fmt::format_to(ctx.out(), "{}", to_string_view(s));
+}
+
 auto fmt::formatter<cluster_link::model::scram_credentials>::format(
   const cluster_link::model::scram_credentials& c, format_context& ctx)
   -> decltype(ctx.out()) {
@@ -51,14 +88,34 @@ auto fmt::formatter<cluster_link::model::connection_config>::format(
       c.ca_file_path);
 }
 
+auto fmt::formatter<
+  decltype(cluster_link::model::link_state::mirror_topics)::value_type>::
+  format(
+    const decltype(cluster_link::model::link_state::mirror_topics)::value_type&
+      m,
+    format_context& ctx) const -> decltype(ctx.out()) {
+    return fmt::format_to(
+      ctx.out(), "{{topic: {}, state: {}}}", m.first, m.second);
+}
+
+auto fmt::formatter<cluster_link::model::link_state>::format(
+  const cluster_link::model::link_state& s, format_context& ctx) const
+  -> decltype(ctx.out()) {
+    return fmt::format_to(
+      ctx.out(),
+      "{{mirror_topics: {}}}",
+      fmt::join(s.mirror_topics.begin(), s.mirror_topics.end(), ","));
+}
+
 auto fmt::formatter<cluster_link::model::metadata>::format(
   const cluster_link::model::metadata& m, format_context& ctx)
   -> decltype(ctx.out()) {
     return fmt::format_to(
       ctx.out(),
-      "{{name={}, uuid={}, connection={}, paused={}}}",
+      "{{name={}, uuid={}, connection={}, paused={}, state={}}}",
       m.name,
       m.uuid,
       m.connection,
-      m.paused);
+      m.paused,
+      m.state);
 }
