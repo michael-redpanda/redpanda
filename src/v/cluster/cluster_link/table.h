@@ -85,6 +85,14 @@ private:
     cluster::cluster_link::errc
     remove_link(const ::cluster_link::model::name_t&);
 
+    cluster::cluster_link::errc add_mirror_topic(
+      ::cluster_link::model::id_t,
+      const ::cluster_link::model::add_mirror_topic_cmd& cmd);
+
+    cluster::cluster_link::errc update_mirror_topic_state(
+      ::cluster_link::model::id_t,
+      const ::cluster_link::model::update_mirror_topic_state_cmd& cmd);
+
     void run_callbacks(::cluster_link::model::id_t);
 
 private:
