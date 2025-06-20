@@ -875,4 +875,17 @@ ss::future<remove_cluster_link_response> service::remove_cluster_link(
     co_return remove_cluster_link_response{.ec = result};
 }
 
+ss::future<add_mirror_topic_response>
+service::add_mirror_topic(add_mirror_topic_request, rpc::streaming_context&) {
+    co_return add_mirror_topic_response{
+      .ec = cluster::cluster_link::errc::success};
+}
+
+ss::future<update_mirror_topic_state_response>
+service::update_mirror_topic_state(
+  update_mirror_topic_state_request, rpc::streaming_context&) {
+    co_return update_mirror_topic_state_response{
+      .ec = cluster::cluster_link::errc::success};
+}
+
 } // namespace cluster
