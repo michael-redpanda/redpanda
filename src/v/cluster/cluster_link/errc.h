@@ -28,6 +28,10 @@ enum class errc : int16_t {
     feature_disabled,
     rpc_error,
     throttling_quota_exceeded,
+    topic_already_being_mirrored,
+    topic_being_mirrored_by_other_link,
+    topic_not_being_mirrored,
+    mirror_topic_name_invalid,
 };
 
 struct errc_category final : public std::error_category {

@@ -41,6 +41,14 @@ std::string errc_category::message(int c) const {
         return "RPC error occurred while processing cluster link request";
     case errc::throttling_quota_exceeded:
         return "Request declined due to exceeded requests quotas";
+    case errc::topic_already_being_mirrored:
+        return "Topic is already being mirrored by a cluster link";
+    case errc::topic_being_mirrored_by_other_link:
+        return "Topic is being mirrored by a different cluster link";
+    case errc::topic_not_being_mirrored:
+        return "Topic is not being mirrored by the cluster link";
+    case errc::mirror_topic_name_invalid:
+        return "Mirror topic name is invalid";
     }
     return "cluster::cluster_link::unknown";
 }
@@ -95,5 +103,19 @@ auto fmt::formatter<cluster::cluster_link::errc>::format(
     case cluster::cluster_link::errc::throttling_quota_exceeded:
         return fmt::format_to(
           ctx.out(), "cluster::cluster_link::errc::throttling_quota_exceeded");
+    case cluster::cluster_link::errc::topic_already_being_mirrored:
+        return fmt::format_to(
+          ctx.out(),
+          "cluster::cluster_link::errc::topic_already_being_mirrored");
+    case cluster::cluster_link::errc::topic_being_mirrored_by_other_link:
+        return fmt::format_to(
+          ctx.out(),
+          "cluster::cluster_link::errc::topic_being_mirrored_by_other_link");
+    case cluster::cluster_link::errc::topic_not_being_mirrored:
+        return fmt::format_to(
+          ctx.out(), "cluster::cluster_link::errc::topic_not_being_mirrored");
+    case cluster::cluster_link::errc::mirror_topic_name_invalid:
+        return fmt::format_to(
+          ctx.out(), "cluster::cluster_link::errc::mirror_topic_name_invalid");
     }
 }
