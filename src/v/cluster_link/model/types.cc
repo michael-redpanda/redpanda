@@ -119,3 +119,17 @@ auto fmt::formatter<cluster_link::model::metadata>::format(
       m.paused,
       m.state);
 }
+
+auto fmt::formatter<cluster_link::model::add_mirror_topic_cmd>::format(
+  const cluster_link::model::add_mirror_topic_cmd& m, format_context& ctx)
+  -> decltype(ctx.out()) {
+    return fmt::format_to(
+      ctx.out(), "{{topic={}, state={}}}", m.topic, m.state);
+}
+
+auto fmt::formatter<cluster_link::model::update_mirror_topic_state_cmd>::format(
+  const cluster_link::model::update_mirror_topic_state_cmd& m,
+  format_context& ctx) -> decltype(ctx.out()) {
+    return fmt::format_to(
+      ctx.out(), "{{topic={}, state={}}}", m.topic, m.state);
+}
