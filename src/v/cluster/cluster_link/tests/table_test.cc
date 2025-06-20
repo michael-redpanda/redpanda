@@ -36,6 +36,7 @@ table::map_t copy_links(const table::map_t& links) {
 using ::cluster_link::model::connection_config;
 using ::cluster_link::model::id_t;
 using ::cluster_link::model::metadata;
+using ::cluster_link::model::mirror_topic_state;
 using ::cluster_link::model::name_t;
 using ::cluster_link::model::uuid_t;
 
@@ -302,4 +303,193 @@ TEST_F_CORO(cluster_link_table_test, callback_snapshot) {
 
     EXPECT_EQ(detected_ids, expected_ids);
 }
+
+TEST_F_CORO(cluster_link_table_test, with_mirror_topics) {
+    model::topic test_topic("mirror-link1");
+    mirror_topic_state mirror_state = mirror_topic_state::active;
+    metadata link{
+      .name = name_t("link1"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{}};
+    link.state.set_mirror_topics({{test_topic, mirror_state}});
+
+    ASSERT_NO_THROW_CORO(co_await _table.local().apply_update(
+      testing::create_upsert_command(model::offset{1}, link.copy())));
+
+    ASSERT_EQ_CORO(_table.local().size(), 1);
+
+    auto mirror_topic_state = _table.local().find_mirror_topic_state(
+      test_topic);
+    ASSERT_TRUE_CORO(mirror_topic_state.has_value());
+    EXPECT_EQ(mirror_topic_state.value(), mirror_topic_state::active);
+
+    auto link_id = _table.local().find_id_by_topic(test_topic);
+    ASSERT_TRUE_CORO(link_id.has_value());
+    EXPECT_EQ(link_id.value(), id_t(1));
+}
+
+TEST_F_CORO(cluster_link_table_test, with_multiple_links) {
+    model::topic test_topic1("mirror-link1");
+    model::topic test_topic2("mirror-link2");
+    mirror_topic_state mirror_state1 = mirror_topic_state::active;
+    mirror_topic_state mirror_state2 = mirror_topic_state::paused;
+
+    metadata link1{
+      .name = name_t("link1"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{}};
+    link1.state.set_mirror_topics({{test_topic1, mirror_state1}});
+
+    metadata link2{
+      .name = name_t("link2"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{}};
+    link2.state.set_mirror_topics({{test_topic2, mirror_state2}});
+
+    auto res = co_await _table.local().apply_update(
+      testing::create_upsert_command(model::offset{1}, link1.copy()));
+    ASSERT_EQ_CORO(res.value(), int(errc::success))
+      << "Failed to upsert link1: " << res.message();
+    res = co_await _table.local().apply_update(
+      testing::create_upsert_command(model::offset{2}, link2.copy()));
+    ASSERT_EQ_CORO(res.value(), int(errc::success))
+      << "Failed to upsert link2: " << res.message();
+
+    ASSERT_EQ_CORO(_table.local().size(), 2);
+
+    auto mirror_topic_state1 = _table.local().find_mirror_topic_state(
+      test_topic1);
+    ASSERT_TRUE_CORO(mirror_topic_state1.has_value());
+    EXPECT_EQ(mirror_topic_state1.value(), mirror_state1);
+
+    auto link_id1 = _table.local().find_id_by_topic(test_topic1);
+    ASSERT_TRUE_CORO(link_id1.has_value());
+    EXPECT_EQ(link_id1.value(), id_t(1));
+
+    auto mirror_topic_state2 = _table.local().find_mirror_topic_state(
+      test_topic2);
+    ASSERT_TRUE_CORO(mirror_topic_state2.has_value());
+    EXPECT_EQ(mirror_topic_state2.value(), mirror_state2);
+
+    auto link_id2 = _table.local().find_id_by_topic(test_topic2);
+    ASSERT_TRUE_CORO(link_id2.has_value());
+    EXPECT_EQ(link_id2.value(), id_t(2));
+
+    res = co_await _table.local().apply_update(
+      testing::create_remove_command(name_t("link1")));
+    ASSERT_EQ_CORO(res.value(), int(errc::success))
+      << "Failed to remove link1: " << res.message();
+
+    link_id1 = _table.local().find_id_by_topic(test_topic1);
+    EXPECT_FALSE(link_id1.has_value());
+    mirror_topic_state1 = _table.local().find_mirror_topic_state(test_topic1);
+    EXPECT_FALSE(mirror_topic_state1.has_value());
+
+    link_id2 = _table.local().find_id_by_topic(test_topic2);
+    ASSERT_TRUE_CORO(link_id2.has_value());
+    EXPECT_EQ(link_id2.value(), id_t(2));
+    mirror_topic_state2 = _table.local().find_mirror_topic_state(test_topic2);
+    ASSERT_TRUE_CORO(mirror_topic_state2.has_value());
+    EXPECT_EQ(mirror_topic_state2.value(), mirror_state2);
+}
+
+TEST_F_CORO(cluster_link_table_test, remove_mirror_topic) {
+    model::topic test_topic1("mirror-link1");
+    model::topic test_topic2("mirror-link2");
+    mirror_topic_state mirror_state1 = mirror_topic_state::active;
+    mirror_topic_state mirror_state2 = mirror_topic_state::paused;
+
+    metadata link{
+      .name = name_t("link1"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{}};
+    link.state.set_mirror_topics(
+      {{test_topic1, mirror_state1}, {test_topic2, mirror_state2}});
+
+    auto res = co_await _table.local().apply_update(
+      testing::create_upsert_command(model::offset{1}, link.copy()));
+    ASSERT_EQ_CORO(res.value(), int(errc::success))
+      << "Failed to upsert link: " << res.message();
+
+    link.state.mirror_topics.erase(test_topic1);
+    res = co_await _table.local().apply_update(
+      testing::create_upsert_command(model::offset{1}, link.copy()));
+    ASSERT_EQ_CORO(res.value(), int(errc::success))
+      << "Failed to upsert link: " << res.message();
+    auto link_id = _table.local().find_id_by_topic(test_topic1);
+    EXPECT_FALSE(link_id.has_value());
+    auto topic_state = _table.local().find_mirror_topic_state(test_topic1);
+    EXPECT_FALSE(topic_state.has_value());
+    link_id = _table.local().find_id_by_topic(test_topic2);
+    ASSERT_TRUE_CORO(link_id.has_value());
+    EXPECT_EQ(link_id.value(), id_t(1));
+    topic_state = _table.local().find_mirror_topic_state(test_topic2);
+    ASSERT_TRUE_CORO(topic_state.has_value());
+    EXPECT_EQ(topic_state.value(), mirror_state2);
+
+    res = co_await _table.local().apply_update(
+      testing::create_remove_command(name_t("link1")));
+    ASSERT_EQ_CORO(res.value(), int(errc::success))
+      << "Failed to remove link: " << res.message();
+    link_id = _table.local().find_id_by_topic(test_topic2);
+    EXPECT_FALSE(link_id.has_value());
+    topic_state = _table.local().find_mirror_topic_state(test_topic2);
+    EXPECT_FALSE(topic_state.has_value());
+}
+
+TEST_F_CORO(cluster_link_table_test, duplicate_topic) {
+    model::topic test_topic("mirror-link1");
+    mirror_topic_state mirror_state = mirror_topic_state::active;
+
+    metadata link1{
+      .name = name_t("link1"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{}};
+    link1.state.mirror_topics.insert({{test_topic, mirror_state}});
+
+    metadata link2{
+      .name = name_t("link2"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{}};
+    link2.state.mirror_topics.insert({{test_topic, mirror_state}});
+
+    auto res = co_await _table.local().apply_update(
+      testing::create_upsert_command(model::offset{1}, link1.copy()));
+    ASSERT_EQ_CORO(res.value(), int(errc::success))
+      << "Failed to upsert link1: " << res.message();
+
+    res = co_await _table.local().apply_update(
+      testing::create_upsert_command(model::offset{2}, link2.copy()));
+    ASSERT_EQ_CORO(res.value(), int(errc::topic_being_mirrored_by_other_link))
+      << "Expected error for duplicate topic, got: " << res.message();
+}
+
+TEST_F_CORO(cluster_link_table_test, reset_links_duplicate_topic) {
+    model::topic test_topic("mirror-link1");
+    mirror_topic_state mirror_state = mirror_topic_state::active;
+    table::map_t links;
+    auto iter = links.emplace(
+      id_t(1),
+      metadata{
+        .name = name_t("link1"),
+        .uuid = uuid_t(::uuid_t::create()),
+        .connection = connection_config{}});
+    iter.first->second.state.mirror_topics.insert(
+      {test_topic, mirror_state}); // Add the topic to the first link
+    iter = links.emplace(
+      id_t(2),
+      metadata{
+        .name = name_t("link2"), // Duplicate name
+        .uuid = uuid_t(::uuid_t::create()),
+        .connection = connection_config{}});
+    iter.first->second.state.mirror_topics.insert(
+      {test_topic, mirror_state}); // Add the topic to the second link
+
+    cluster::controller_snapshot snap;
+    snap.cluster_links.links = copy_links(links);
+    EXPECT_THROW(
+      co_await _table.local().apply_snapshot(model::offset{}, snap),
+      std::logic_error);
+}
+
 } // namespace cluster::cluster_link

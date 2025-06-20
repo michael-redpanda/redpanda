@@ -51,6 +51,13 @@ public:
     /// Finds link ID by name
     std::optional<::cluster_link::model::id_t>
     find_id_by_name(const ::cluster_link::model::name_t& name) const;
+    /// Finds a link ID by the mirror topic name
+    std::optional<::cluster_link::model::id_t>
+    find_id_by_topic(model::topic_view tp) const;
+    /// Find the state of a mirror topic by its name, otherwise returns
+    /// std::nullopt
+    std::optional<::cluster_link::model::mirror_topic_state>
+    find_mirror_topic_state(model::topic_view tp) const;
 
     /// Returns a list of all link IDs in the table
     chunked_vector<::cluster_link::model::id_t> get_all_link_ids() const;
@@ -85,8 +92,12 @@ private:
       ::cluster_link::model::name_t,
       ::cluster_link::model::id_t>;
 
+    using topic_name_index_t
+      = chunked_hash_map<model::topic, ::cluster_link::model::id_t>;
+
     map_t _link_metadata;
     name_index_t _name_index;
+    topic_name_index_t _topic_name_index;
 
     chunked_hash_map<notification_id, notification_callback> _callbacks;
     notification_id _latest_id{0};

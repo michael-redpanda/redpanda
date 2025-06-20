@@ -13,11 +13,13 @@
 #include "base/vassert.h"
 #include "cluster/commands.h"
 #include "cluster/logger.h"
+#include "cluster_link/model/types.h"
 
 namespace cluster::cluster_link {
 
 using ::cluster_link::model::id_t;
 using ::cluster_link::model::metadata;
+using ::cluster_link::model::mirror_topic_state;
 using ::cluster_link::model::name_t;
 
 namespace {
@@ -41,6 +43,8 @@ size_t table::size() const { return _link_metadata.size(); }
 
 void table::reset_links(map_t links) {
     name_index_t snap_name_index;
+    topic_name_index_t snap_topic_name_index;
+
     chunked_vector<id_t> all_deletes;
     chunked_vector<id_t> all_inserts;
     chunked_vector<id_t> all_changes;
@@ -67,10 +71,22 @@ void table::reset_links(map_t links) {
               metadata.name,
               it.first->second));
         }
+        for (const auto& t : metadata.state.mirror_topics) {
+            auto topic_it = snap_topic_name_index.emplace(t.first, id);
+            if (!topic_it.second) {
+                throw std::logic_error(fmt::format(
+                  "panda link id={} is attempting to use a topic {} which is "
+                  "already registered to {}",
+                  id,
+                  t.first,
+                  topic_it.first->second));
+            }
+        }
     }
 
     _link_metadata = std::move(links);
     _name_index = std::move(snap_name_index);
+    _topic_name_index = std::move(snap_topic_name_index);
 
     for (const auto& deleted : all_deletes) {
         run_callbacks(deleted);
@@ -112,6 +128,36 @@ std::optional<id_t> table::find_id_by_name(const name_t& name) const {
     if (it == _name_index.end()) {
         return std::nullopt;
     }
+    return it->second;
+}
+
+std::optional<id_t> table::find_id_by_topic(model::topic_view tp) const {
+    auto it = _topic_name_index.find(tp);
+    if (it == _topic_name_index.end()) {
+        return std::nullopt;
+    }
+    return it->second;
+}
+
+std::optional<mirror_topic_state>
+table::find_mirror_topic_state(model::topic_view tp) const {
+    auto id = find_id_by_topic(tp);
+    if (!id) {
+        return std::nullopt;
+    }
+    auto meta = find_link_by_id(id.value());
+    vassert(
+      meta.has_value(),
+      "Inconsistent topic index for {} expected id {}",
+      tp,
+      id.value());
+
+    auto it = meta->get().state.mirror_topics.find(tp);
+    vassert(
+      it != meta->get().state.mirror_topics.end(),
+      "Inconsistent topic index for {} expected to exist in metadata id {}",
+      tp,
+      id.value());
     return it->second;
 }
 
@@ -185,6 +231,21 @@ void table::run_callbacks(id_t id) {
 }
 
 cluster::cluster_link::errc table::upsert_link(id_t id, metadata meta) {
+    for (const auto& t : meta.state.mirror_topics) {
+        auto link_id = find_id_by_topic(t.first);
+        if (link_id && link_id.value() != id) {
+            vlog(
+              cluster::clusterlog.info,
+              "Unable to upsert link {} ({}) as topic {} is already registered "
+              "to link {}",
+              meta.name,
+              id,
+              t.first,
+              link_id.value());
+            return errc::topic_being_mirrored_by_other_link;
+        }
+        _topic_name_index.emplace(t.first, id);
+    }
     auto name_it = _name_index.find(meta.name);
     if (name_it != _name_index.end()) {
         if (name_it->second != id) {
@@ -201,6 +262,19 @@ cluster::cluster_link::errc table::upsert_link(id_t id, metadata meta) {
         _name_index.emplace(meta.name, id);
     }
 
+    chunked_vector<::model::topic> topics_to_remove;
+
+    // reconcile whether any topics were removed
+    for (auto& it : _topic_name_index) {
+        if (it.second == id && !meta.state.mirror_topics.contains(it.first)) {
+            topics_to_remove.emplace_back(it.first);
+        }
+    }
+
+    for (const auto& topic : topics_to_remove) {
+        _topic_name_index.erase(topic);
+    }
+
     _link_metadata.insert_or_assign(id, std::move(meta));
     run_callbacks(id);
     return cluster::cluster_link::errc::success;
@@ -213,6 +287,18 @@ cluster::cluster_link::errc table::remove_link(const name_t& name) {
     }
 
     auto id = name_it->second;
+
+    // absl::flat_hash_map does not support std::ranges algorithms directly,
+    // so we manually erase by predicate.
+    chunked_vector<::model::topic> topics_to_remove;
+    for (const auto& it : _topic_name_index) {
+        if (it.second == id) {
+            topics_to_remove.emplace_back(it.first);
+        }
+    }
+    for (const auto& topic : topics_to_remove) {
+        _topic_name_index.erase(topic);
+    }
     auto it = _link_metadata.find(id);
     vassert(
       it != _link_metadata.end(),
