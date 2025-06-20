@@ -28,7 +28,9 @@ namespace cluster::cluster_link {
 class frontend : public ss::peering_sharded_service<frontend> {
     using cluster_link_cmd = std::variant<
       cluster::cluster_link_upsert_cmd,
-      cluster::cluster_link_remove_cmd>;
+      cluster::cluster_link_remove_cmd,
+      cluster::cluster_link_add_mirror_topic_cmd,
+      cluster::cluster_link_update_mirror_topic_state_cmd>;
 
 public:
     frontend(
@@ -47,6 +49,14 @@ public:
       ::cluster_link::model::metadata, model::timeout_clock::time_point);
     ss::future<errc> remove_cluster_link(
       ::cluster_link::model::name_t, model::timeout_clock::time_point);
+    ss::future<errc> add_mirror_topic(
+      ::cluster_link::model::id_t,
+      ::cluster_link::model::add_mirror_topic_cmd,
+      model::timeout_clock::time_point);
+    ss::future<errc> update_mirror_topic_state(
+      ::cluster_link::model::id_t,
+      ::cluster_link::model::update_mirror_topic_state_cmd,
+      model::timeout_clock::time_point);
 
     bool cluster_link_active(bool check_license) const;
 

@@ -15,13 +15,18 @@
 #include "cluster/errc.h"
 #include "cluster/logger.h"
 #include "cluster/partition_leaders_table.h"
+#include "cluster/types.h"
+#include "cluster_link/model/types.h"
+#include "model/validation.h"
 #include "rpc/connection_cache.h"
 
 namespace cluster::cluster_link {
 
+using ::cluster_link::model::add_mirror_topic_cmd;
 using ::cluster_link::model::id_t;
 using ::cluster_link::model::metadata;
 using ::cluster_link::model::name_t;
+using ::cluster_link::model::update_mirror_topic_state_cmd;
 
 namespace {
 errc map_errc(std::error_code ec) {
@@ -98,6 +103,28 @@ ss::future<errc> frontend::remove_cluster_link(
         co_return errc::feature_disabled;
     }
     cluster_link_cmd c{cluster::cluster_link_remove_cmd(std::move(name), 0)};
+    co_return co_await do_mutation(std::move(c), timeout);
+}
+
+ss::future<errc> frontend::add_mirror_topic(
+  id_t id, add_mirror_topic_cmd cmd, model::timeout_clock::time_point timeout) {
+    if (!cluster_link_active(false)) {
+        co_return errc::feature_disabled;
+    }
+    cluster_link_cmd c{
+      cluster::cluster_link_add_mirror_topic_cmd(id, std::move(cmd))};
+    co_return co_await do_mutation(std::move(c), timeout);
+}
+
+ss::future<errc> frontend::update_mirror_topic_state(
+  id_t id,
+  update_mirror_topic_state_cmd cmd,
+  model::timeout_clock::time_point timeout) {
+    if (!cluster_link_active(false)) {
+        co_return errc::feature_disabled;
+    }
+    cluster_link_cmd c{
+      cluster::cluster_link_update_mirror_topic_state_cmd(id, std::move(cmd))};
     co_return co_await do_mutation(std::move(c), timeout);
 }
 
@@ -192,6 +219,45 @@ ss::future<errc> frontend::dispatch_mutation_to_remote(
                         }
                         return result<void>(r.value().ec);
                     });
+              },
+              [client, timeout](
+                cluster::cluster_link_add_mirror_topic_cmd cmd) mutable {
+                  return client
+                    .add_mirror_topic(
+                      cluster::add_mirror_topic_request{
+                        .link_id = cmd.key,
+                        .cmd = std::move(cmd.value),
+                        .timeout = timeout},
+                      rpc::client_opts(timeout))
+                    .then(
+                      &rpc::get_ctx_data<cluster::add_mirror_topic_response>)
+                    .then([](result<cluster::add_mirror_topic_response> r) {
+                        if (r.has_error()) {
+                            return result<void>(r.error());
+                        }
+                        return result<void>(r.value().ec);
+                    });
+              },
+              [client,
+               timeout](cluster::cluster_link_update_mirror_topic_state_cmd
+                          cmd) mutable {
+                  return client
+                    .update_mirror_topic_state(
+                      cluster::update_mirror_topic_state_request{
+                        .link_id = cmd.key,
+                        .cmd = std::move(cmd.value),
+                        .timeout = timeout},
+                      rpc::client_opts(timeout))
+                    .then(&rpc::get_ctx_data<
+                          cluster::update_mirror_topic_state_response>)
+                    .then(
+                      [](
+                        result<cluster::update_mirror_topic_state_response> r) {
+                          if (r.has_error()) {
+                              return result<void>(r.error());
+                          }
+                          return result<void>(r.value().ec);
+                      });
               });
         })
       .then([](result<void> r) {
@@ -282,7 +348,8 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
           if (cmd.value.name().size() > max_name_size) {
               vlog(
                 cluster::clusterlog.info,
-                "Attempting to create a panda link with too large of a name "
+                "Attempting to create a panda link with too large of a "
+                "name "
                 "{} > {}",
                 cmd.value.name().size(),
                 max_name_size);
@@ -318,6 +385,66 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
           auto meta = _table->find_link_by_name(cmd.key);
           if (!meta.has_value()) {
               return errc::does_not_exist;
+          }
+          return errc::success;
+      },
+      [this](const cluster::cluster_link_add_mirror_topic_cmd& cmd) {
+          auto ec = model::validate_kafka_topic_name(cmd.value.topic);
+          if (ec) {
+              vlog(cluster::clusterlog.info, "Invalid topic name: {}", ec);
+              return errc::mirror_topic_name_invalid;
+          }
+          auto meta = _table->find_link_by_id(cmd.key);
+          if (!meta.has_value()) {
+              return errc::does_not_exist;
+          }
+          auto id = _table->find_id_by_topic(cmd.value.topic);
+          if (id.has_value()) {
+              if (id.value() != cmd.key) {
+                  vlog(
+                    cluster::clusterlog.info,
+                    "Attempting to add mirror topic '{}' to '{}', however it "
+                    "is "
+                    "already mirrored by another link",
+                    cmd.value.topic,
+                    meta->get().name);
+                  return errc::topic_being_mirrored_by_other_link;
+              } else {
+                  vlog(
+                    cluster::clusterlog.info,
+                    "Topic '{}' is "
+                    "already mirrored by link "
+                    "'{}'",
+                    cmd.value.topic,
+                    meta->get().name);
+                  return errc::topic_already_being_mirrored;
+              }
+          }
+          return errc::success;
+      },
+      [this](const cluster::cluster_link_update_mirror_topic_state_cmd& cmd) {
+          auto ec = model::validate_kafka_topic_name(cmd.value.topic);
+          if (ec) {
+              vlog(cluster::clusterlog.info, "Invalid topic name: {}", ec);
+              return errc::mirror_topic_name_invalid;
+          }
+          auto meta = _table->find_link_by_id(cmd.key);
+          if (!meta.has_value()) {
+              return errc::does_not_exist;
+          }
+          auto id = _table->find_id_by_topic(cmd.value.topic);
+          if (!id.has_value()) {
+              vlog(
+                cluster::clusterlog.info,
+                "Topic '{}' is not being mirrored",
+                cmd.value.topic);
+              return errc::topic_not_being_mirrored;
+          } else if (id.value() != cmd.key) {
+              vlog(
+                cluster::clusterlog.info,
+                "Topic '{}' is being mirrored by another link",
+                cmd.value.topic);
+              return errc::topic_being_mirrored_by_other_link;
           }
           return errc::success;
       });

@@ -18,10 +18,13 @@
 
 namespace cluster::cluster_link {
 
+using ::cluster_link::model::add_mirror_topic_cmd;
 using ::cluster_link::model::connection_config;
 using ::cluster_link::model::id_t;
 using ::cluster_link::model::metadata;
+using ::cluster_link::model::mirror_topic_state;
 using ::cluster_link::model::name_t;
+using ::cluster_link::model::update_mirror_topic_state_cmd;
 using ::cluster_link::model::uuid_t;
 
 constexpr size_t max_links = 1;
@@ -61,6 +64,31 @@ public:
         if (ec == cluster::cluster_link::errc::success) {
             co_await _table.local().apply_update(
               testing::create_remove_command(cmd.key));
+        }
+        co_return ec;
+    }
+
+    ss::future<cluster::cluster_link::errc>
+    add_mirror_topic(id_t id, add_mirror_topic_cmd cmd) {
+        cluster::cluster_link_add_mirror_topic_cmd add_cmd{id, std::move(cmd)};
+        auto ec = _validator->validate_mutation(add_cmd);
+        if (ec == errc::success) {
+            co_await _table.local().apply_update(
+              testing::create_add_mirror_topic_command(
+                add_cmd.key, std::move(add_cmd.value)));
+        }
+        co_return ec;
+    }
+
+    ss::future<cluster::cluster_link::errc>
+    update_mirror_topic_state(id_t id, update_mirror_topic_state_cmd cmd) {
+        cluster::cluster_link_update_mirror_topic_state_cmd update_cmd{
+          id, std::move(cmd)};
+        auto ec = _validator->validate_mutation(update_cmd);
+        if (ec == errc::success) {
+            co_await _table.local().apply_update(
+              testing::create_update_mirror_topic_state_command(
+                update_cmd.key, std::move(update_cmd.value)));
         }
         co_return ec;
     }
@@ -236,6 +264,205 @@ TEST_F_CORO(frontend_validation_test, control_character_in_name) {
     EXPECT_EQ(
       co_await upsert_cluster_link(std::move(m)),
       cluster::cluster_link::errc::invalid_create);
+}
+
+TEST_F_CORO(frontend_validation_test, add_mirror_topic_success) {
+    metadata m{
+      .name = name_t("link1"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{
+        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+    ASSERT_EQ_CORO(co_await upsert_cluster_link(std::move(m)), errc::success);
+    auto id = _table.local().find_id_by_name(name_t("link1"));
+    ASSERT_TRUE_CORO(id.has_value());
+
+    add_mirror_topic_cmd cmd{
+      .topic = model::topic("mirror-topic"),
+      .state = mirror_topic_state::active};
+    EXPECT_EQ(
+      co_await add_mirror_topic(id.value(), std::move(cmd)), errc::success);
+}
+
+TEST_F_CORO(frontend_validation_test, add_mirror_topic_invalid_name) {
+    metadata m{
+      .name = name_t("link1"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{
+        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+    ASSERT_EQ_CORO(co_await upsert_cluster_link(std::move(m)), errc::success);
+    auto id = _table.local().find_id_by_name(name_t("link1"));
+    ASSERT_TRUE_CORO(id.has_value());
+
+    add_mirror_topic_cmd cmd{
+      .topic = model::topic("\xFF\xFF\xFF"), // Invalid UTF-8
+      .state = mirror_topic_state::active};
+    EXPECT_EQ(
+      co_await add_mirror_topic(id.value(), std::move(cmd)),
+      errc::mirror_topic_name_invalid);
+}
+
+TEST_F_CORO(frontend_validation_test, add_mirror_topic_no_link) {
+    add_mirror_topic_cmd cmd{
+      .topic = model::topic("mirror-topic"),
+      .state = mirror_topic_state::active};
+    EXPECT_EQ(
+      co_await add_mirror_topic(id_t{5}, std::move(cmd)), errc::does_not_exist);
+}
+
+TEST_F_CORO(frontend_validation_test, add_mirror_topic_already_mirrored) {
+    model::topic test_topic("mirror-link1");
+    mirror_topic_state mirror_state = mirror_topic_state::active;
+    metadata m{
+      .name = name_t("link1"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{
+        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+    m.state.set_mirror_topics({{test_topic, mirror_state}});
+    ASSERT_EQ_CORO(co_await upsert_cluster_link(std::move(m)), errc::success);
+    auto id = _table.local().find_id_by_name(name_t("link1"));
+    ASSERT_TRUE_CORO(id.has_value());
+
+    add_mirror_topic_cmd cmd{
+      .topic = test_topic, .state = mirror_topic_state::active};
+
+    EXPECT_EQ(
+      co_await add_mirror_topic(id.value(), std::move(cmd)),
+      errc::topic_already_being_mirrored);
+}
+
+TEST_F_CORO(frontend_validation_test, add_mirror_topic_mirrored_by_other_link) {
+    model::topic test_topic("mirror-link1");
+    mirror_topic_state mirror_state = mirror_topic_state::active;
+    metadata m1{
+      .name = name_t("link1"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{
+        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+    m1.state.set_mirror_topics({{test_topic, mirror_state}});
+
+    metadata m2{
+      .name = name_t("link2"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{
+        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+
+    ASSERT_EQ_CORO(
+      co_await _table.local().apply_update(
+        testing::create_upsert_command(model::offset{1}, std::move(m1))),
+      errc::success);
+
+    ASSERT_EQ_CORO(
+      co_await _table.local().apply_update(
+        testing::create_upsert_command(model::offset{2}, std::move(m2))),
+      errc::success);
+
+    add_mirror_topic_cmd cmd{
+      .topic = test_topic, .state = mirror_topic_state::active};
+
+    EXPECT_EQ(
+      co_await add_mirror_topic(id_t{2}, std::move(cmd)),
+      errc::topic_being_mirrored_by_other_link);
+}
+
+TEST_F_CORO(frontend_validation_test, update_mirror_topic_state_success) {
+    model::topic test_topic("mirror-link1");
+    mirror_topic_state mirror_state = mirror_topic_state::active;
+    metadata m{
+      .name = name_t("link1"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{
+        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+    m.state.set_mirror_topics({{test_topic, mirror_state}});
+    ASSERT_EQ_CORO(co_await upsert_cluster_link(std::move(m)), errc::success);
+    auto id = _table.local().find_id_by_name(name_t("link1"));
+    ASSERT_TRUE_CORO(id.has_value());
+
+    update_mirror_topic_state_cmd update_cmd{
+      .topic = test_topic, .state = mirror_topic_state::paused};
+    EXPECT_EQ(
+      co_await update_mirror_topic_state(id.value(), std::move(update_cmd)),
+      errc::success);
+}
+
+TEST_F_CORO(frontend_validation_test, update_mirror_topic_state_invalid_name) {
+    model::topic test_topic("mirror-link1");
+    mirror_topic_state mirror_state = mirror_topic_state::active;
+    metadata m{
+      .name = name_t("link1"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{
+        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+    m.state.set_mirror_topics({{test_topic, mirror_state}});
+    ASSERT_EQ_CORO(co_await upsert_cluster_link(std::move(m)), errc::success);
+    auto id = _table.local().find_id_by_name(name_t("link1"));
+    ASSERT_TRUE_CORO(id.has_value());
+
+    update_mirror_topic_state_cmd update_cmd{
+      .topic = model::topic("\xFF\xFF\xFF"), // Invalid UTF-8
+      .state = mirror_topic_state::paused};
+    EXPECT_EQ(
+      co_await update_mirror_topic_state(id.value(), std::move(update_cmd)),
+      errc::mirror_topic_name_invalid);
+}
+
+TEST_F_CORO(frontend_validation_test, update_mirror_topic_non_existant_link) {
+    update_mirror_topic_state_cmd update_cmd{
+      .topic = model::topic("test-topic"), .state = mirror_topic_state::paused};
+    EXPECT_EQ(
+      co_await update_mirror_topic_state(id_t{5}, std::move(update_cmd)),
+      errc::does_not_exist);
+}
+
+TEST_F_CORO(
+  frontend_validation_test, update_mirror_topic_mirror_topic_does_not_exist) {
+    metadata m{
+      .name = name_t("link1"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{
+        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+    ASSERT_EQ_CORO(co_await upsert_cluster_link(std::move(m)), errc::success);
+    auto id = _table.local().find_id_by_name(name_t("link1"));
+    ASSERT_TRUE_CORO(id.has_value());
+
+    update_mirror_topic_state_cmd update_cmd{
+      .topic = model::topic("test-topic"), .state = mirror_topic_state::paused};
+    EXPECT_EQ(
+      co_await update_mirror_topic_state(id.value(), std::move(update_cmd)),
+      errc::topic_not_being_mirrored);
+}
+
+TEST_F_CORO(frontend_validation_test, update_mirror_topic_mirrored_by_other) {
+    model::topic test_topic("mirror-link1");
+    mirror_topic_state mirror_state = mirror_topic_state::active;
+    metadata m1{
+      .name = name_t("link1"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{
+        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+    m1.state.set_mirror_topics({{test_topic, mirror_state}});
+
+    metadata m2{
+      .name = name_t("link2"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{
+        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+
+    ASSERT_EQ_CORO(
+      co_await _table.local().apply_update(
+        testing::create_upsert_command(model::offset{1}, std::move(m1))),
+      errc::success);
+
+    ASSERT_EQ_CORO(
+      co_await _table.local().apply_update(
+        testing::create_upsert_command(model::offset{2}, std::move(m2))),
+      errc::success);
+
+    update_mirror_topic_state_cmd update_cmd{
+      .topic = test_topic, .state = mirror_topic_state::paused};
+
+    EXPECT_EQ(
+      co_await update_mirror_topic_state(id_t{2}, std::move(update_cmd)),
+      errc::topic_being_mirrored_by_other_link);
 }
 
 } // namespace cluster::cluster_link
