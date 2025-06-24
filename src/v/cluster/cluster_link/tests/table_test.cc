@@ -22,6 +22,17 @@
 
 namespace cluster::cluster_link {
 
+namespace {
+table::map_t copy_links(const table::map_t& links) {
+    table::map_t copy;
+    copy.reserve(links.size());
+    for (const auto& [id, metadata] : links) {
+        copy.emplace(id, metadata.copy());
+    }
+    return copy;
+}
+} // namespace
+
 using ::cluster_link::model::connection_config;
 using ::cluster_link::model::id_t;
 using ::cluster_link::model::metadata;
@@ -58,7 +69,7 @@ TEST_F_CORO(cluster_link_table_test, reset_links) {
         .connection = connection_config{}});
 
     cluster::controller_snapshot snap;
-    snap.cluster_links.links = links;
+    snap.cluster_links.links = copy_links(links);
     ASSERT_NO_THROW_CORO(
       co_await _table.local().apply_snapshot(model::offset{}, snap));
 
@@ -90,7 +101,7 @@ TEST_F_CORO(cluster_link_table_test, reset_links_duplicate_name) {
         .connection = connection_config{}});
 
     cluster::controller_snapshot snap;
-    snap.cluster_links.links = links;
+    snap.cluster_links.links = copy_links(links);
     EXPECT_THROW(
       co_await _table.local().apply_snapshot(model::offset{}, snap),
       std::logic_error);
@@ -284,7 +295,7 @@ TEST_F_CORO(cluster_link_table_test, callback_snapshot) {
     });
 
     cluster::controller_snapshot snap;
-    snap.cluster_links.links = links;
+    snap.cluster_links.links = copy_links(links);
     co_await _table.local().apply_snapshot(model::offset{}, snap);
 
     ASSERT_EQ_CORO(_table.local().size(), 2);

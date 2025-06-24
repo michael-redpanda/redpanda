@@ -17,15 +17,13 @@
 
 #include <seastar/core/sharded.hh>
 
-#include <absl/container/flat_hash_map.h>
-
 namespace cluster::cluster_link {
 /**
  * @brief Table that holds information about panda links
  */
 class table : public ss::peering_sharded_service<table> {
 public:
-    using map_t = absl::flat_hash_map<
+    using map_t = chunked_hash_map<
       ::cluster_link::model::id_t,
       ::cluster_link::model::metadata>;
     table() = default;
@@ -81,13 +79,14 @@ private:
     void run_callbacks(::cluster_link::model::id_t);
 
 private:
-    using name_index_t = absl::
-      flat_hash_map<::cluster_link::model::name_t, ::cluster_link::model::id_t>;
+    using name_index_t = chunked_hash_map<
+      ::cluster_link::model::name_t,
+      ::cluster_link::model::id_t>;
 
     map_t _link_metadata;
     name_index_t _name_index;
 
-    absl::flat_hash_map<notification_id, notification_callback> _callbacks;
+    chunked_hash_map<notification_id, notification_callback> _callbacks;
     notification_id _latest_id{0};
 };
 } // namespace cluster::cluster_link

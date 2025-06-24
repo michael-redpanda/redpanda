@@ -24,9 +24,18 @@ namespace {
 static constexpr auto accepted_commands = cluster::make_commands_list<
   cluster::cluster_link_upsert_cmd,
   cluster::cluster_link_remove_cmd>();
-}
 
-table::map_t table::all_links() const { return _link_metadata; }
+table::map_t copy_links(const table::map_t& links) {
+    table::map_t copy;
+    copy.reserve(links.size());
+    for (const auto& [id, metadata] : links) {
+        copy.emplace(id, metadata.copy());
+    }
+    return copy;
+}
+} // namespace
+
+table::map_t table::all_links() const { return copy_links(_link_metadata); }
 
 size_t table::size() const { return _link_metadata.size(); }
 
@@ -154,8 +163,9 @@ ss::future<> table::fill_snapshot(cluster::controller_snapshot& snap) const {
 
 ss::future<>
 table::apply_snapshot(model::offset, const cluster::controller_snapshot& snap) {
-    return container().invoke_on_all(
-      [&snap](table& table) { table.reset_links(snap.cluster_links.links); });
+    return container().invoke_on_all([&snap](table& table) {
+        table.reset_links(copy_links(snap.cluster_links.links));
+    });
 }
 
 table::notification_id table::register_for_updates(notification_callback cb) {
