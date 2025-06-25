@@ -181,13 +181,14 @@ bool table::is_batch_applicable(const model::record_batch& b) const {
 ss::future<std::error_code> table::apply_update(model::record_batch b) {
     auto offset = b.base_offset();
     auto cmd = co_await deserialize(std::move(b), accepted_commands);
-    auto results = co_await container().map([cmd, offset](table& table) {
+    auto results = co_await container().map([cmd = std::move(cmd),
+                                             offset](table& table) mutable {
         return ss::visit(
-          cmd,
+          std::move(cmd),
           [&table, offset](const cluster::cluster_link_upsert_cmd& upsert) {
               auto existing_id = table.find_id_by_name(upsert.value.name);
               return table.upsert_link(
-                existing_id.value_or(id_t{offset}), std::move(upsert.value));
+                existing_id.value_or(id_t{offset}), upsert.value.copy());
           },
           [&table](const cluster::cluster_link_remove_cmd& remove) {
               return table.remove_link(remove.key);

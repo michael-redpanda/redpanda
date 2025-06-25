@@ -190,7 +190,7 @@ ss::future<errc> frontend::dispatch_mutation_to_remote(
           cluster::controller_client_protocol client) mutable {
             return ss::visit(
               std::move(cmd),
-              [client, timeout](cluster::cluster_link_upsert_cmd cmd) mutable {
+              [client, timeout](cluster::cluster_link_upsert_cmd& cmd) mutable {
                   return client
                     .upsert_cluster_link(
                       cluster::upsert_cluster_link_request{

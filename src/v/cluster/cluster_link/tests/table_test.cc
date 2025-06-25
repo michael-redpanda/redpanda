@@ -117,19 +117,19 @@ TEST_F_CORO(cluster_link_table_test, upsert_success_test) {
       .connection = connection_config{}};
 
     ASSERT_NO_THROW_CORO(co_await _table.local().apply_update(
-      testing::create_upsert_command(model::offset{1}, link)));
+      testing::create_upsert_command(model::offset{1}, link.copy())));
 
     ASSERT_EQ_CORO(_table.local().size(), 1);
 
     auto found_link = _table.local().find_link_by_name(name_t("link1"));
     ASSERT_TRUE_CORO(found_link.has_value());
-    EXPECT_EQ(found_link->get(), link);
+    EXPECT_EQ(found_link->get(), link.copy());
     auto found_id = _table.local().find_id_by_name(name_t("link1"));
     ASSERT_TRUE_CORO(found_id.has_value());
     EXPECT_EQ(found_id.value(), id_t(1));
     found_link = _table.local().find_link_by_id(id_t(1));
     ASSERT_TRUE_CORO(found_link.has_value());
-    EXPECT_EQ(found_link->get(), link);
+    EXPECT_EQ(found_link->get(), link.copy());
 
     ASSERT_NO_THROW_CORO(co_await _table.local().apply_update(
       testing::create_remove_command(name_t("link1"))));
@@ -154,14 +154,14 @@ TEST_F_CORO(cluster_link_table_test, upsert_update) {
       .connection = connection_config{}};
 
     ASSERT_NO_THROW_CORO(co_await _table.local().apply_update(
-      testing::create_upsert_command(model::offset{1}, link)));
+      testing::create_upsert_command(model::offset{1}, link.copy())));
     ASSERT_EQ_CORO(_table.local().size(), 1);
     auto found_link = _table.local().find_link_by_name(name_t("link1"));
     ASSERT_TRUE_CORO(found_link.has_value());
-    EXPECT_EQ(found_link->get(), link);
+    EXPECT_EQ(found_link->get(), link.copy());
 
     ASSERT_NO_THROW_CORO(co_await _table.local().apply_update(
-      testing::create_upsert_command(model::offset{2}, updated_link)));
+      testing::create_upsert_command(model::offset{2}, updated_link.copy())));
     EXPECT_EQ(_table.local().size(), 1);
     found_link = _table.local().find_link_by_name(name_t("link1"));
     ASSERT_TRUE_CORO(found_link.has_value());
@@ -241,7 +241,7 @@ TEST_F_CORO(cluster_link_table_test, callback_removal) {
       .connection = connection_config{}};
 
     co_await _table.local().apply_update(
-      testing::create_upsert_command(model::offset{1}, link));
+      testing::create_upsert_command(model::offset{1}, link.copy()));
     auto notification_id = _table.local().register_for_updates(
       [&was_called, &link_id](id_t id) {
           was_called = true;
@@ -266,7 +266,7 @@ TEST_F_CORO(cluster_link_table_test, callback_snapshot) {
       .connection = connection_config{}};
 
     co_await _table.local().apply_update(
-      testing::create_upsert_command(model::offset{1}, link1));
+      testing::create_upsert_command(model::offset{1}, link1.copy()));
 
     metadata link2{
       .name = name_t("link2"),
@@ -274,7 +274,7 @@ TEST_F_CORO(cluster_link_table_test, callback_snapshot) {
       .connection = connection_config{}};
 
     co_await _table.local().apply_update(
-      testing::create_upsert_command(model::offset{2}, link2));
+      testing::create_upsert_command(model::offset{2}, link2.copy()));
 
     table::map_t links;
     links.emplace(

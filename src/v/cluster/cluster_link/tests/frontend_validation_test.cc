@@ -51,8 +51,8 @@ public:
         if (ec == cluster::cluster_link::errc::success) {
             auto existing = _table.local().find_id_by_name(m.name);
             auto id = existing.value_or(++_latest_id);
-            co_await _table.local().apply_update(
-              testing::create_upsert_command(model::offset{id()}, cmd.value));
+            co_await _table.local().apply_update(testing::create_upsert_command(
+              model::offset{id()}, std::move(m)));
         }
 
         co_return ec;
