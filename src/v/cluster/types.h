@@ -12,6 +12,7 @@
 #pragma once
 
 #include "cluster/cloud_metadata/cluster_manifest.h"
+#include "cluster/cluster_link/errc.h"
 #include "cluster/errc.h"
 #include "cluster/feature_update_action.h"
 #include "cluster/fwd.h"
@@ -3551,7 +3552,7 @@ struct upsert_cluster_link_response
       serde::version<0>,
       serde::compat_version<0>> {
     using rpc_adl_exempt = std::true_type;
-    errc ec{errc::success};
+    cluster::cluster_link::errc ec;
 
     friend bool operator==(
       const upsert_cluster_link_response&, const upsert_cluster_link_response&)
@@ -3581,7 +3582,7 @@ struct remove_cluster_link_response
       serde::version<0>,
       serde::compat_version<0>> {
     using rpc_adl_exempt = std::true_type;
-    errc ec{errc::success};
+    cluster::cluster_link::errc ec;
 
     friend bool operator==(
       const remove_cluster_link_response&, const remove_cluster_link_response&)

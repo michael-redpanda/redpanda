@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include "cluster/cluster_link/errc.h"
 #include "cluster/controller_snapshot.h"
 #include "cluster_link/model/types.h"
 #include "model/fundamental.h"
@@ -71,10 +72,11 @@ private:
     void reset_links(map_t);
 
     /// Upserts a link, if the ID classes, throws a std::logic_error
-    cluster::errc
+    cluster::cluster_link::errc
       upsert_link(::cluster_link::model::id_t, ::cluster_link::model::metadata);
     /// Removes a link by ID
-    cluster::errc remove_link(const ::cluster_link::model::name_t&);
+    cluster::cluster_link::errc
+    remove_link(const ::cluster_link::model::name_t&);
 
     void run_callbacks(::cluster_link::model::id_t);
 

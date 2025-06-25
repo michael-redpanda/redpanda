@@ -172,11 +172,11 @@ TEST_F_CORO(cluster_link_table_test, upsert_duplicate_name) {
       .connection = connection_config{}};
 
     auto ec = co_await _table.local().apply_update(
-      testing::create_upsert_command(model::offset{1}, link1));
-    ASSERT_EQ_CORO(ec, cluster::errc::success);
+      testing::create_upsert_command(model::offset{1}, link1.copy()));
+    ASSERT_EQ_CORO(ec, errc::success);
     ec = co_await _table.local().apply_update(
-      testing::create_upsert_command(model::offset{2}, link1));
-    ASSERT_EQ_CORO(ec, cluster::errc::success);
+      testing::create_upsert_command(model::offset{2}, link1.copy()));
+    ASSERT_EQ_CORO(ec, errc::success);
 }
 
 TEST_F_CORO(cluster_link_table_test, remove_non_existent_link) {
@@ -221,8 +221,8 @@ TEST_F_CORO(cluster_link_table_test, callback_test) {
       .connection = connection_config{}};
 
     auto ec = co_await _table.local().apply_update(
-      testing::create_upsert_command(model::offset{1}, link));
-    ASSERT_EQ_CORO(ec, cluster::errc::success);
+      testing::create_upsert_command(model::offset{1}, link.copy()));
+    ASSERT_EQ_CORO(ec, errc::success);
 
     EXPECT_TRUE(was_called);
     EXPECT_EQ(link_id, id_t(1));

@@ -863,7 +863,7 @@ ss::future<upsert_cluster_link_response> service::upsert_cluster_link(
     auto deadline = model::timeout_clock::now() + req.timeout;
     auto result = co_await _cluster_link_frontend.local().upsert_cluster_link(
       std::move(meta), deadline);
-    co_return upsert_cluster_link_response{.ec = result.ec};
+    co_return upsert_cluster_link_response{.ec = result};
 }
 
 ss::future<remove_cluster_link_response> service::remove_cluster_link(
@@ -872,7 +872,7 @@ ss::future<remove_cluster_link_response> service::remove_cluster_link(
     auto deadline = model::timeout_clock::now() + req.timeout;
     auto result = co_await _cluster_link_frontend.local().remove_cluster_link(
       std::move(name), deadline);
-    co_return remove_cluster_link_response{.ec = result.ec};
+    co_return remove_cluster_link_response{.ec = result};
 }
 
 } // namespace cluster
