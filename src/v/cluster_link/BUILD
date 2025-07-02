@@ -57,6 +57,7 @@ redpanda_cc_library(
         "//src/v/model",
         "//src/v/ssx:future_util",
         "//src/v/ssx:work_queue",
+        "//src/v/utils:mutex",
         "//src/v/utils:notification_list",
         "//src/v/utils:prefix_logger",
         "@abseil-cpp//absl/container:flat_hash_map",

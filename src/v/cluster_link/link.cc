@@ -30,6 +30,28 @@ ss::future<> link::stop() {
     return ss::now();
 }
 
+ss::future<result<void>> link::register_task(std::unique_ptr<task> t) {
+    vlog(
+      cllog.debug,
+      "Registering task {} for cluster link {} ({})",
+      t->name(),
+      _config.name,
+      _config.uuid);
+    if (_tasks.contains(t->name())) {
+        auto msg = ssx::sformat(
+          "Task named '{}' already exists for link {}",
+          t->name(),
+          _config.name);
+        vlog(cllog.warn, "{}", msg);
+        co_return err_info(
+          errc::task_already_registered_on_link, std::move(msg));
+    }
+
+    auto name = t->name();
+    _tasks.emplace(std::move(name), std::move(t));
+    co_return outcome::success();
+}
+
 void link::update_config(model::metadata config) {
     vlog(
       cllog.debug,
@@ -38,7 +60,15 @@ void link::update_config(model::metadata config) {
       _config.uuid,
       config);
     _config = std::move(config);
+
+    for (auto& [_, t] : _tasks) {
+        t->update_config(_config);
+    }
 }
 
 const model::metadata& link::config() const { return _config; }
+
+bool link::task_is_registered(const ss::sstring& name) const noexcept {
+    return _tasks.contains(name);
+}
 } // namespace cluster_link

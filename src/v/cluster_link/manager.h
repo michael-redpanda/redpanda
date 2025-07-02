@@ -14,9 +14,11 @@
 #include "absl/container/flat_hash_map.h"
 #include "cluster_link/link.h"
 #include "cluster_link/model/types.h"
+#include "cluster_link/task.h"
 #include "container/fragmented_vector.h"
 #include "model/fundamental.h"
 #include "ssx/work_queue.h"
+#include "utils/mutex.h"
 
 namespace cluster_link {
 
@@ -72,7 +74,8 @@ public:
     manager(
       ::model::node_id self,
       std::unique_ptr<link_registry> registry,
-      std::unique_ptr<link_factory> link_factory);
+      std::unique_ptr<link_factory> link_factory,
+      ss::lowres_clock::duration task_reconciler_interval);
     manager(const manager&) = delete;
     manager(manager&&) = delete;
     manager& operator=(const manager&) = delete;
@@ -89,12 +92,32 @@ public:
     /// Handles creation and start of a link
     ss::future<> handle_on_link_change(model::id_t id);
 
+    /// Registers a task factory that will be used to create tasks when links
+    /// are created
+    template<typename T, typename... Args>
+    void register_task_factory(Args&&... args) {
+        _task_factories.emplace_back(
+          std::make_unique<T>(std::forward<Args>(args)...));
+    }
+
+private:
+    /// Called periodically to reconcile registered tasks on created links
+    ss::future<> link_task_reconciler();
+
 private:
     ::model::node_id _self;
     std::unique_ptr<link_registry> _registry;
     std::unique_ptr<link_factory> _link_factory;
     ssx::work_queue _queue;
 
+    chunked_vector<std::unique_ptr<task_factory>> _task_factories;
     absl::flat_hash_map<id_t, std::unique_ptr<link>> _links;
+
+    ss::lowres_clock::duration _task_reconciler_interval;
+    mutex _link_task_reconciler_mutex{
+      "cluster_link::manager::link_task_reconciler"};
+    ss::timer<ss::lowres_clock> _link_task_reconciler_timer;
+    ss::abort_source _as;
+    ss::gate _g;
 };
 } // namespace cluster_link

@@ -13,13 +13,16 @@
 
 #include "cluster_link/logger.h"
 
+#include <seastar/coroutine/as_future.hh>
+
 using namespace std::chrono_literals;
 
 namespace cluster_link {
 manager::manager(
   ::model::node_id self,
   std::unique_ptr<link_registry> registry,
-  std::unique_ptr<link_factory> link_factory)
+  std::unique_ptr<link_factory> link_factory,
+  ss::lowres_clock::duration task_reconciler_interval)
   : _self(self)
   , _registry(std::move(registry))
   , _link_factory(std::move(link_factory))
@@ -27,7 +30,8 @@ manager::manager(
       [](const std::exception_ptr& ex) {
           vlog(cllog.warn, "unexpected cluster link manager error: {}", ex);
       },
-      ssx::work_queue::is_paused_t::yes) {}
+      ssx::work_queue::is_paused_t::yes)
+  , _task_reconciler_interval(task_reconciler_interval) {}
 
 ss::future<> manager::start() {
     vlog(cllog.info, "Starting cluster link manager");
@@ -35,6 +39,10 @@ ss::future<> manager::start() {
     for (auto id : ids) {
         co_await handle_on_link_change(id);
     }
+    _link_task_reconciler_timer.set_callback([this] {
+        ssx::spawn_with_gate(_g, [this] { return link_task_reconciler(); });
+    });
+    _link_task_reconciler_timer.arm_periodic(_task_reconciler_interval);
     _queue.resume();
 }
 
@@ -42,9 +50,14 @@ ss::future<> manager::stop() {
     vlog(cllog.info, "Stopping cluster link manager");
 
     co_await _queue.shutdown();
+    _link_task_reconciler_timer.cancel();
+    _as.request_abort();
+    co_await _g.close();
     for (auto& [_, link] : _links) {
         co_await link->stop();
     }
+
+    vlog(cllog.info, "Cluster link manager stopped");
 }
 
 void manager::on_link_change(model::id_t id) {
@@ -105,10 +118,46 @@ ss::future<> manager::handle_on_link_change(model::id_t id) {
           "Creating new link with id={}, config: {}",
           id,
           link_metadata);
+        // Hold the reconciler mutex here to ensure we don't reconcile while
+        // creating tasks in the new link
+        auto fut = co_await ss::coroutine::as_future(
+          _link_task_reconciler_mutex.get_units(_as));
+        if (fut.failed()) {
+            // abort source triggered, exit early
+            co_return;
+        }
         try {
             auto new_link = _link_factory->create_link(link_metadata.copy());
             vassert(
               new_link, "Link factory returned a null link for id={}", id);
+            // Register tasks for the link
+            for (auto& task_factory : _task_factories) {
+                auto task = task_factory->create_task();
+                vassert(
+                  task,
+                  "Task factory for task {} returned a null task for link "
+                  "id={}",
+                  task_factory->created_task_name(),
+                  id);
+                try {
+                    auto ec = co_await new_link->register_task(std::move(task));
+                    if (!ec) {
+                        vlog(
+                          cllog.warn,
+                          "Failed to register task '{}': {}",
+                          task_factory->created_task_name(),
+                          ec.assume_error().message());
+                    }
+                } catch (const std::exception& e) {
+                    vlog(
+                      cllog.warn,
+                      "Failed to register task {} for link {}: \"{}\". "
+                      "Continuing with link creation",
+                      task_factory->created_task_name(),
+                      id,
+                      e);
+                }
+            }
             co_await new_link->start();
             _links.emplace(id, std::move(new_link));
         } catch (const std::exception& e) {
@@ -121,6 +170,50 @@ ss::future<> manager::handle_on_link_change(model::id_t id) {
               retry_delay.count());
             _queue.submit_delayed(
               retry_delay, [this, id] { return handle_on_link_change(id); });
+        }
+    }
+}
+
+ss::future<> manager::link_task_reconciler() {
+    vlog(cllog.trace, "Reconciling tasks for all cluster links");
+
+    auto fut = co_await ss::coroutine::as_future(
+      _link_task_reconciler_mutex.get_units(_as));
+    if (fut.failed()) {
+        // abort source triggered, exit early
+        co_return;
+    }
+    auto units = std::move(fut).get();
+
+    for (const auto& [_, link] : _links) {
+        vlog(
+          cllog.trace,
+          "Reconciling tasks for cluster link {} ({})",
+          link->config().name,
+          link->config().uuid);
+        for (const auto& task_factory : _task_factories) {
+            auto task_name = task_factory->created_task_name();
+            if (!link->task_is_registered(ss::sstring{task_name})) {
+                vlog(
+                  cllog.debug,
+                  "Registering task {} for cluster link {} ({})",
+                  task_name,
+                  link->config().name,
+                  link->config().uuid);
+                auto task = task_factory->create_task();
+                vassert(
+                  task,
+                  "Task factory for task {} returned a null task for link {}",
+                  task_name,
+                  link->config().name);
+                auto ec = co_await link->register_task(std::move(task));
+                if (!ec) {
+                    vlog(
+                      cllog.error,
+                      "Error occurred while registering the task: {}",
+                      ec.assume_error().message());
+                }
+            }
         }
     }
 }

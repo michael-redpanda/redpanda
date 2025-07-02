@@ -71,7 +71,8 @@ ss::future<> service::start() {
     _manager = std::make_unique<manager>(
       _self,
       std::make_unique<link_registry_adapter>(&_plf->local()),
-      std::make_unique<default_link_factory>());
+      std::make_unique<default_link_factory>(),
+      30s); // Temporary until we have a proper configuration for this
 
     // Register notifications before the manager starts.  The manager will have
     // a constructed the underlying workqueue to start in a paused state and

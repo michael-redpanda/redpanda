@@ -12,6 +12,7 @@
 #pragma once
 
 #include "cluster_link/model/types.h"
+#include "cluster_link/task.h"
 
 namespace cluster_link {
 /**
@@ -29,11 +30,16 @@ public:
     virtual ss::future<> start();
     virtual ss::future<> stop();
 
+    ss::future<result<void>> register_task(std::unique_ptr<task>);
+
     void update_config(model::metadata);
 
     const model::metadata& config() const;
 
+    bool task_is_registered(const ss::sstring&) const noexcept;
+
 private:
+    chunked_hash_map<ss::sstring, std::unique_ptr<task>> _tasks;
     model::metadata _config;
 };
 } // namespace cluster_link

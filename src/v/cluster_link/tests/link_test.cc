@@ -77,12 +77,14 @@ private:
 
 class link_test : public seastar_test {
 public:
+    static constexpr auto task_reconciler_interval = 1s;
     virtual ss::future<> SetUpAsync() override {
         co_await _table.start();
         _manager = std::make_unique<manager>(
           ::model::node_id(0),
           std::make_unique<test_link_registry>(&_table.local()),
-          std::make_unique<test_link_factory>(this));
+          std::make_unique<test_link_factory>(this),
+          task_reconciler_interval);
     }
 
     virtual ss::future<> TearDownAsync() override {
