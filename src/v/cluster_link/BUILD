@@ -42,6 +42,7 @@ redpanda_cc_library(
         "link.h",
         "manager.h",
         "task.h",
+        "types.h",
     ],
     implementation_deps = [
         ":logger",

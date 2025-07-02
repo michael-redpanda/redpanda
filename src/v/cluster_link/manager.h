@@ -15,15 +15,13 @@
 #include "cluster_link/link.h"
 #include "cluster_link/model/types.h"
 #include "cluster_link/task.h"
+#include "cluster_link/types.h"
 #include "container/fragmented_vector.h"
 #include "model/fundamental.h"
 #include "ssx/work_queue.h"
 #include "utils/mutex.h"
 
 namespace cluster_link {
-
-/// Indicates if the current node is the leader for a given NTP
-using ntp_leader = ss::bool_class<struct is_ntp_leader_tag>;
 
 /**
  * @brief Abstract class that provides accessors to cluster link table
