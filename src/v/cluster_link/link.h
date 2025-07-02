@@ -23,7 +23,8 @@ class link {
 public:
     explicit link(
       model::metadata config,
-      kafka::data::rpc::partition_leader_cache* partition_leader_cache);
+      kafka::data::rpc::partition_leader_cache* partition_leader_cache,
+      kafka::data::rpc::partition_manager* partition_manager);
     link(const link&) = delete;
     link(link&&) = delete;
     link& operator=(const link&) = delete;
@@ -45,5 +46,6 @@ private:
     chunked_hash_map<ss::sstring, std::unique_ptr<task>> _tasks;
     model::metadata _config;
     kafka::data::rpc::partition_leader_cache* _partition_leader_cache;
+    kafka::data::rpc::partition_manager* _partition_manager;
 };
 } // namespace cluster_link

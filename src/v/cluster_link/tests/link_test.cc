@@ -27,6 +27,7 @@ namespace cluster_link::tests {
 
 using ::cluster::cluster_link::table;
 using kafka::data::rpc::partition_leader_cache;
+using kafka::data::rpc::partition_manager;
 
 class link_test;
 namespace {
@@ -59,7 +60,8 @@ public:
     test_link(
       link_test* link_test,
       model::metadata metadata,
-      partition_leader_cache* partition_leader_cache);
+      partition_leader_cache* partition_leader_cache,
+      partition_manager* partition_manager);
 
     ss::future<> start() override;
     ss::future<> stop() override;
@@ -74,9 +76,13 @@ public:
       : _link_test(link_test) {}
     std::unique_ptr<link> create_link(
       model::metadata metadata,
-      partition_leader_cache* partition_leader_cache) override {
+      partition_leader_cache* partition_leader_cache,
+      partition_manager* partition_manager) override {
         return std::make_unique<test_link>(
-          _link_test, std::move(metadata), partition_leader_cache);
+          _link_test,
+          std::move(metadata),
+          partition_leader_cache,
+          partition_manager);
     }
 
 private:
@@ -90,11 +96,15 @@ public:
     virtual ss::future<> SetUpAsync() override {
         _partition_leader_cache_impl
           = std::make_unique<fake_partition_leader_cache_impl>();
+        _partition_manager_proxy
+          = std::make_unique<fake_partition_manager_proxy>();
         co_await _table.start();
         _manager = std::make_unique<manager>(
           ::model::node_id(0),
           std::make_unique<fake_partition_leader_cache>(
             _partition_leader_cache_impl.get()),
+          std::make_unique<fake_partition_manager>(
+            _partition_manager_proxy.get()),
           std::make_unique<test_link_registry>(&_table.local()),
           std::make_unique<test_link_factory>(this),
           task_reconciler_interval);
@@ -103,6 +113,7 @@ public:
     virtual ss::future<> TearDownAsync() override {
         _manager.reset(nullptr);
         co_await _table.stop();
+        _partition_manager_proxy.reset();
         _partition_leader_cache_impl.reset();
     }
 
@@ -153,6 +164,7 @@ public:
 protected:
     std::unique_ptr<fake_partition_leader_cache_impl>
       _partition_leader_cache_impl;
+    std::unique_ptr<fake_partition_manager_proxy> _partition_manager_proxy;
     ss::sharded<table> _table;
     std::unique_ptr<manager> _manager;
     absl::flat_hash_map<uuid_t, test_link*> _links;
@@ -178,8 +190,9 @@ namespace {
 test_link::test_link(
   link_test* link_test,
   model::metadata metadata,
-  partition_leader_cache* partition_leader_cache)
-  : link(std::move(metadata), partition_leader_cache)
+  partition_leader_cache* partition_leader_cache,
+  partition_manager* partition_manager)
+  : link(std::move(metadata), partition_leader_cache, partition_manager)
   , _link_test(link_test) {}
 
 ss::future<> test_link::start() {

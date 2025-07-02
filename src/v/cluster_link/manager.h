@@ -62,7 +62,8 @@ public:
 
     virtual std::unique_ptr<link> create_link(
       model::metadata config,
-      kafka::data::rpc::partition_leader_cache* partition_leader_cache)
+      kafka::data::rpc::partition_leader_cache* partition_leader_cache,
+      kafka::data::rpc::partition_manager* partition_manager)
       = 0;
 };
 
@@ -78,6 +79,7 @@ public:
       ::model::node_id self,
       std::unique_ptr<kafka::data::rpc::partition_leader_cache>
         partition_leader_cache,
+      std::unique_ptr<kafka::data::rpc::partition_manager> partition_manager,
       std::unique_ptr<link_registry> registry,
       std::unique_ptr<link_factory> link_factory,
       ss::lowres_clock::duration task_reconciler_interval);
@@ -113,6 +115,7 @@ private:
     ::model::node_id _self;
     std::unique_ptr<kafka::data::rpc::partition_leader_cache>
       _partition_leader_cache;
+    std::unique_ptr<kafka::data::rpc::partition_manager> _partition_manager;
     std::unique_ptr<link_registry> _registry;
     std::unique_ptr<link_factory> _link_factory;
     ssx::work_queue _queue;

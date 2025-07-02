@@ -16,11 +16,15 @@
 namespace cluster_link {
 
 using kafka::data::rpc::partition_leader_cache;
+using kafka::data::rpc::partition_manager;
 
 link::link(
-  model::metadata config, partition_leader_cache* partition_leader_cache)
+  model::metadata config,
+  partition_leader_cache* partition_leader_cache,
+  partition_manager* partition_manager)
   : _config(std::move(config))
-  , _partition_leader_cache(partition_leader_cache) {}
+  , _partition_leader_cache(partition_leader_cache)
+  , _partition_manager(partition_manager) {}
 
 ss::future<> link::start() {
     vlog(
