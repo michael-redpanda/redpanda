@@ -19,10 +19,12 @@ using kafka::data::rpc::partition_leader_cache;
 using kafka::data::rpc::partition_manager;
 
 link::link(
+  ::model::node_id self,
   model::metadata config,
   partition_leader_cache* partition_leader_cache,
   partition_manager* partition_manager)
-  : _config(std::move(config))
+  : _self(self)
+  , _config(std::move(config))
   , _partition_leader_cache(partition_leader_cache)
   , _partition_manager(partition_manager) {}
 

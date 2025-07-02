@@ -133,6 +133,7 @@ ss::future<> manager::handle_on_link_change(model::id_t id) {
         }
         try {
             auto new_link = _link_factory->create_link(
+              _self,
               link_metadata.copy(),
               _partition_leader_cache.get(),
               _partition_manager.get());

@@ -58,6 +58,7 @@ private:
 class test_link : public link {
 public:
     test_link(
+      ::model::node_id self,
       link_test* link_test,
       model::metadata metadata,
       partition_leader_cache* partition_leader_cache,
@@ -75,10 +76,12 @@ public:
     explicit test_link_factory(link_test* link_test)
       : _link_test(link_test) {}
     std::unique_ptr<link> create_link(
+      ::model::node_id self,
       model::metadata metadata,
       partition_leader_cache* partition_leader_cache,
       partition_manager* partition_manager) override {
         return std::make_unique<test_link>(
+          self,
           _link_test,
           std::move(metadata),
           partition_leader_cache,
@@ -188,11 +191,12 @@ public:
 
 namespace {
 test_link::test_link(
+  ::model::node_id self,
   link_test* link_test,
   model::metadata metadata,
   partition_leader_cache* partition_leader_cache,
   partition_manager* partition_manager)
-  : link(std::move(metadata), partition_leader_cache, partition_manager)
+  : link(self, std::move(metadata), partition_leader_cache, partition_manager)
   , _link_test(link_test) {}
 
 ss::future<> test_link::start() {

@@ -52,11 +52,12 @@ private:
 class default_link_factory : public link_factory {
 public:
     std::unique_ptr<link> create_link(
+      ::model::node_id self,
       model::metadata config,
       partition_leader_cache* partition_leader_cache,
       partition_manager* partition_manager) override {
         return std::make_unique<link>(
-          std::move(config), partition_leader_cache, partition_manager);
+          self, std::move(config), partition_leader_cache, partition_manager);
     }
 };
 

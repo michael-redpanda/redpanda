@@ -22,6 +22,7 @@ namespace cluster_link {
 class link {
 public:
     explicit link(
+      ::model::node_id self,
       model::metadata config,
       kafka::data::rpc::partition_leader_cache* partition_leader_cache,
       kafka::data::rpc::partition_manager* partition_manager);
@@ -43,6 +44,7 @@ public:
     bool task_is_registered(const ss::sstring&) const noexcept;
 
 private:
+    ::model::node_id _self;
     chunked_hash_map<ss::sstring, std::unique_ptr<task>> _tasks;
     model::metadata _config;
     kafka::data::rpc::partition_leader_cache* _partition_leader_cache;
