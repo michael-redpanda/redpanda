@@ -20,10 +20,13 @@ using namespace std::chrono_literals;
 namespace cluster_link {
 manager::manager(
   ::model::node_id self,
+  std::unique_ptr<kafka::data::rpc::partition_leader_cache>
+    partition_leader_cache,
   std::unique_ptr<link_registry> registry,
   std::unique_ptr<link_factory> link_factory,
   ss::lowres_clock::duration task_reconciler_interval)
   : _self(self)
+  , _partition_leader_cache(std::move(partition_leader_cache))
   , _registry(std::move(registry))
   , _link_factory(std::move(link_factory))
   , _queue(
@@ -127,7 +130,8 @@ ss::future<> manager::handle_on_link_change(model::id_t id) {
             co_return;
         }
         try {
-            auto new_link = _link_factory->create_link(link_metadata.copy());
+            auto new_link = _link_factory->create_link(
+              link_metadata.copy(), _partition_leader_cache.get());
             vassert(
               new_link, "Link factory returned a null link for id={}", id);
             // Register tasks for the link

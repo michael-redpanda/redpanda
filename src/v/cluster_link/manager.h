@@ -60,7 +60,10 @@ public:
     link_factory& operator=(link_factory&&) = delete;
     virtual ~link_factory() = default;
 
-    virtual std::unique_ptr<link> create_link(model::metadata config) = 0;
+    virtual std::unique_ptr<link> create_link(
+      model::metadata config,
+      kafka::data::rpc::partition_leader_cache* partition_leader_cache)
+      = 0;
 };
 
 /**
@@ -73,6 +76,8 @@ class manager {
 public:
     manager(
       ::model::node_id self,
+      std::unique_ptr<kafka::data::rpc::partition_leader_cache>
+        partition_leader_cache,
       std::unique_ptr<link_registry> registry,
       std::unique_ptr<link_factory> link_factory,
       ss::lowres_clock::duration task_reconciler_interval);
@@ -106,6 +111,8 @@ private:
 
 private:
     ::model::node_id _self;
+    std::unique_ptr<kafka::data::rpc::partition_leader_cache>
+      _partition_leader_cache;
     std::unique_ptr<link_registry> _registry;
     std::unique_ptr<link_factory> _link_factory;
     ssx::work_queue _queue;

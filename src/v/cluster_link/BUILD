@@ -54,6 +54,7 @@ redpanda_cc_library(
         "//src/v/cluster",
         "//src/v/cluster_link/model",
         "//src/v/container:fragmented_vector",
+        "//src/v/kafka/data/rpc",
         "//src/v/model",
         "//src/v/ssx:future_util",
         "//src/v/ssx:work_queue",

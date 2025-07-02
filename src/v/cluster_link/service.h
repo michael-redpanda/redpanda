@@ -33,7 +33,8 @@ public:
       ::model::node_id self,
       ss::sharded<::cluster::cluster_link::frontend>* plf,
       ss::sharded<cluster::partition_manager>* partition_manager,
-      ss::sharded<raft::group_manager>* group_manager);
+      ss::sharded<raft::group_manager>* group_manager,
+      ss::sharded<cluster::partition_leaders_table>* partition_leaders_table);
 
     service(const service&) = delete;
     service(service&&) = delete;
@@ -62,6 +63,7 @@ private:
     ss::sharded<::cluster::cluster_link::frontend>* _plf;
     ss::sharded<cluster::partition_manager>* _partition_manager;
     ss::sharded<raft::group_manager>* _group_manager;
+    ss::sharded<cluster::partition_leaders_table>* _partition_leaders_table;
     std::unique_ptr<manager> _manager;
     std::vector<ss::deferred_action<ss::noncopyable_function<void()>>>
       _notification_cleanups;

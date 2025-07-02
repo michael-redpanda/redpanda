@@ -14,6 +14,7 @@
 #include "cluster/cluster_link/tests/utils.h"
 #include "cluster_link/link.h"
 #include "cluster_link/manager.h"
+#include "cluster_link/tests/deps.h"
 #include "test_utils/test.h"
 
 #include <seastar/util/defer.hh>
@@ -22,12 +23,14 @@
 
 using namespace std::chrono_literals;
 
-namespace cluster_link {
+namespace cluster_link::tests {
 
 using ::cluster::cluster_link::table;
+using kafka::data::rpc::partition_leader_cache;
 
 class link_test;
 namespace {
+
 class test_link_registry : public link_registry {
 public:
     explicit test_link_registry(table* table)
@@ -53,7 +56,10 @@ private:
 
 class test_link : public link {
 public:
-    test_link(link_test* link_test, model::metadata metadata);
+    test_link(
+      link_test* link_test,
+      model::metadata metadata,
+      partition_leader_cache* partition_leader_cache);
 
     ss::future<> start() override;
     ss::future<> stop() override;
@@ -66,8 +72,11 @@ class test_link_factory : public link_factory {
 public:
     explicit test_link_factory(link_test* link_test)
       : _link_test(link_test) {}
-    std::unique_ptr<link> create_link(model::metadata metadata) override {
-        return std::make_unique<test_link>(_link_test, std::move(metadata));
+    std::unique_ptr<link> create_link(
+      model::metadata metadata,
+      partition_leader_cache* partition_leader_cache) override {
+        return std::make_unique<test_link>(
+          _link_test, std::move(metadata), partition_leader_cache);
     }
 
 private:
@@ -79,9 +88,13 @@ class link_test : public seastar_test {
 public:
     static constexpr auto task_reconciler_interval = 1s;
     virtual ss::future<> SetUpAsync() override {
+        _partition_leader_cache_impl
+          = std::make_unique<fake_partition_leader_cache_impl>();
         co_await _table.start();
         _manager = std::make_unique<manager>(
           ::model::node_id(0),
+          std::make_unique<fake_partition_leader_cache>(
+            _partition_leader_cache_impl.get()),
           std::make_unique<test_link_registry>(&_table.local()),
           std::make_unique<test_link_factory>(this),
           task_reconciler_interval);
@@ -90,6 +103,7 @@ public:
     virtual ss::future<> TearDownAsync() override {
         _manager.reset(nullptr);
         co_await _table.stop();
+        _partition_leader_cache_impl.reset();
     }
 
     ss::future<> upsert_link(model::id_t id, model::metadata metadata) {
@@ -137,6 +151,8 @@ public:
     void unregister_callback(notification_id id) { _callbacks.erase(id); }
 
 protected:
+    std::unique_ptr<fake_partition_leader_cache_impl>
+      _partition_leader_cache_impl;
     ss::sharded<table> _table;
     std::unique_ptr<manager> _manager;
     absl::flat_hash_map<uuid_t, test_link*> _links;
@@ -159,8 +175,11 @@ public:
 };
 
 namespace {
-test_link::test_link(link_test* link_test, model::metadata metadata)
-  : link(std::move(metadata))
+test_link::test_link(
+  link_test* link_test,
+  model::metadata metadata,
+  partition_leader_cache* partition_leader_cache)
+  : link(std::move(metadata), partition_leader_cache)
   , _link_test(link_test) {}
 
 ss::future<> test_link::start() {
@@ -271,4 +290,4 @@ TEST_F_CORO(link_test_manager_started, test_remove_non_existant_link) {
     _manager->on_link_change(model::id_t(1));
     return ss::now();
 }
-} // namespace cluster_link
+} // namespace cluster_link::tests

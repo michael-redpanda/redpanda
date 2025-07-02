@@ -13,6 +13,7 @@
 
 #include "cluster_link/model/types.h"
 #include "cluster_link/task.h"
+#include "kafka/data/rpc/deps.h"
 
 namespace cluster_link {
 /**
@@ -20,7 +21,9 @@ namespace cluster_link {
  */
 class link {
 public:
-    explicit link(model::metadata config);
+    explicit link(
+      model::metadata config,
+      kafka::data::rpc::partition_leader_cache* partition_leader_cache);
     link(const link&) = delete;
     link(link&&) = delete;
     link& operator=(const link&) = delete;
@@ -41,5 +44,6 @@ public:
 private:
     chunked_hash_map<ss::sstring, std::unique_ptr<task>> _tasks;
     model::metadata _config;
+    kafka::data::rpc::partition_leader_cache* _partition_leader_cache;
 };
 } // namespace cluster_link
