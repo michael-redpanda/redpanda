@@ -97,6 +97,8 @@ public:
     void on_leadership_change(::model::ntp ntp, ntp_leader is_ntp_leader);
     /// Handles creation and start of a link
     ss::future<> handle_on_link_change(model::id_t id);
+    /// Handles leadership changes for a given NTP
+    ss::future<> handle_on_leadership_change(::model::ntp, ntp_leader);
 
     /// Registers a task factory that will be used to create tasks when links
     /// are created

@@ -59,6 +59,7 @@ class test_link : public link {
 public:
     test_link(
       ::model::node_id self,
+      ss::lowres_clock::duration task_reconciler_interval,
       link_test* link_test,
       model::metadata metadata,
       partition_leader_cache* partition_leader_cache,
@@ -73,8 +74,11 @@ private:
 
 class test_link_factory : public link_factory {
 public:
-    explicit test_link_factory(link_test* link_test)
-      : _link_test(link_test) {}
+    test_link_factory(
+      link_test* link_test, ss::lowres_clock::duration task_reconciler_interval)
+      : _link_test(link_test)
+      , _task_reconciler_interval(task_reconciler_interval) {}
+
     std::unique_ptr<link> create_link(
       ::model::node_id self,
       model::metadata metadata,
@@ -82,6 +86,7 @@ public:
       partition_manager* partition_manager) override {
         return std::make_unique<test_link>(
           self,
+          _task_reconciler_interval,
           _link_test,
           std::move(metadata),
           partition_leader_cache,
@@ -90,6 +95,7 @@ public:
 
 private:
     link_test* _link_test;
+    ss::lowres_clock::duration _task_reconciler_interval;
 };
 } // namespace
 
@@ -168,7 +174,7 @@ public:
           std::make_unique<fake_partition_manager>(
             _partition_manager_proxy.get()),
           std::make_unique<test_link_registry>(&_table.local()),
-          std::make_unique<test_link_factory>(this),
+          std::make_unique<test_link_factory>(this, 1s),
           task_reconciler_interval);
     }
 
@@ -207,11 +213,17 @@ public:
 namespace {
 test_link::test_link(
   ::model::node_id self,
+  ss::lowres_clock::duration task_reconciler_interval,
   link_test* link_test,
   model::metadata metadata,
   partition_leader_cache* partition_leader_cache,
   partition_manager* partition_manager)
-  : link(self, std::move(metadata), partition_leader_cache, partition_manager)
+  : link(
+      self,
+      task_reconciler_interval,
+      std::move(metadata),
+      partition_leader_cache,
+      partition_manager)
   , _link_test(link_test) {}
 
 ss::future<> test_link::start() {
