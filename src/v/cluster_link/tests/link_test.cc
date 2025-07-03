@@ -32,29 +32,6 @@ using kafka::data::rpc::partition_manager;
 class link_test;
 namespace {
 
-class test_link_registry : public link_registry {
-public:
-    explicit test_link_registry(table* table)
-      : _table(table) {}
-
-    std::optional<std::reference_wrapper<const model::metadata>>
-    find_link_by_id(model::id_t id) const override {
-        return _table->find_link_by_id(id);
-    }
-
-    std::optional<std::reference_wrapper<const model::metadata>>
-    find_link_by_name(const model::name_t& name) const override {
-        return _table->find_link_by_name(name);
-    }
-
-    chunked_vector<model::id_t> get_all_link_ids() const override {
-        return _table->get_all_link_ids();
-    }
-
-private:
-    table* _table;
-};
-
 class test_link : public link {
 public:
     test_link(

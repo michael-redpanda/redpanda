@@ -2,12 +2,18 @@ load("//bazel:test.bzl", "redpanda_cc_gtest", "redpanda_test_cc_library")
 
 redpanda_test_cc_library(
     name = "test_deps",
+    srcs = [
+        "deps.cc",
+    ],
     hdrs = [
         "deps.h",
     ],
     include_prefix = "cluster_link/tests",
     visibility = ["//visibility:public"],
     deps = [
+        "//src/v/cluster",
+        "//src/v/cluster/cluster_link/tests:test_lib",
+        "//src/v/cluster_link:impl",
         "//src/v/kafka/data/rpc",
         "//src/v/model",
         "@seastar",

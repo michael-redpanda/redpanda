@@ -11,10 +11,35 @@
 
 #pragma once
 
+#include "cluster/cluster_link/table.h"
+#include "cluster_link/manager.h"
 #include "kafka/data/rpc/deps.h"
 
 #include <seastar/util/defer.hh>
 namespace cluster_link::tests {
+
+class test_link_registry : public link_registry {
+public:
+    explicit test_link_registry(cluster::cluster_link::table* table)
+      : _table(table) {}
+
+    std::optional<std::reference_wrapper<const model::metadata>>
+    find_link_by_id(model::id_t id) const override {
+        return _table->find_link_by_id(id);
+    }
+
+    std::optional<std::reference_wrapper<const model::metadata>>
+    find_link_by_name(const model::name_t& name) const override {
+        return _table->find_link_by_name(name);
+    }
+
+    chunked_vector<model::id_t> get_all_link_ids() const override {
+        return _table->get_all_link_ids();
+    }
+
+private:
+    cluster::cluster_link::table* _table;
+};
 class fake_partition_manager_proxy {
 public:
     std::optional<ss::shard_id> shard_owner(const ::model::ktp& ktp) {
@@ -127,5 +152,60 @@ public:
 
 private:
     fake_partition_leader_cache_impl* _impl;
+};
+
+class cluster_link_manager_test_fixture {
+public:
+    explicit cluster_link_manager_test_fixture(::model::node_id self);
+    ~cluster_link_manager_test_fixture() = default;
+
+    cluster_link_manager_test_fixture(const cluster_link_manager_test_fixture&)
+      = delete;
+    cluster_link_manager_test_fixture&
+    operator=(const cluster_link_manager_test_fixture&)
+      = delete;
+    cluster_link_manager_test_fixture(cluster_link_manager_test_fixture&&)
+      = delete;
+    cluster_link_manager_test_fixture&
+    operator=(cluster_link_manager_test_fixture&&)
+      = delete;
+
+    ss::future<> wire_up_and_start(std::unique_ptr<link_factory>);
+
+    ss::future<> reset();
+
+    fake_partition_manager_proxy* partition_manager_proxy() {
+        return _fpmp.get();
+    }
+
+    ss::sharded<manager>& get_manager() { return _manager; }
+
+    void elect_leader(
+      const ::model::ntp& ntp,
+      ::model::node_id node_id,
+      std::optional<ss::shard_id> shard_id);
+
+    fake_partition_leader_cache_impl* partition_leader_cache() {
+        return _fplci;
+    }
+
+    fake_partition_manager* partition_manager() { return _fpm; }
+
+    ss::future<> upsert_link(model::metadata metadata);
+
+    link_factory* get_link_factory() { return _lf; }
+
+private:
+    chunked_vector<ss::deferred_action<ss::noncopyable_function<void()>>>
+      _notification_cleanups;
+    ss::sharded<cluster::cluster_link::table> _table;
+    std::unique_ptr<fake_partition_manager_proxy> _fpmp;
+    fake_partition_manager* _fpm{nullptr};
+    fake_partition_leader_cache_impl* _fplci{nullptr};
+    link_factory* _lf{nullptr};
+    ss::sharded<manager> _manager;
+
+    ::model::node_id _self;
+    model::id_t _next_link_id{0};
 };
 } // namespace cluster_link::tests
