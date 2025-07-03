@@ -251,6 +251,56 @@ struct update_mirror_topic_state_cmd
 
     auto serde_fields() { return std::tie(topic, state); }
 };
+
+/// Status report for a task
+struct task_status_report
+  : serde::envelope<
+      task_status_report,
+      serde::version<0>,
+      serde::compat_version<0>> {
+    ss::sstring task_name;
+    task_state task_state;
+    ss::sstring task_state_reason;
+
+    friend bool operator==(const task_status_report&, const task_status_report&)
+      = default;
+
+    auto serde_fields() {
+        return std::tie(task_name, task_state, task_state_reason);
+    }
+};
+
+/// The status report of a link
+struct link_task_status_report
+  : serde::envelope<
+      link_task_status_report,
+      serde::version<0>,
+      serde::compat_version<0>> {
+    name_t link_name;
+    chunked_hash_map<ss::sstring, task_status_report> task_status_reports;
+
+    friend bool
+    operator==(const link_task_status_report&, const link_task_status_report&)
+      = default;
+
+    auto serde_fields() { return std::tie(link_name, task_status_reports); }
+};
+
+/// A map of task status reports per link
+struct cluster_link_task_status_report
+  : serde::envelope<
+      cluster_link_task_status_report,
+      serde::version<0>,
+      serde::compat_version<0>> {
+    chunked_hash_map<name_t, link_task_status_report> link_reports;
+
+    friend bool operator==(
+      const cluster_link_task_status_report&,
+      const cluster_link_task_status_report&)
+      = default;
+
+    auto serde_fields() { return std::tie(link_reports); }
+};
 } // namespace cluster_link::model
 
 template<>
@@ -347,4 +397,48 @@ struct fmt::formatter<cluster_link::model::update_mirror_topic_state_cmd>
     auto format(
       const cluster_link::model::update_mirror_topic_state_cmd& m,
       format_context& ctx) -> decltype(ctx.out());
+};
+
+template<>
+struct fmt::formatter<cluster_link::model::task_status_report>
+  : fmt::formatter<string_view> {
+    auto format(
+      const cluster_link::model::task_status_report& m,
+      format_context& ctx) const -> decltype(ctx.out());
+};
+
+template<>
+struct fmt::formatter<decltype(cluster_link::model::link_task_status_report::
+                                 task_status_reports)::value_type>
+  : fmt::formatter<string_view> {
+    auto format(
+      const decltype(cluster_link::model::link_task_status_report::
+                       task_status_reports)::value_type& m,
+      format_context& ctx) const -> decltype(ctx.out());
+};
+
+template<>
+struct fmt::formatter<cluster_link::model::link_task_status_report>
+  : fmt::formatter<string_view> {
+    auto format(
+      const cluster_link::model::link_task_status_report& m,
+      format_context& ctx) const -> decltype(ctx.out());
+};
+
+template<>
+struct fmt::formatter<
+  decltype(cluster_link::model::cluster_link_task_status_report::link_reports)::
+    value_type> : fmt::formatter<string_view> {
+    auto format(
+      const decltype(cluster_link::model::cluster_link_task_status_report::
+                       link_reports)::value_type& m,
+      format_context& ctx) const -> decltype(ctx.out());
+};
+
+template<>
+struct fmt::formatter<cluster_link::model::cluster_link_task_status_report>
+  : fmt::formatter<string_view> {
+    auto format(
+      const cluster_link::model::cluster_link_task_status_report& m,
+      format_context& ctx) const -> decltype(ctx.out());
 };
