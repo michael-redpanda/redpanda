@@ -63,6 +63,8 @@ public:
     void
     unregister_for_task_state_changes(task_state_notification_id id) noexcept;
 
+    model::link_task_status_report get_task_status_report() const;
+
 private:
     bool should_start_task(task* t) const;
     bool should_stop_task(task* t) const;

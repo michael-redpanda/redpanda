@@ -242,4 +242,16 @@ ss::future<> manager::handle_on_leadership_change(
         return pair.second->handle_on_leadership_change(ntp, is_ntp_leader);
     });
 }
+
+model::cluster_link_task_status_report manager::get_task_status_report() const {
+    model::cluster_link_task_status_report report;
+    report.link_reports.reserve(_links.size());
+    for (const auto& [_, link] : _links) {
+        auto link_report = link->get_task_status_report();
+        auto name = link_report.link_name;
+        report.link_reports.emplace(std::move(name), std::move(link_report));
+    }
+
+    return report;
+}
 } // namespace cluster_link

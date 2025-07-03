@@ -108,6 +108,8 @@ public:
           std::make_unique<T>(std::forward<Args>(args)...));
     }
 
+    model::cluster_link_task_status_report get_task_status_report() const;
+
 private:
     /// Called periodically to reconcile registered tasks on created links
     ss::future<> link_task_reconciler();

@@ -79,6 +79,9 @@ public:
     /// Returns the current state of the task
     model::task_state get_state() const noexcept;
 
+    /// Returns the status report for this task
+    model::task_status_report get_status_report() const;
+
 protected:
     /// Used by the implementation to change the state of the task
     /// \return The previous state
@@ -100,6 +103,7 @@ private:
     ss::lowres_clock::duration _run_interval;
     task_status_cb _status_cb;
     model::task_state _state{model::task_state::not_running};
+    ss::sstring _last_state_change_response;
 
     notification_list<task_status_cb, notification_id> _callbacks;
 

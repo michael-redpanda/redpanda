@@ -218,6 +218,16 @@ void link::unregister_for_task_state_changes(
     _task_state_change_notifications.unregister_cb(id);
 }
 
+model::link_task_status_report link::get_task_status_report() const {
+    model::link_task_status_report report;
+    report.link_name = _config.name;
+    report.task_status_reports.reserve(_tasks.size());
+    for (const auto& [name, t] : _tasks) {
+        report.task_status_reports.emplace(name, t->get_status_report());
+    }
+    return report;
+}
+
 bool link::should_start_task(task* t) const {
     if (t->get_state() != model::task_state::not_running) {
         // Can only start tasks that are currently not running

@@ -130,6 +130,14 @@ void task::unregister_for_updates(notification_id id) {
 
 model::task_state task::get_state() const noexcept { return _state; }
 
+model::task_status_report task::get_status_report() const {
+    model::task_status_report report;
+    report.task_name = name();
+    report.task_state = get_state();
+    report.task_state_reason = _last_state_change_response;
+    return report;
+}
+
 result<model::task_state>
 task::change_state(model::task_state new_state, ss::sstring reason) {
     vlog(
@@ -154,6 +162,7 @@ task::change_state(model::task_state new_state, ss::sstring reason) {
 
     auto prev_state = _state;
     _state = new_state;
+    _last_state_change_response = reason;
     run_callbacks(
       {.prev = prev_state, .cur = new_state, .reason = std::move(reason)});
     return prev_state;
