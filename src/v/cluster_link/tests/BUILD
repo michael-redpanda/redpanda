@@ -65,3 +65,20 @@ redpanda_cc_gtest(
         "@seastar",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "task_manager_integration_test",
+    timeout = "short",
+    srcs = [
+        "task_manager_integration_test.cc",
+    ],
+    deps = [
+        ":test_deps",
+        "//src/v/cluster_link:impl",
+        "//src/v/cluster_link/model",
+        "//src/v/kafka/data/rpc",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+        "@seastar",
+    ],
+)
