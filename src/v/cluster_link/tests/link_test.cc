@@ -93,28 +93,17 @@ private:
 };
 } // namespace
 
-class link_test : public seastar_test {
+class link_test_base : public seastar_test {
 public:
-    static constexpr auto task_reconciler_interval = 1s;
     virtual ss::future<> SetUpAsync() override {
         _partition_leader_cache_impl
           = std::make_unique<fake_partition_leader_cache_impl>();
         _partition_manager_proxy
           = std::make_unique<fake_partition_manager_proxy>();
         co_await _table.start();
-        _manager = std::make_unique<manager>(
-          ::model::node_id(0),
-          std::make_unique<fake_partition_leader_cache>(
-            _partition_leader_cache_impl.get()),
-          std::make_unique<fake_partition_manager>(
-            _partition_manager_proxy.get()),
-          std::make_unique<test_link_registry>(&_table.local()),
-          std::make_unique<test_link_factory>(this),
-          task_reconciler_interval);
     }
 
     virtual ss::future<> TearDownAsync() override {
-        _manager.reset(nullptr);
         co_await _table.stop();
         _partition_manager_proxy.reset();
         _partition_leader_cache_impl.reset();
@@ -134,16 +123,6 @@ public:
         if (id.has_value()) {
             _manager->on_link_change(id.value());
         }
-    }
-
-    void add_link_to_list(uuid_t id, test_link* link) {
-        _links.emplace(id, link);
-        run_callbacks(id);
-    }
-
-    void remove_link(uuid_t id) {
-        _links.erase(id);
-        run_callbacks(id);
     }
 
     void run_callbacks(uuid_t id) {
@@ -169,11 +148,47 @@ protected:
       _partition_leader_cache_impl;
     std::unique_ptr<fake_partition_manager_proxy> _partition_manager_proxy;
     ss::sharded<table> _table;
+
     std::unique_ptr<manager> _manager;
-    absl::flat_hash_map<uuid_t, test_link*> _links;
+
     absl::flat_hash_map<notification_id, ss::noncopyable_function<void(uuid_t)>>
       _callbacks;
     notification_id _latest_id{0};
+};
+
+class link_test : public link_test_base {
+public:
+    static constexpr auto task_reconciler_interval = 1s;
+    virtual ss::future<> SetUpAsync() override {
+        co_await link_test_base::SetUpAsync();
+        _manager = std::make_unique<manager>(
+          ::model::node_id(0),
+          std::make_unique<fake_partition_leader_cache>(
+            _partition_leader_cache_impl.get()),
+          std::make_unique<fake_partition_manager>(
+            _partition_manager_proxy.get()),
+          std::make_unique<test_link_registry>(&_table.local()),
+          std::make_unique<test_link_factory>(this),
+          task_reconciler_interval);
+    }
+
+    virtual ss::future<> TearDownAsync() override {
+        _manager.reset(nullptr);
+        co_await link_test_base::TearDownAsync();
+    }
+
+    void add_link_to_list(uuid_t id, test_link* link) {
+        _links.emplace(id, link);
+        run_callbacks(id);
+    }
+
+    void remove_link_from_list(uuid_t id) {
+        _links.erase(id);
+        run_callbacks(id);
+    }
+
+protected:
+    absl::flat_hash_map<uuid_t, test_link*> _links;
 };
 
 class link_test_manager_started : public link_test {
@@ -205,7 +220,7 @@ ss::future<> test_link::start() {
 }
 
 ss::future<> test_link::stop() {
-    _link_test->remove_link(config().uuid);
+    _link_test->remove_link_from_list(config().uuid);
     co_await link::stop();
 }
 } // namespace
