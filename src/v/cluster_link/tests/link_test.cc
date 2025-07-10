@@ -311,4 +311,128 @@ TEST_F_CORO(link_test_manager_started, test_remove_non_existant_link) {
     _manager->on_link_change(model::id_t(1));
     return ss::now();
 }
+
+class evil_link : public link {
+public:
+    using link::link;
+
+    ss::future<> start() override {
+        static bool has_been_called = false;
+        if (has_been_called) {
+            has_been_called = false;
+            _running = true;
+            return ss::now();
+        } else {
+            has_been_called = true;
+            throw std::runtime_error("Evil link start method failed");
+        }
+    }
+
+    ss::future<> stop() override {
+        static bool has_been_called = false;
+        if (has_been_called) {
+            has_been_called = false;
+            _running = false;
+            return ss::now();
+        } else {
+            has_been_called = true;
+            throw std::runtime_error("Evil link stop method failed");
+        }
+    }
+
+    bool running() const { return _running; }
+
+private:
+    bool _running{false};
+};
+
+class evil_link_factory : public link_factory {
+public:
+    std::unique_ptr<link> create_link(
+      ::model::node_id self,
+      model::metadata metadata,
+      partition_leader_cache* partition_leader_cache,
+      partition_manager* partition_manager) override {
+        return std::make_unique<evil_link>(
+          self,
+          1s,
+          std::move(metadata),
+          partition_leader_cache,
+          partition_manager);
+    }
+};
+
+class evil_link_test : public link_test_base {
+public:
+    static constexpr auto task_reconciler_interval = 1s;
+    virtual ss::future<> SetUpAsync() override {
+        co_await link_test_base::SetUpAsync();
+        auto elf = std::make_unique<evil_link_factory>();
+        _elf = elf.get();
+        _manager = std::make_unique<manager>(
+          ::model::node_id(0),
+          std::make_unique<fake_partition_leader_cache>(
+            _partition_leader_cache_impl.get()),
+          std::make_unique<fake_partition_manager>(
+            _partition_manager_proxy.get()),
+          std::make_unique<test_link_registry>(&_table.local()),
+          std::move(elf),
+          task_reconciler_interval);
+        co_await _manager->start();
+    }
+
+    virtual ss::future<> TearDownAsync() override {
+        co_await _manager->stop();
+        _elf = nullptr;
+        _manager.reset(nullptr);
+
+        co_await link_test_base::TearDownAsync();
+    }
+
+protected:
+    evil_link_factory* _elf;
+};
+
+TEST_F_CORO(evil_link_test, test_evil_link_start_stop) {
+    auto name = model::name_t("link1");
+    model::metadata link{
+      .name = name,
+      .uuid = model::uuid_t(::uuid_t::create()),
+      .connection = model::connection_config{}};
+    model::id_t link_id(1);
+
+    co_await upsert_link(link_id, link.copy());
+
+    // Enough time for the upsert callback to fire but no link should be present
+    co_await ss::sleep(500ms);
+
+    auto report = _manager->get_task_status_report();
+
+    EXPECT_TRUE(report.link_reports.empty())
+      << "Link should not be present yet";
+
+    // Link reconciler loop takes 10 seconds to run
+    co_await ss::sleep(11s);
+
+    report = _manager->get_task_status_report();
+    auto link_report = report.link_reports.find(name);
+    EXPECT_NE(link_report, report.link_reports.end())
+      << "Link should be present after reconciler loop";
+
+    co_await remove_link(name);
+    // Allow callback time to execute
+    co_await ss::sleep(500ms);
+
+    report = _manager->get_task_status_report();
+    link_report = report.link_reports.find(name);
+    EXPECT_NE(link_report, report.link_reports.end())
+      << "Link should be present after reconciler loop";
+
+    // Link reconciler loop takes 10 seconds to run
+    co_await ss::sleep(11s);
+    report = _manager->get_task_status_report();
+    EXPECT_TRUE(report.link_reports.empty())
+      << "Link should be removed after reconciler loop";
+}
+
 } // namespace cluster_link::tests
