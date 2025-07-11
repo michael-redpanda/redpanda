@@ -391,10 +391,15 @@ coordinator::do_ensure_table_exists(
     // TODO: verify stm state after replication
 
     auto table_id = schema_provider.get_table_id(topic);
-
     auto record_type = co_await schema_provider.get_record_type(
       std::move(comps));
     if (!record_type.has_value()) {
+        vlog(
+          datalake_log.warn,
+          "{} failed, couldn't resolve record type for {} rev {}",
+          method_name,
+          topic,
+          topic_revision);
         co_return errc::failed;
     }
 
@@ -856,8 +861,7 @@ ss::sstring coordinator::get_effective_default_partition_spec(
                      == config::datalake_catalog_type::rest
                    && cfg.iceberg_rest_catalog_authentication_mode()
                         == config::datalake_catalog_auth_mode::aws_sigv4
-                   && cfg.iceberg_rest_catalog_aws_service_name().value_or("")
-                        == "glue";
+                   && cfg.iceberg_rest_catalog_aws_service_name() == "glue";
     if (
       is_glue
       && current_spec == cfg.iceberg_default_partition_spec.default_value()) {

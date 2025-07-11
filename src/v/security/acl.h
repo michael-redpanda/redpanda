@@ -174,7 +174,7 @@ constexpr std::string_view to_string_view(acl_operation op) {
     case acl_operation::create:
         return "create";
     case acl_operation::remove:
-        return "remove";
+        return "delete";
     case acl_operation::alter:
         return "alter";
     case acl_operation::describe:
@@ -857,5 +857,11 @@ struct acl_binding_filter_v2 : public acl_binding_filter {
 };
 
 } // namespace testing
+
+/**
+ *  list of acl operations for specific resource
+ */
+template<typename T>
+const std::vector<acl_operation>& get_allowed_operations();
 
 } // namespace security

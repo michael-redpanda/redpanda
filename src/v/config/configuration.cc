@@ -1010,10 +1010,8 @@ configuration::configuration()
   , tombstone_retention_ms(
       *this,
       "tombstone_retention_ms",
-      "The retention time for tombstone records in a compacted topic. Cannot "
-      "be enabled at the same time as any of `cloud_storage_enabled`, "
-      "`cloud_storage_enable_remote_read`, or "
-      "`cloud_storage_enable_remote_write`.",
+      "The retention time for tombstone records and transaction markers in a "
+      "compacted topic.",
       {.needs_restart = needs_restart::no, .visibility = visibility::user},
       std::nullopt,
       validate_tombstone_retention_ms)
@@ -1964,6 +1962,16 @@ configuration::configuration()
         .visibility = visibility::user,
       },
       {})
+  , audit_failure_policy(
+      *this,
+      "audit_failure_policy",
+      "Defines the policy for rejecting audit log messages when the audit log "
+      "queue is full. If set to 'permit', then new audit messages are dropped "
+      "and the operation is permitted.  If set to 'reject', then the operation "
+      "is rejected.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::user},
+      audit_failure_policy::reject,
+      {audit_failure_policy::reject, audit_failure_policy::permit})
   , cloud_storage_enabled(
       *this,
       true,
@@ -2155,13 +2163,13 @@ configuration::configuration()
       "cloud_storage_segment_upload_timeout_ms",
       "Log segment upload timeout (ms)",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
-      30s)
+      90s)
   , cloud_storage_manifest_upload_timeout_ms(
       *this,
       "cloud_storage_manifest_upload_timeout_ms",
       "Manifest upload timeout (ms).",
       {.needs_restart = needs_restart::no, .visibility = visibility::tunable},
-      10s)
+      30s)
   , cloud_storage_garbage_collect_timeout_ms(
       *this,
       "cloud_storage_garbage_collect_timeout_ms",
@@ -4114,7 +4122,9 @@ configuration::configuration()
       "aws_sigv4 authentication mode. Accepted values: config_file, "
       "aws_instance_metadata, sts, gcp_instance_metadata, "
       "azure_vm_instance_metadata, azure_aks_oidc_federation.",
-      {.needs_restart = needs_restart::yes, .visibility = visibility::user},
+      {.needs_restart = needs_restart::yes,
+       .example = "config_file",
+       .visibility = visibility::user},
       std::nullopt,
       {
         model::cloud_credentials_source::config_file,
@@ -4319,6 +4329,12 @@ configuration::configuration()
       *this,
       "development_enable_cloud_topics",
       "Enable cloud topics.",
+      {.needs_restart = needs_restart::no, .visibility = visibility::user},
+      false)
+  , development_enable_cluster_link(
+      *this,
+      "development_enable_cluster_link",
+      "Enable cluster linking.",
       {.needs_restart = needs_restart::no, .visibility = visibility::user},
       false)
   , development_feature_property_testing_only(

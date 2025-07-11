@@ -135,7 +135,6 @@ public:
       size_t base = 0) {
         tests::kafka_produce_transport producer(co_await make_kafka_client());
         co_await producer.start();
-
         // Generate some segments.
         size_t val_count = starting_value;
         for (size_t i = 0; i < num_segments; i++) {
@@ -159,6 +158,7 @@ public:
             co_await log->flush();
             co_await log->force_roll();
         }
+        co_await producer.stop();
     }
 
     ss::future<> generate_tombstones(
@@ -221,6 +221,7 @@ public:
             co_await log->flush();
             co_await log->force_roll();
         }
+        co_await producer.stop();
     }
 
     ss::future<std::vector<tests::kv_t>>
@@ -232,6 +233,7 @@ public:
         EXPECT_GE(consumed_kvs.size(), cardinality);
         auto num_duplicates = consumed_kvs.size() - cardinality;
         EXPECT_LE(num_duplicates, max_duplicates);
+        co_await consumer.stop();
         co_return consumed_kvs;
     }
 
@@ -244,6 +246,7 @@ public:
         storage::compaction_config cfg(
           max_collect_offset,
           tombstone_ret_ms,
+          std::nullopt,
           never_abort,
           std::nullopt,
           max_keys,
@@ -265,6 +268,7 @@ public:
         storage::compaction_config cfg(
           max_collect_offset,
           tombstone_ret_ms,
+          std::nullopt,
           never_abort,
           std::nullopt,
           max_keys,
@@ -308,6 +312,7 @@ TEST_P(CompactionFixtureParamTest, TestDedupeOnePass) {
     storage::compaction_config cfg(
       disk_log.segments().back()->offsets().get_base_offset(),
       std::nullopt,
+      std::nullopt,
       never_abort,
       std::nullopt,
       cardinality);
@@ -343,6 +348,8 @@ TEST_P(CompactionFixtureParamTest, TestDedupeOnePass) {
     auto restart_summary = dir_summary().get();
 
     tests::kafka_consume_transport second_consumer(make_kafka_client().get());
+    auto deferred_c_close = ss::defer(
+      [&second_consumer] { second_consumer.stop().get(); });
     second_consumer.start().get();
     auto consumed_kvs_restarted = second_consumer
                                     .consume_from_partition(
@@ -376,6 +383,7 @@ TEST_F(CompactionFixtureTest, TestDedupeMultiPass) {
     auto& disk_log = dynamic_cast<storage::disk_log_impl&>(*log);
     storage::compaction_config cfg(
       disk_log.segments().back()->offsets().get_base_offset(),
+      std::nullopt,
       std::nullopt,
       never_abort,
       std::nullopt,
@@ -430,6 +438,8 @@ TEST_F(CompactionFixtureTest, TestChunkedCompaction) {
     {
         tests::kafka_consume_transport consumer(make_kafka_client().get());
         consumer.start().get();
+        auto deferred_c_close = ss::defer(
+          [&consumer] { consumer.stop().get(); });
         auto consumed_kvs = consumer
                               .consume_from_partition(
                                 topic_name,
@@ -508,6 +518,7 @@ TEST_F(CompactionFixtureTest, TestDedupeMultiPassAddedSegment) {
     auto& disk_log = dynamic_cast<storage::disk_log_impl&>(*log);
     storage::compaction_config cfg(
       disk_log.segments().back()->offsets().get_base_offset(),
+      std::nullopt,
       std::nullopt,
       never_abort,
       std::nullopt,
@@ -605,6 +616,7 @@ TEST_P(CompactionFixtureBatchSizeParamTest, TestRecompactWithNewData) {
     storage::compaction_config cfg(
       disk_log.segments().back()->offsets().get_base_offset(),
       std::nullopt,
+      std::nullopt,
       never_abort,
       std::nullopt,
       cardinality);
@@ -623,6 +635,7 @@ TEST_P(CompactionFixtureBatchSizeParamTest, TestRecompactWithNewData) {
     generate_data(1, cardinality, records_per_segment).get();
     storage::compaction_config new_cfg(
       disk_log.segments().back()->offsets().get_base_offset(),
+      std::nullopt,
       std::nullopt,
       never_abort,
       std::nullopt,
@@ -666,6 +679,7 @@ TEST_F(CompactionFixtureTest, TestCompactWithNonDataBatches) {
       = disk_log.get_probe().get_segments_compacted();
     storage::compaction_config new_cfg(
       disk_log.segments().back()->offsets().get_base_offset(),
+      std::nullopt,
       std::nullopt,
       never_abort,
       std::nullopt);
@@ -750,6 +764,7 @@ TEST_P(CompactionFilledReaderTest, ReadFilledGaps) {
     storage::compaction_config cfg(
       disk_log.segments().back()->offsets().get_base_offset(),
       std::nullopt,
+      std::nullopt,
       never_abort,
       std::nullopt,
       10);
@@ -803,6 +818,7 @@ TEST_F(CompactionFixtureTest, TestReadFilledGapsWithTerms) {
 
     storage::compaction_config cfg(
       disk_log.segments().back()->offsets().get_base_offset(),
+      std::nullopt,
       std::nullopt,
       never_abort,
       std::nullopt,
@@ -940,6 +956,8 @@ TEST_F(CompactionFixtureTest, TestTombstones) {
 
     {
         tests::kafka_consume_transport consumer(make_kafka_client().get());
+        auto deferred_c_close = ss::defer(
+          [&consumer] { consumer.stop().get(); });
         consumer.start().get();
         auto consumed_kvs = consumer
                               .consume_from_partition(
@@ -1004,6 +1022,8 @@ TEST_P(CompactionFixtureTombstonesParamTest, TestTombstonesCompletelyEmptyLog) {
     {
         tests::kafka_consume_transport consumer(make_kafka_client().get());
         consumer.start().get();
+        auto deferred_c_close = ss::defer(
+          [&consumer] { consumer.stop().get(); });
         auto consumed_kvs = consumer
                               .consume_from_partition(
                                 topic_name,
@@ -1037,6 +1057,8 @@ TEST_P(CompactionFixtureTombstonesParamTest, TestTombstonesCompletelyEmptyLog) {
     {
         tests::kafka_consume_transport consumer(make_kafka_client().get());
         consumer.start().get();
+        auto deferred_c_close = ss::defer(
+          [&consumer] { consumer.stop().get(); });
         auto consumed_kvs = consumer
                               .consume_from_partition(
                                 topic_name,
@@ -1123,6 +1145,8 @@ TEST_P(
     {
         tests::kafka_consume_transport consumer(make_kafka_client().get());
         consumer.start().get();
+        auto deferred_c_close = ss::defer(
+          [&consumer] { consumer.stop().get(); });
         auto consumed_kvs = consumer
                               .consume_from_partition(
                                 topic_name,
@@ -1165,6 +1189,8 @@ TEST_P(
     {
         tests::kafka_consume_transport consumer(make_kafka_client().get());
         consumer.start().get();
+        auto deferred_c_close = ss::defer(
+          [&consumer] { consumer.stop().get(); });
         auto consumed_kvs = consumer
                               .consume_from_partition(
                                 topic_name,
@@ -1278,6 +1304,8 @@ TEST_P(
     {
         tests::kafka_consume_transport consumer(make_kafka_client().get());
         consumer.start().get();
+        auto deferred_c_close = ss::defer(
+          [&consumer] { consumer.stop().get(); });
         auto consumed_kvs = consumer
                               .consume_from_partition(
                                 topic_name,
@@ -1319,6 +1347,8 @@ TEST_P(
     {
         tests::kafka_consume_transport consumer(make_kafka_client().get());
         consumer.start().get();
+        auto deferred_c_close = ss::defer(
+          [&consumer] { consumer.stop().get(); });
         auto consumed_kvs = consumer
                               .consume_from_partition(
                                 topic_name,
@@ -1539,7 +1569,7 @@ TEST_F(CompactionFixtureTest, TestSlidingWindowNoUnecessaryRewrites) {
     auto& segments = disk_log.segments();
 
     storage::compaction_config cfg(
-      model::offset::max(), std::nullopt, never_abort);
+      model::offset::max(), std::nullopt, std::nullopt, never_abort);
 
     for (auto& seg : segments) {
         if (!seg->has_appender()) {
@@ -1647,7 +1677,7 @@ TEST_F(CompactionFixtureParamTest, TestSegmentConcatenation) {
     storage::compaction_config cfg(
       model::offset::max(),
       std::nullopt,
-
+      std::nullopt,
       never_abort,
       std::nullopt,
       cardinality);
@@ -1688,7 +1718,7 @@ TEST_F(CompactionFixtureTest, TestAdjacentCompaction) {
     storage::compaction_config cfg(
       model::offset::max(),
       std::nullopt,
-
+      std::nullopt,
       never_abort,
       std::nullopt,
       cardinality);
@@ -1716,6 +1746,8 @@ TEST_F(CompactionFixtureTest, TestAdjacentCompaction) {
     {
         tests::kafka_consume_transport consumer(make_kafka_client().get());
         consumer.start().get();
+        auto deferred_c_close = ss::defer(
+          [&consumer] { consumer.stop().get(); });
         auto consumed_kvs = consumer
                               .consume_from_partition(
                                 topic_name,
@@ -1775,7 +1807,7 @@ TEST_F(CompactionFixtureTest, TestAdjacentCompactionMultipleRanges) {
     storage::compaction_config cfg(
       model::offset::max(),
       std::nullopt,
-
+      std::nullopt,
       never_abort,
       std::nullopt,
       cardinality);
@@ -1803,6 +1835,8 @@ TEST_F(CompactionFixtureTest, TestAdjacentCompactionMultipleRanges) {
     {
         tests::kafka_consume_transport consumer(make_kafka_client().get());
         consumer.start().get();
+        auto deferred_c_close = ss::defer(
+          [&consumer] { consumer.stop().get(); });
         auto consumed_kvs = consumer
                               .consume_from_partition(
                                 topic_name,
@@ -1839,7 +1873,7 @@ TEST_F(
     auto do_adjacent_compact = [](const auto& l) {
         ss::abort_source never_abort;
         storage::compaction_config cfg(
-          model::offset::max(), std::nullopt, never_abort);
+          model::offset::max(), std::nullopt, std::nullopt, never_abort);
 
         const auto closed_segment_filter = [](const auto& s) -> bool {
             return !s->has_appender();
@@ -1915,6 +1949,8 @@ TEST_F(
     auto make_kafka_consumer = [&]() {
         tests::kafka_consume_transport consumer(make_kafka_client().get());
         consumer.start().get();
+        auto deferred_c_close = ss::defer(
+          [&consumer] { consumer.stop().get(); });
         auto kvs = consumer
                      .consume_from_partition(
                        topic_name, model::partition_id(0), model::offset(0))
@@ -2009,4 +2045,80 @@ TEST_F(
     auto on_disk_batches_after = make_log_segment_batch_reader();
     ASSERT_EQ(num_data_records(on_disk_batches_after), cardinality);
     ASSERT_NE(on_disk_batches_before, on_disk_batches_after);
+}
+
+TEST_F(CompactionFixtureTest, TestBatchCacheResetAfterAdjacentMerge) {
+    // This test case reproduces a specific set of circumstances under which,
+    // previously, batches removed by adjacent merge compaction remained in
+    // the batch cache on the merge range's base segment after compaction has
+    // finished.
+    auto num_segments = 10;
+    auto cardinality = 10;
+    auto batches_per_segment = 10;
+    auto records_per_batch = 1;
+    map_t latest_kv_map;
+    generate_data(
+      num_segments,
+      cardinality,
+      batches_per_segment,
+      records_per_batch,
+      0,
+      false,
+      &latest_kv_map)
+      .get();
+
+    auto& disk_log = dynamic_cast<storage::disk_log_impl&>(*log);
+
+    auto target_segs_v = disk_log.segments() | std::views::take(num_segments);
+
+    ASSERT_TRUE(std::ranges::all_of(
+      target_segs_v, [](const auto& s) { return !s->has_appender(); }));
+
+    storage::segment_set segs{storage::segment_set::underlying_t{
+      target_segs_v.begin(), target_segs_v.end()}};
+
+    ss::abort_source never_abort;
+    storage::compaction_config cfg(
+      model::offset::max(), std::nullopt, std::nullopt, never_abort);
+
+    // self compact everything up front so that it doesn't happen inline with
+    // adjacent merge compaction. this would cause batch caches to be reset
+    // immediately
+    for (auto& s : segs) {
+        disk_log.segment_self_compact(cfg, s).get();
+    }
+
+    auto consume = [&disk_log](storage::log_reader_config cfg) {
+        return disk_log.make_reader(cfg)
+          .then([](model::record_batch_reader reader) {
+              return model::consume_reader_to_memory(
+                std::move(reader), model::no_timeout);
+          })
+          .get();
+    };
+
+    // read some batches in segments[0]. merge compaction will remove these.
+    auto& first_seg = *target_segs_v.front();
+    auto base = model::next_offset(first_seg.offsets().get_base_offset());
+    auto end = first_seg.offsets().get_committed_offset();
+
+    storage::log_reader_config reader_cfg(base, end);
+    reader_cfg.skip_readers_cache = true;
+
+    auto before_merge = consume(reader_cfg);
+    ASSERT_EQ(before_merge.size(), cardinality);
+
+    disk_log.adjacent_merge_compact(segs, cfg).get();
+
+    ASSERT_EQ(disk_log.segment_count(), 2);
+
+    // at this point, all the batches in segment[0] will have been compacted
+    // away, with those offsets no longer appearing on disk. ensure that they do
+    // not appear in the batch cache.
+
+    reader_cfg.start_offset = before_merge.front().base_offset();
+    reader_cfg.max_offset = before_merge.back().last_offset();
+
+    auto after_merge = consume(reader_cfg);
+    ASSERT_TRUE(after_merge.empty());
 }

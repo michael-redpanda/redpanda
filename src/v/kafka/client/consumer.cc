@@ -15,6 +15,7 @@
 #include "kafka/client/configuration.h"
 #include "kafka/client/exceptions.h"
 #include "kafka/client/logger.h"
+#include "kafka/client/types.h"
 #include "kafka/client/utils.h"
 #include "kafka/protocol/describe_groups.h"
 #include "kafka/protocol/errors.h"
@@ -418,7 +419,9 @@ ss::future<fetch_response>
 consumer::dispatch_fetch(broker_reqs_t::value_type br) {
     auto& [broker, req] = br;
     vlog(_logger->trace, "Consumer: {}, fetch_req: {}", *this, req);
-    auto res = co_await broker->dispatch(std::move(req), _as);
+    auto res_v = co_await broker->dispatch(
+      std::move(req), api_version_for(fetch_api::key), _as);
+    auto res = std::get<fetch_response>(std::move(res_v));
     vlog(_logger->trace, "Consumer: {}, fetch_res: {}", *this, res);
 
     if (res.data.error_code != error_code::none) {
@@ -438,7 +441,11 @@ ss::future<fetch_response> consumer::fetch(
         for (const auto& p : ps) {
             auto tp = model::topic_partition{t, p};
             auto leader = _topic_cache.leader(tp);
-            auto broker = _brokers.find(leader);
+            if (!leader) {
+                throw partition_error(
+                  tp, error_code::unknown_topic_or_partition);
+            }
+            auto broker = _brokers.find(*leader);
             auto& session = _fetch_sessions[broker];
 
             auto& req = broker_reqs
