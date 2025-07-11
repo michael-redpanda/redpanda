@@ -16,11 +16,32 @@
 #include <fmt/ranges.h>
 
 namespace cluster_link::model {
+
+mirror_topic_metadata mirror_topic_metadata::copy() const {
+    mirror_topic_metadata copy;
+    copy.state = state;
+    copy.source_topic_id = source_topic_id;
+    copy.source_topic_name = source_topic_name;
+    copy.destination_topic_id = destination_topic_id;
+    copy.partition_count = partition_count;
+    copy.replication_factor = replication_factor;
+    copy.topic_configs.reserve(topic_configs.size());
+    for (const auto& [key, value] : topic_configs) {
+        copy.topic_configs.emplace(key, value);
+    }
+
+    return copy;
+}
+
 void link_state::set_mirror_topics(const mirror_topics_t& topics) {
     mirror_topics.reserve(topics.size());
     for (const auto& [topic, state] : topics) {
-        mirror_topics.emplace(topic, state);
+        mirror_topics.emplace(topic, state.copy());
     }
+}
+
+void link_state::set_mirror_topics(mirror_topics_t&& topics) {
+    mirror_topics = std::move(topics);
 }
 
 link_state link_state::copy() const {
@@ -28,7 +49,7 @@ link_state link_state::copy() const {
     copy.paused = paused;
     copy.mirror_topics.reserve(mirror_topics.size());
     for (const auto& [topic, state] : mirror_topics) {
-        copy.mirror_topics.emplace(topic, state);
+        copy.mirror_topics.emplace(topic, state.copy());
     }
     return copy;
 }
@@ -39,6 +60,13 @@ metadata metadata::copy() const {
     copy.uuid = uuid;
     copy.connection = connection;
     copy.state = state.copy();
+    return copy;
+}
+
+add_mirror_topic_cmd add_mirror_topic_cmd::copy() const {
+    add_mirror_topic_cmd copy;
+    copy.topic = topic;
+    copy.metadata = metadata.copy();
     return copy;
 }
 } // namespace cluster_link::model
@@ -140,11 +168,15 @@ auto fmt::formatter<cluster_link::model::mirror_topic_metadata>::format(
     return fmt::format_to(
       ctx.out(),
       "{{state={}, source_topic_id={}, source_topic_name={}, "
-      "destination_topic_id={}}}",
+      "destination_topic_id={}, partition_count={}, replication_factor={}, "
+      "topic_configs={}}}",
       m.state,
       m.source_topic_id,
       m.source_topic_name,
-      m.destination_topic_id);
+      m.destination_topic_id,
+      m.partition_count,
+      m.replication_factor,
+      m.topic_configs);
 }
 
 auto fmt::formatter<

@@ -86,12 +86,11 @@ public:
 
     ss::future<cluster::cluster_link::errc>
     add_mirror_topic(id_t id, add_mirror_topic_cmd cmd) {
-        cluster::cluster_link_add_mirror_topic_cmd add_cmd{id, std::move(cmd)};
-        auto ec = _validator->validate_mutation(add_cmd);
+        cluster::cluster_link_add_mirror_topic_cmd add_cmd{id, cmd.copy()};
+        auto ec = _validator->validate_mutation(std::move(add_cmd));
         if (ec == errc::success) {
             auto err = co_await _table.local().apply_update(
-              testing::create_add_mirror_topic_command(
-                add_cmd.key, std::move(add_cmd.value)));
+              testing::create_add_mirror_topic_command(id, std::move(cmd)));
             vassert(!err, "Failed to add mirror topic: {}", err.message());
         }
         co_return ec;
@@ -297,9 +296,7 @@ TEST_F_CORO(frontend_validation_test, add_mirror_topic_already_mirrored) {
     model::topic test_topic("mirror-link1");
     mirror_topic_state mirror_state = mirror_topic_state::active;
     auto m = create_base_metadata();
-    m.state.set_mirror_topics(
-      {{test_topic,
-        testing::create_mirror_topic_metadata(mirror_state, test_topic)}});
+    testing::set_link_mirror_topics(m, test_topic, mirror_state, test_topic);
     ASSERT_EQ_CORO(co_await upsert_cluster_link(std::move(m)), errc::success);
     auto id = _table.local().find_id_by_name(name_t("link1"));
     ASSERT_TRUE_CORO(id.has_value());
@@ -318,9 +315,7 @@ TEST_F_CORO(frontend_validation_test, add_mirror_topic_mirrored_by_other_link) {
     model::topic test_topic("mirror-link1");
     mirror_topic_state mirror_state = mirror_topic_state::active;
     auto m1 = create_base_metadata();
-    m1.state.set_mirror_topics(
-      {{test_topic,
-        testing::create_mirror_topic_metadata(mirror_state, test_topic)}});
+    testing::set_link_mirror_topics(m1, test_topic, mirror_state, test_topic);
 
     auto m2 = create_base_metadata(name_t("link2"));
 
@@ -347,10 +342,9 @@ TEST_F_CORO(frontend_validation_test, add_mirror_topic_mirrored_by_other_link) {
 TEST_F_CORO(frontend_validation_test, update_mirror_topic_state_success) {
     model::topic test_topic("mirror-link1");
     mirror_topic_state mirror_state = mirror_topic_state::active;
+
     auto m = create_base_metadata();
-    m.state.set_mirror_topics(
-      {{test_topic,
-        testing::create_mirror_topic_metadata(mirror_state, test_topic)}});
+    testing::set_link_mirror_topics(m, test_topic, mirror_state, test_topic);
     ASSERT_EQ_CORO(co_await upsert_cluster_link(std::move(m)), errc::success);
     auto id = _table.local().find_id_by_name(name_t("link1"));
     ASSERT_TRUE_CORO(id.has_value());
@@ -367,9 +361,7 @@ TEST_F_CORO(frontend_validation_test, update_mirror_topic_state_invalid_name) {
     mirror_topic_state mirror_state = mirror_topic_state::active;
 
     auto m = create_base_metadata();
-    m.state.set_mirror_topics(
-      {{test_topic,
-        testing::create_mirror_topic_metadata(mirror_state, test_topic)}});
+    testing::set_link_mirror_topics(m, test_topic, mirror_state, test_topic);
 
     ASSERT_EQ_CORO(co_await upsert_cluster_link(std::move(m)), errc::success);
     auto id = _table.local().find_id_by_name(name_t("link1"));
@@ -408,10 +400,9 @@ TEST_F_CORO(
 TEST_F_CORO(frontend_validation_test, update_mirror_topic_mirrored_by_other) {
     model::topic test_topic("mirror-link1");
     mirror_topic_state mirror_state = mirror_topic_state::active;
+
     auto m1 = create_base_metadata();
-    m1.state.set_mirror_topics(
-      {{test_topic,
-        testing::create_mirror_topic_metadata(mirror_state, test_topic)}});
+    testing::set_link_mirror_topics(m1, test_topic, mirror_state, test_topic);
 
     auto m2 = create_base_metadata(name_t("link2"));
 

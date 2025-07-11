@@ -156,6 +156,12 @@ struct mirror_topic_metadata
     ::model::topic source_topic_name;
     /// The topic ID of the destination topic
     ::model::topic_id destination_topic_id;
+    /// The number of partitions on the source topic
+    size_t partition_count;
+    /// The replication factory
+    size_t replication_factor;
+    /// The configuration for the topic
+    chunked_hash_map<ss::sstring, ss::sstring> topic_configs;
 
     friend bool
     operator==(const mirror_topic_metadata&, const mirror_topic_metadata&)
@@ -163,8 +169,16 @@ struct mirror_topic_metadata
 
     auto serde_fields() {
         return std::tie(
-          state, source_topic_id, source_topic_name, destination_topic_id);
+          state,
+          source_topic_id,
+          source_topic_name,
+          destination_topic_id,
+          partition_count,
+          replication_factor,
+          topic_configs);
     }
+
+    mirror_topic_metadata copy() const;
 };
 
 struct link_state
@@ -187,6 +201,7 @@ struct link_state
     chunked_hash_map<::model::topic, mirror_topic_metadata> mirror_topics;
 
     void set_mirror_topics(const mirror_topics_t& topics);
+    void set_mirror_topics(mirror_topics_t&& topics);
 
     friend bool operator==(const link_state&, const link_state&) = default;
 
@@ -231,6 +246,8 @@ struct add_mirror_topic_cmd
       = default;
 
     auto serde_fields() { return std::tie(topic, metadata); }
+
+    add_mirror_topic_cmd copy() const;
 };
 
 /// \brief Command used to update the state of a mirror topic
