@@ -82,6 +82,8 @@ ss::future<response_t> cluster_mock::handle_metadata_request(
   model::node_id, request_t req, api_version) {
     auto md_req = std::get<metadata_request>(std::move(req));
     metadata_response_data r_data;
+    r_data.cluster_authorized_operations
+      = md_req.data.include_cluster_authorized_operations ? 0 : -2147483648;
     for (auto& b : _brokers) {
         r_data.brokers.push_back(metadata_response::broker{
           .node_id = b.second.id,

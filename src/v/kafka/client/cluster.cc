@@ -186,8 +186,12 @@ ss::future<> cluster::dispatch_metadata_request() {
         auto request_version = co_await get_metadata_request_version(
           broker, _as);
         // TODO: support topic subscription
-        auto reply = co_await broker->dispatch(
-          metadata_request{.list_all_topics = false}, request_version);
+        auto reply = co_await broker->dispatch(metadata_request{
+          .data = {
+            .include_cluster_authorized_operations = true,
+            .include_topic_authorized_operations = true,
+          },
+                .list_all_topics = false}, request_version);
         vassert(
           std::holds_alternative<kafka::metadata_response>(reply),
           "Metadata response is required to be returned as a result of "
@@ -227,6 +231,7 @@ ss::future<> cluster::apply_metadata(metadata_response reply) {
     } else {
         _controller_id = reply.data.controller_id;
     }
+    _cluster_authorized_operations = reply.data.cluster_authorized_operations;
     _topic_cache.apply(reply.data.topics);
     co_await _brokers.apply(reply.data.brokers);
     _last_update_time = ss::lowres_clock::now();

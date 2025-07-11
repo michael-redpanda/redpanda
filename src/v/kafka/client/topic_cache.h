@@ -28,6 +28,7 @@ class topic_cache {
     };
 
     struct topic_data {
+        int32_t authorized_operations{-2147483648};
         chunked_hash_map<model::partition_id, partition_data> partitions;
     };
 

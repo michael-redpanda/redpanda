@@ -24,6 +24,7 @@ void topic_cache::apply(
     new_cache.reserve(topics.size());
     for (const auto& t : topics) {
         auto& cache_t = new_cache.emplace(t.name, topic_data{}).first->second;
+        cache_t.authorized_operations = t.topic_authorized_operations;
         cache_t.partitions.reserve(t.partitions.size());
         for (const auto& p : t.partitions) {
             cache_t.partitions.emplace(

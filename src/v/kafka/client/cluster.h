@@ -155,6 +155,7 @@ private:
 
     connection_configuration _config;
     prefix_logger _logger;
+    int32_t _cluster_authorized_operations{-2147483648};
     topic_cache _topic_cache;
     brokers _brokers;
     size_t _next_seed;
