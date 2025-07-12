@@ -18,6 +18,7 @@ redpanda_cc_library(
         "//src/v/utils:named_type",
         "//src/v/utils:unresolved_address",
         "//src/v/utils:uuid",
+        "@abseil-cpp//absl/container:flat_hash_set",
         "@fmt",
         "@seastar",
     ],

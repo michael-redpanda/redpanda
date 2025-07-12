@@ -58,6 +58,10 @@ std::string errc_category::message(int c) const {
         return "TLS configuration is invalid";
     case errc::link_name_invalid:
         return "Provided cluster link name is invalid";
+    case errc::topic_filter_invalid:
+        return "Topic filter is invalid";
+    case errc::topic_property_excluded_from_mirroring:
+        return "Topic property is excluded from mirroring";
     }
     return "cluster::cluster_link::unknown";
 }
@@ -138,5 +142,13 @@ auto fmt::formatter<cluster::cluster_link::errc>::format(
     case cluster::cluster_link::errc::link_name_invalid:
         return fmt::format_to(
           ctx.out(), "cluster::cluster_link::errc::link_name_invalid");
+    case cluster::cluster_link::errc::topic_filter_invalid:
+        return fmt::format_to(
+          ctx.out(), "cluster::cluster_link::errc::topic_filter_invalid");
+    case cluster::cluster_link::errc::topic_property_excluded_from_mirroring:
+        return fmt::format_to(
+          ctx.out(),
+          "cluster::cluster_link::errc::topic_property_excluded_from_"
+          "mirroring");
     }
 }

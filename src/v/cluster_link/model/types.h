@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include "absl/container/flat_hash_set.h"
 #include "container/chunked_hash_map.h"
 #include "model/fundamental.h"
 #include "model/metadata.h"
@@ -22,6 +23,8 @@
 
 #include <seastar/util/bool_class.hh>
 
+#include <string_view>
+
 namespace cluster_link::model {
 /// ID of the cluster link - used internally based off of controller offset
 using id_t = named_type<int64_t, struct id_tag>;
@@ -29,6 +32,8 @@ using id_t = named_type<int64_t, struct id_tag>;
 using uuid_t = named_type<uuid_t, struct uuid_tag>;
 /// Name of the cluster link
 using name_t = named_type<ss::sstring, struct name_tag>;
+/// Type to indicate if the task is enabled or not
+using enabled_t = ss::bool_class<struct enabled_tag>;
 
 enum class mirror_topic_state : uint8_t {
     /// Mirroring is active on the topic
@@ -181,6 +186,84 @@ struct mirror_topic_metadata
     mirror_topic_metadata copy() const;
 };
 
+/// How the patch filters
+enum class filter_pattern_type : uint8_t {
+    /// Literal name match
+    literal,
+    /// Match any that is prefixed with the pattern
+    prefix
+};
+
+static constexpr std::string_view to_string_view(filter_pattern_type f) {
+    switch (f) {
+    case filter_pattern_type::literal:
+        return "literal";
+    case filter_pattern_type::prefix:
+        return "prefix";
+    }
+    return "unknown";
+}
+
+/// Whether or not the filter is an inclusive or exclusive filter
+enum class filter_type : uint8_t { include, exclude };
+
+static constexpr std::string_view to_string_view(filter_type f) {
+    switch (f) {
+    case filter_type::include:
+        return "include";
+    case filter_type::exclude:
+        return "exclude";
+    }
+    return "unknown";
+}
+
+struct topic_filter_pattern
+  : serde::envelope<
+      topic_filter_pattern,
+      serde::version<0>,
+      serde::compat_version<0>> {
+    static constexpr const char* wildcard = "*";
+    /// The type of the filter pattern
+    filter_pattern_type pattern_type;
+    filter_type filter;
+    /// The pattern to match against
+    ss::sstring pattern;
+
+    friend bool
+    operator==(const topic_filter_pattern&, const topic_filter_pattern&)
+      = default;
+
+    auto serde_fields() { return std::tie(pattern_type, filter, pattern); }
+};
+
+struct topic_metadata_mirroring_config
+  : serde::envelope<
+      topic_metadata_mirroring_config,
+      serde::version<0>,
+      serde::compat_version<0>> {
+    /// Flag to indicate if the task is enabled or not
+    enabled_t is_enabled{enabled_t::yes};
+    /// Interval for the topic creation task
+    ss::lowres_clock::duration task_interval{std::chrono::seconds(30)};
+
+    /// Filters
+    chunked_vector<topic_filter_pattern> filters;
+    /// List of topic properties to mirror
+    absl::flat_hash_set<ss::sstring> topic_properties_to_mirror;
+
+    friend bool operator==(
+      const topic_metadata_mirroring_config&,
+      const topic_metadata_mirroring_config&)
+      = default;
+
+    auto serde_fields() {
+        return std::tie(
+          is_enabled, task_interval, filters, topic_properties_to_mirror);
+    }
+
+    topic_metadata_mirroring_config copy() const;
+};
+
 struct link_state
   : serde::envelope<link_state, serde::version<0>, serde::compat_version<0>> {
     /// The set of topics that are being mirrored by this link and their state
@@ -199,13 +282,17 @@ struct link_state
       = chunked_hash_map<::model::topic, mirror_topic_metadata>;
     /// Map of topics that this link is mirroring and their state
     chunked_hash_map<::model::topic, mirror_topic_metadata> mirror_topics;
+    /// Configuration for the auto mirror topic creation task
+    topic_metadata_mirroring_config topic_metadata_mirroring_cfg;
 
     void set_mirror_topics(const mirror_topics_t& topics);
     void set_mirror_topics(mirror_topics_t&& topics);
 
     friend bool operator==(const link_state&, const link_state&) = default;
 
-    auto serde_fields() { return std::tie(paused, mirror_topics); }
+    auto serde_fields() {
+        return std::tie(paused, mirror_topics, topic_metadata_mirroring_cfg);
+    }
 
     link_state copy() const;
 };
@@ -431,6 +518,36 @@ struct fmt::formatter<cluster_link::model::mirror_topic_metadata>
   : fmt::formatter<string_view> {
     auto format(
       const cluster_link::model::mirror_topic_metadata& m,
+      format_context& ctx) const -> decltype(ctx.out());
+};
+
+template<>
+struct fmt::formatter<cluster_link::model::filter_pattern_type>
+  : fmt::formatter<string_view> {
+    auto format(cluster_link::model::filter_pattern_type s, format_context& ctx)
+      const -> decltype(ctx.out());
+};
+
+template<>
+struct fmt::formatter<cluster_link::model::filter_type>
+  : fmt::formatter<string_view> {
+    auto format(cluster_link::model::filter_type s, format_context& ctx) const
+      -> decltype(ctx.out());
+};
+
+template<>
+struct fmt::formatter<cluster_link::model::topic_filter_pattern>
+  : fmt::formatter<string_view> {
+    auto format(
+      const cluster_link::model::topic_filter_pattern& m,
+      format_context& ctx) const -> decltype(ctx.out());
+};
+
+template<>
+struct fmt::formatter<cluster_link::model::topic_metadata_mirroring_config>
+  : fmt::formatter<string_view> {
+    auto format(
+      const cluster_link::model::topic_metadata_mirroring_config& m,
       format_context& ctx) const -> decltype(ctx.out());
 };
 
