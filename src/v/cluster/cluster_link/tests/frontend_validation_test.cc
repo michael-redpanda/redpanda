@@ -51,7 +51,10 @@ public:
     ss::future<> SetUpAsync() override {
         co_await _table.start();
         _validator = std::make_unique<frontend::validator>(
-          &_table.local(), max_links);
+          &_table.local(),
+          max_links,
+          chunked_vector<ss::sstring>{
+            "redpanda.remote.readreplica", "redpanda.remote.recovery"});
     }
     ss::future<> TearDownAsync() override {
         _validator.reset(nullptr);
@@ -419,6 +422,121 @@ TEST_F_CORO(frontend_validation_test, update_mirror_topic_mirrored_by_other) {
     EXPECT_EQ(
       co_await update_mirror_topic_state(id_t{2}, std::move(update_cmd)),
       errc::topic_being_mirrored_by_other_link);
+}
+
+TEST_F_CORO(frontend_validation_test, test_mirror_properties) {
+    auto m1 = create_base_metadata();
+    m1.state.topic_metadata_mirroring_cfg.topic_properties_to_mirror
+      = chunked_vector<ss::sstring>{"segment.ms"};
+    m1.state.topic_metadata_mirroring_cfg.filters = {
+      {
+        .pattern_type = ::cluster_link::model::filter_pattern_type::literal,
+        .filter = ::cluster_link::model::filter_type::include,
+        .pattern = ::cluster_link::model::topic_filter_pattern::wildcard,
+      },
+      {
+        .pattern_type = ::cluster_link::model::filter_pattern_type::literal,
+        .filter = ::cluster_link::model::filter_type::exclude,
+        .pattern = "excluded-topic",
+      }};
+
+    EXPECT_EQ(
+      co_await upsert_cluster_link(std::move(m1)),
+      cluster::cluster_link::errc::success);
+}
+
+TEST_F_CORO(frontend_validation_test, test_mirror_properties_empty_pattern) {
+    auto m1 = create_base_metadata();
+    m1.state.topic_metadata_mirroring_cfg.topic_properties_to_mirror
+      = chunked_vector<ss::sstring>{"segment.ms"};
+    m1.state.topic_metadata_mirroring_cfg.filters = {
+      {
+        .pattern_type = ::cluster_link::model::filter_pattern_type::literal,
+        .filter = ::cluster_link::model::filter_type::include,
+        .pattern = ::cluster_link::model::topic_filter_pattern::wildcard,
+      },
+      {
+        .pattern_type = ::cluster_link::model::filter_pattern_type::literal,
+        .filter = ::cluster_link::model::filter_type::exclude,
+        .pattern = "",
+      }};
+
+    EXPECT_EQ(
+      co_await upsert_cluster_link(std::move(m1)),
+      cluster::cluster_link::errc::topic_filter_invalid);
+}
+
+TEST_F_CORO(frontend_validation_test, test_mirror_properties_invalid_wildcard) {
+    auto m1 = create_base_metadata();
+    m1.state.topic_metadata_mirroring_cfg.topic_properties_to_mirror
+      = chunked_vector<ss::sstring>{"segment.ms"};
+    m1.state.topic_metadata_mirroring_cfg.filters = {{
+      .pattern_type = ::cluster_link::model::filter_pattern_type::literal,
+      .filter = ::cluster_link::model::filter_type::include,
+      .pattern = "*something",
+    }};
+
+    EXPECT_EQ(
+      co_await upsert_cluster_link(std::move(m1)),
+      cluster::cluster_link::errc::topic_filter_invalid);
+}
+TEST_F_CORO(
+  frontend_validation_test, test_mirror_properties_wildcard_in_prefix) {
+    auto m1 = create_base_metadata();
+    m1.state.topic_metadata_mirroring_cfg.topic_properties_to_mirror
+      = chunked_vector<ss::sstring>{"segment.ms"};
+    m1.state.topic_metadata_mirroring_cfg.filters = {{
+      .pattern_type = ::cluster_link::model::filter_pattern_type::prefix,
+      .filter = ::cluster_link::model::filter_type::include,
+      .pattern = ::cluster_link::model::topic_filter_pattern::wildcard,
+    }};
+
+    EXPECT_EQ(
+      co_await upsert_cluster_link(std::move(m1)),
+      cluster::cluster_link::errc::topic_filter_invalid);
+}
+
+TEST_F_CORO(
+  frontend_validation_test, test_mirror_properties_invalid_characters) {
+    auto m1 = create_base_metadata();
+    m1.state.topic_metadata_mirroring_cfg.topic_properties_to_mirror
+      = chunked_vector<ss::sstring>{"segment.ms"};
+    m1.state.topic_metadata_mirroring_cfg.filters = {{
+      .pattern_type = ::cluster_link::model::filter_pattern_type::literal,
+      .filter = ::cluster_link::model::filter_type::include,
+      .pattern = "\xFF",
+    }};
+
+    EXPECT_EQ(
+      co_await upsert_cluster_link(std::move(m1)),
+      cluster::cluster_link::errc::topic_filter_invalid);
+}
+
+TEST_F_CORO(
+  frontend_validation_test, test_mirror_properties_invalid_topic_name) {
+    auto m1 = create_base_metadata();
+    m1.state.topic_metadata_mirroring_cfg.topic_properties_to_mirror
+      = chunked_vector<ss::sstring>{"segment.ms"};
+    m1.state.topic_metadata_mirroring_cfg.filters = {{
+      .pattern_type = ::cluster_link::model::filter_pattern_type::literal,
+      .filter = ::cluster_link::model::filter_type::include,
+      .pattern = "__redpanda.internal",
+    }};
+
+    EXPECT_EQ(
+      co_await upsert_cluster_link(std::move(m1)),
+      cluster::cluster_link::errc::topic_filter_invalid);
+}
+
+TEST_F_CORO(
+  frontend_validation_test, test_mirror_properties_invalid_topic_property) {
+    auto m1 = create_base_metadata();
+    m1.state.topic_metadata_mirroring_cfg.topic_properties_to_mirror
+      = chunked_vector<ss::sstring>{"redpanda.remote.readreplica"};
+
+    EXPECT_EQ(
+      co_await upsert_cluster_link(std::move(m1)),
+      cluster::cluster_link::errc::topic_property_excluded_from_mirroring);
 }
 
 } // namespace cluster::cluster_link

@@ -300,13 +300,20 @@ ss::future<errc> frontend::do_local_mutation(
 errc frontend::validate_mutation(const cluster_link_cmd& cmd) const {
     // Initially for DR, we will only support a single cluster link at a time.
     static constexpr size_t max_links = 1;
-    validator v{_table, max_links};
+    validator v{
+      _table,
+      max_links,
+      {"redpanda.remote.readreplica", "redpanda.remote.recovery"}};
     return v.validate_mutation(cmd);
 }
 
-frontend::validator::validator(table* table, size_t max_links)
+frontend::validator::validator(
+  table* table,
+  size_t max_links,
+  chunked_vector<ss::sstring> excluded_topic_properties)
   : _table(table)
-  , _max_links(max_links) {}
+  , _max_links(max_links)
+  , _excluded_topic_properties(std::move(excluded_topic_properties)) {}
 
 errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
     return ss::visit(
@@ -328,7 +335,13 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
                     meta.uuid);
                   return errc::uuid_conflict;
               }
-              return validate_connection_config(cmd.value.connection);
+              auto ec = validate_connection_config(cmd.value.connection);
+              if (ec != errc::success) {
+                  return ec;
+              }
+
+              return validate_metadata_mirroring_config(
+                cmd.value.state.topic_metadata_mirroring_cfg);
           }
           // New item!
           if (cmd.value.name().empty()) {
@@ -366,7 +379,13 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
               return errc::limit_exceeded;
           }
 
-          return validate_connection_config(cmd.value.connection);
+          auto ec = validate_connection_config(cmd.value.connection);
+          if (ec != errc::success) {
+              return ec;
+          }
+
+          return validate_metadata_mirroring_config(
+            cmd.value.state.topic_metadata_mirroring_cfg);
       },
       [this](const cluster::cluster_link_remove_cmd& cmd) {
           auto meta = _table->find_link_by_name(cmd.key);
@@ -459,6 +478,80 @@ errc frontend::validator::validate_connection_config(
           "If providing a certificate or key, both must be file paths or "
           "both must be values");
         return errc::tls_configuration_invalid;
+    }
+
+    return errc::success;
+}
+
+errc frontend::validator::validate_metadata_mirroring_config(
+  const ::cluster_link::model::topic_metadata_mirroring_config& config) const {
+    // Validates that the pattern:
+    // - is not empty
+    // - does not contain the wildcard character '*' unless it is the only
+    //   character in the pattern
+    // - the characters are valid UTF-8
+    // - wildcard only present in 'literal' patterns
+    const auto check_filter_pattern =
+      [](const ::cluster_link::model::topic_filter_pattern& p) {
+          if (p.pattern.empty()) {
+              vlog(cluster::clusterlog.info, "Filter pattern is empty");
+              return true;
+          }
+          if (
+            p.pattern.contains(
+              ::cluster_link::model::topic_filter_pattern::wildcard)
+            && p.pattern
+                 != ::cluster_link::model::topic_filter_pattern::wildcard) {
+              vlog(
+                cluster::clusterlog.info,
+                "Filter pattern is invalid: Contains '*'");
+              return true;
+          }
+          if (
+            p.pattern == ::cluster_link::model::topic_filter_pattern::wildcard
+            && p.pattern_type
+                 != ::cluster_link::model::filter_pattern_type::literal) {
+              vlog(
+                cluster::clusterlog.info,
+                "Filter pattern is invalid: Wildcard '*' can only be used in "
+                "literal patterns");
+              return true;
+          }
+          if (
+            p.pattern != ::cluster_link::model::topic_filter_pattern::wildcard
+            && !std::ranges::all_of(p.pattern, [](char c) {
+                   return std::isalnum(c) || c == '.' || c == '-' || c == '_';
+               })) {
+              vlog(
+                cluster::clusterlog.info,
+                "Filter pattern contains invalid characters");
+              return true;
+          }
+          if (
+            p.pattern.starts_with("_redpanda")
+            || p.pattern.starts_with("__redpanda")
+            || p.pattern == ::model::kafka_consumer_offsets_topic()) {
+              vlog(
+                cluster::clusterlog.info,
+                "Filter pattern filtering on invalid topic name: {}",
+                p.pattern);
+              return true;
+          }
+          return false;
+      };
+    if (std::ranges::any_of(config.filters, check_filter_pattern)) {
+        return errc::topic_filter_invalid;
+    }
+    for (const auto& prop : config.topic_properties_to_mirror) {
+        if (
+          std::ranges::find(_excluded_topic_properties, prop)
+          != _excluded_topic_properties.end()) {
+            vlog(
+              cluster::clusterlog.info,
+              "Topic property '{}' is excluded from mirroring",
+              prop);
+            return errc::topic_property_excluded_from_mirroring;
+        }
     }
 
     return errc::success;
