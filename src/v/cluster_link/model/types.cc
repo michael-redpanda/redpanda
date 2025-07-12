@@ -31,6 +31,20 @@ mirror_topic_metadata mirror_topic_metadata::copy() const {
     return copy;
 }
 
+auto_mirror_topic_creation_metadata
+auto_mirror_topic_creation_metadata::copy() const {
+    auto_mirror_topic_creation_metadata copy;
+
+    copy.is_enabled = is_enabled;
+    copy.task_interval = task_interval;
+    copy.filters.reserve(filters.size());
+    for (const auto& filter : filters) {
+        copy.filters.emplace_back(filter);
+    }
+
+    return copy;
+}
+
 void link_state::set_mirror_topics(const mirror_topics_t& topics) {
     mirror_topics.reserve(topics.size());
     for (const auto& [topic, state] : topics) {
@@ -49,6 +63,7 @@ link_state link_state::copy() const {
     for (const auto& [topic, state] : mirror_topics) {
         copy.mirror_topics.emplace(topic, state.copy());
     }
+    copy.auto_mirror_topic_task_config = auto_mirror_topic_task_config.copy();
     return copy;
 }
 
@@ -152,14 +167,50 @@ auto fmt::formatter<
       ctx.out(), "{{topic: {}, metadata: {}}}", m.first, m.second);
 }
 
+auto fmt::formatter<cluster_link::model::filter_pattern_type>::format(
+  cluster_link::model::filter_pattern_type s, format_context& ctx) const
+  -> decltype(ctx.out()) {
+    return fmt::format_to(ctx.out(), "{}", to_string_view(s));
+}
+
+auto fmt::formatter<cluster_link::model::filter_type>::format(
+  cluster_link::model::filter_type s, format_context& ctx) const
+  -> decltype(ctx.out()) {
+    return fmt::format_to(ctx.out(), "{}", to_string_view(s));
+}
+
+auto fmt::formatter<cluster_link::model::topic_filter_pattern>::format(
+  const cluster_link::model::topic_filter_pattern& m, format_context& ctx) const
+  -> decltype(ctx.out()) {
+    return fmt::format_to(
+      ctx.out(),
+      "{{pattern_type: {}, filter: {}, pattern: {}}}",
+      m.pattern_type,
+      m.filter,
+      m.pattern);
+}
+
+auto fmt::formatter<cluster_link::model::auto_mirror_topic_creation_metadata>::
+  format(
+    const cluster_link::model::auto_mirror_topic_creation_metadata& m,
+    format_context& ctx) const -> decltype(ctx.out()) {
+    return fmt::format_to(
+      ctx.out(),
+      "{{is_enabled: {}, task_interval: {}, filters: {}}}",
+      m.is_enabled,
+      m.task_interval,
+      m.filters);
+}
+
 auto fmt::formatter<cluster_link::model::link_state>::format(
   const cluster_link::model::link_state& s, format_context& ctx) const
   -> decltype(ctx.out()) {
     return fmt::format_to(
       ctx.out(),
-      "{{paused: {}, mirror_topics: {}}}",
+      "{{paused: {}, mirror_topics: {}, auto_mirror_topic_task_config: {}}}",
       s.paused,
-      fmt::join(s.mirror_topics.begin(), s.mirror_topics.end(), ","));
+      fmt::join(s.mirror_topics.begin(), s.mirror_topics.end(), ","),
+      s.auto_mirror_topic_task_config);
 }
 
 auto fmt::formatter<cluster_link::model::metadata>::format(
