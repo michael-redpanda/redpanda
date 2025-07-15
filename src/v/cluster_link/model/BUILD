@@ -3,9 +3,11 @@ load("//bazel:build.bzl", "redpanda_cc_library")
 redpanda_cc_library(
     name = "model",
     srcs = [
+        "filter_utils.cc",
         "types.cc",
     ],
     hdrs = [
+        "filter_utils.h",
         "types.h",
     ],
     include_prefix = "cluster_link/model",
