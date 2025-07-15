@@ -22,6 +22,7 @@
 namespace kafka::client {
 
 class topic_cache {
+public:
     struct partition_data {
         model::node_id leader;
         kafka::leader_epoch leader_epoch{invalid_leader_epoch};
@@ -34,7 +35,6 @@ class topic_cache {
 
     using topics_t = chunked_hash_map<model::topic, topic_data>;
 
-public:
     topic_cache() = default;
     topic_cache(const topic_cache&) = delete;
     topic_cache(topic_cache&&) = default;
@@ -49,6 +49,8 @@ public:
     std::optional<model::node_id> leader(model::topic_partition_view) const;
     std::optional<kafka::leader_epoch>
       leader_epoch(model::topic_partition_view) const;
+
+    const topics_t& topics() const { return _topics; }
 
 private:
     /// \brief Cache of topic information.
