@@ -395,6 +395,9 @@ redpanda_cc_library(
     deps = [
         ":cluster",
         ":configuration",
+        "//src/v/cluster_link/model",
+        "//src/v/cluster",
+        "//src/v/kafka/data/rpc",
         "//src/v/utils:prefix_logger",
     ],
 )
