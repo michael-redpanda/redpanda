@@ -385,3 +385,16 @@ redpanda_cc_library(
         "@seastar",
     ],
 )
+
+redpanda_cc_library(
+    name = "cluster_link",
+    srcs = ["cluster_link.cc"],
+    hdrs = ["cluster_link.h"],
+    include_prefix = "kafka/client",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cluster",
+        ":configuration",
+        "//src/v/utils:prefix_logger",
+    ],
+)
