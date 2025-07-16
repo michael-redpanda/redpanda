@@ -105,6 +105,11 @@ struct scram_credentials
     auto serde_fields() { return std::tie(username, password, mechanism); }
 };
 
+using tls_file_path = named_type<ss::sstring, struct tls_file_path_tag>;
+using tls_value = named_type<ss::sstring, struct tls_value_tag>;
+
+using tls_file_or_value = serde::variant<tls_file_path, tls_value>;
+
 /**
  * @brief Represents the settings for connection to a remote cluster
  */
@@ -118,23 +123,18 @@ struct connection_config
     using authn_variant = serde::variant<scram_credentials>;
     /// Authentication configuration for the connection
     std::optional<authn_variant> authn_config;
-    /// Path to certificate file to use
-    ss::sstring cert_file_path;
-    /// Path to key file (when mTLS is in use)
-    ss::sstring key_file_path;
-    /// Path to the CA file to use
-    ss::sstring ca_file_path;
+    /// certificate file to use
+    std::optional<tls_file_or_value> cert;
+    /// key to use (when mTLS is in use)
+    std::optional<tls_file_or_value> key;
+    /// The CA file to use
+    std::optional<tls_file_or_value> ca;
 
     friend bool operator==(const connection_config&, const connection_config&)
       = default;
 
     auto serde_fields() {
-        return std::tie(
-          bootstrap_servers,
-          authn_config,
-          cert_file_path,
-          key_file_path,
-          ca_file_path);
+        return std::tie(bootstrap_servers, authn_config, cert, key, ca);
     }
 };
 
@@ -333,6 +333,58 @@ struct fmt::formatter<
       const std::optional<
         cluster_link::model::connection_config::authn_variant>& m,
       format_context& ctx) -> decltype(ctx.out());
+};
+
+template<>
+struct fmt::formatter<cluster_link::model::tls_file_or_value>
+  : fmt::formatter<string_view> {
+    constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin()) {
+        auto it = ctx.begin();
+        auto end = ctx.end();
+
+        if (it != end && (*it == 's')) {
+            _is_sensitive = true;
+            ++it;
+        }
+
+        if (it != end && *it != '}') {
+            throw fmt::format_error("invalid format specifier for principal");
+        }
+
+        return it;
+    }
+    auto
+    format(const cluster_link::model::tls_file_or_value& m, format_context& ctx)
+      -> decltype(ctx.out());
+
+private:
+    bool _is_sensitive{false};
+};
+
+template<>
+struct fmt::formatter<std::optional<cluster_link::model::tls_file_or_value>>
+  : fmt::formatter<string_view> {
+    constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin()) {
+        auto it = ctx.begin();
+        auto end = ctx.end();
+
+        if (it != end && (*it == 's')) {
+            _is_sensitive = true;
+            ++it;
+        }
+
+        if (it != end && *it != '}') {
+            throw fmt::format_error("invalid format specifier for principal");
+        }
+
+        return it;
+    }
+    auto format(
+      const std::optional<cluster_link::model::tls_file_or_value>& m,
+      format_context& ctx) -> decltype(ctx.out());
+
+private:
+    bool _is_sensitive{false};
 };
 
 template<>
