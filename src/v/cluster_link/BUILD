@@ -39,6 +39,7 @@ redpanda_cc_library(
         "task.cc",
     ],
     hdrs = [
+        "deps.h",
         "link.h",
         "manager.h",
         "task.h",
@@ -51,6 +52,7 @@ redpanda_cc_library(
     visibility = ["//src/v/cluster_link:__subpackages__"],
     deps = [
         ":errc",
+        ":fwd",
         "//src/v/base",
         "//src/v/cluster",
         "//src/v/cluster_link/model",
