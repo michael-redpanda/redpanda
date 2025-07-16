@@ -115,12 +115,14 @@ auto fmt::formatter<cluster_link::model::connection_config>::format(
   -> decltype(ctx.out()) {
     return fmt::format_to(
       ctx.out(),
-      "{{bootstrap_servers={}, authn_config={}, cert={}, key={:s}, ca={}}}",
+      "{{bootstrap_servers={}, authn_config={}, cert={}, key={:s}, ca={}, "
+      "client_id={}}}",
       c.bootstrap_servers,
       c.authn_config,
       c.cert,
       c.key,
-      c.ca);
+      c.ca,
+      c.client_id);
 }
 
 auto fmt::formatter<std::optional<model::topic_id>>::format(

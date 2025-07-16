@@ -129,12 +129,15 @@ struct connection_config
     std::optional<tls_file_or_value> key;
     /// The CA file to use
     std::optional<tls_file_or_value> ca;
+    /// The client ID to use
+    ss::sstring client_id;
 
     friend bool operator==(const connection_config&, const connection_config&)
       = default;
 
     auto serde_fields() {
-        return std::tie(bootstrap_servers, authn_config, cert, key, ca);
+        return std::tie(
+          bootstrap_servers, authn_config, cert, key, ca, client_id);
     }
 };
 

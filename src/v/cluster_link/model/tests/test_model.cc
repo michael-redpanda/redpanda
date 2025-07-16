@@ -28,12 +28,14 @@ TEST(test_model, test_no_leak_private_data) {
       .authn_config = creds,
       .cert = tls_file_path{"cert.pem"},
       .key = tls_file_path{"key.pem"},
-      .ca = tls_file_path{"ca.pem"}};
+      .ca = tls_file_path{"ca.pem"},
+      .client_id = "client-id"};
 
     EXPECT_EQ(
       "{bootstrap_servers=[{host: localhost, port: 9092}], "
       "authn_config={username=user, password=****, mechanism=SCRAM-SHA-256}, "
-      "cert={file=cert.pem}, key={file=key.pem}, ca={file=ca.pem}}",
+      "cert={file=cert.pem}, key={file=key.pem}, ca={file=ca.pem}, "
+      "client_id=client-id}",
       fmt::format("{}", config_files));
 
     connection_config config_values{
@@ -41,11 +43,13 @@ TEST(test_model, test_no_leak_private_data) {
       .authn_config = creds,
       .cert = tls_value{"cert.pem"},
       .key = tls_value{"key.pem"},
-      .ca = tls_value{"ca.pem"}};
+      .ca = tls_value{"ca.pem"},
+      .client_id = "client-id"};
     EXPECT_EQ(
       "{bootstrap_servers=[{host: localhost, port: 9092}], "
       "authn_config={username=user, password=****, mechanism=SCRAM-SHA-256}, "
-      "cert={value=cert.pem}, key={value=****}, ca={value=ca.pem}}",
+      "cert={value=cert.pem}, key={value=****}, ca={value=ca.pem}, "
+      "client_id=client-id}",
       fmt::format("{}", config_values));
 }
 } // namespace cluster_link::model::tests
