@@ -328,14 +328,8 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
                     meta.uuid);
                   return errc::invalid_update;
               }
-              if (cmd.value.connection.bootstrap_servers.empty()) {
-                  vlog(
-                    cluster::clusterlog.info,
-                    "Attempting to update a cluster link without bootstrap "
-                    "servers");
-                  return errc::invalid_update;
-              }
-              return errc::success;
+              return validate_connection_config(
+                cmd.value.connection, errc::invalid_update);
           }
           // New item!
           if (cmd.value.name().empty()) {
@@ -364,13 +358,6 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
                 "invalid characters");
               return errc::invalid_create;
           }
-          if (cmd.value.connection.bootstrap_servers.empty()) {
-              vlog(
-                cluster::clusterlog.info,
-                "Attempting to create a cluster link without bootstrap "
-                "servers");
-              return errc::invalid_create;
-          }
           if (_table->size() >= _max_links) {
               vlog(
                 cluster::clusterlog.info,
@@ -381,7 +368,8 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
               return errc::limit_exceeded;
           }
 
-          return errc::success;
+          return validate_connection_config(
+            cmd.value.connection, errc::invalid_create);
       },
       [this](const cluster::cluster_link_remove_cmd& cmd) {
           auto meta = _table->find_link_by_name(cmd.key);
@@ -450,5 +438,36 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
           }
           return errc::success;
       });
+}
+
+errc frontend::validator::validate_connection_config(
+  const ::cluster_link::model::connection_config& config,
+  cluster::cluster_link::errc error_code) const {
+    if (config.bootstrap_servers.empty()) {
+        vlog(
+          cluster::clusterlog.info,
+          "Attempting to create a cluster link without bootstrap servers");
+        return error_code;
+    }
+
+    if (config.cert.has_value() != config.key.has_value()) {
+        vlog(
+          cluster::clusterlog.info,
+          "If providing a certificate or key, both must be provided or "
+          "neither");
+        return error_code;
+    }
+
+    if (
+      config.cert.has_value()
+      && config.cert.value().index() != config.key.value().index()) {
+        vlog(
+          cluster::clusterlog.info,
+          "If providing a certificate or key, both must be file paths or "
+          "both must be values");
+        return error_code;
+    }
+
+    return errc::success;
 }
 } // namespace cluster::cluster_link
