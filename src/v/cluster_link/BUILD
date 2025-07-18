@@ -32,6 +32,22 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
+    name = "utils",
+    srcs = [
+        "utils.cc",
+    ],
+    hdrs = [
+        "utils.h",
+    ],
+    include_prefix = "cluster_link",
+    visibility = ["//src/v/cluster_link:__subpackages__"],
+    deps = [
+        "//src/v/cluster_link/model",
+        "//src/v/kafka/client:configuration",
+    ],
+)
+
+redpanda_cc_library(
     name = "impl",
     srcs = [
         "link.cc",

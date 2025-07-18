@@ -82,3 +82,17 @@ redpanda_cc_gtest(
         "@seastar",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "utils_test",
+    timeout = "short",
+    srcs = [
+        "utils_test.cc",
+    ],
+    deps = [
+        "//src/v/cluster_link:utils",
+        "//src/v/cluster_link/model",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+    ],
+)
