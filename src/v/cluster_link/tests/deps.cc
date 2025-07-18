@@ -45,6 +45,9 @@ ss::future<> cluster_link_manager_test_fixture::wire_up_and_start(
           return std::make_unique<test_link_registry>(&_table.local());
       }),
       ss::sharded_parameter([&lf]() { return std::move(lf); }),
+      ss::sharded_parameter([this]() {
+          return std::make_unique<cluster_mock_factory>(&_cluster_mock);
+      }),
       1s);
 
     auto notif_id = _table.local().register_for_updates(

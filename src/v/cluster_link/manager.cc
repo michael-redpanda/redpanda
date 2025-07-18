@@ -15,6 +15,8 @@
 
 #include <seastar/coroutine/as_future.hh>
 
+#include <utility>
+
 using namespace std::chrono_literals;
 
 namespace cluster_link {
@@ -25,12 +27,14 @@ manager::manager(
   std::unique_ptr<kafka::data::rpc::partition_manager> partition_manager,
   std::unique_ptr<link_registry> registry,
   std::unique_ptr<link_factory> link_factory,
+  std::unique_ptr<cluster_factory> cluster_factory,
   ss::lowres_clock::duration task_reconciler_interval)
   : _self(self)
   , _partition_leader_cache(std::move(partition_leader_cache))
   , _partition_manager(std::move(partition_manager))
   , _registry(std::move(registry))
   , _link_factory(std::move(link_factory))
+  , _cluster_factory(std::move(cluster_factory))
   , _queue(
       [](const std::exception_ptr& ex) {
           vlog(cllog.warn, "unexpected cluster link manager error: {}", ex);

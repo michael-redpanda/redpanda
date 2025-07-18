@@ -93,6 +93,7 @@ ss::future<> service::start() {
         _shard_table, _partition_manager, _smp_group),
       std::make_unique<link_registry_adapter>(&_plf->local()),
       std::make_unique<default_link_factory>(),
+      std::make_unique<cluster_factory>(),
       30s); // Temporary until we have a proper configuration for this
 
     // Register notifications before the manager starts.  The manager will have

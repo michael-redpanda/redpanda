@@ -39,6 +39,7 @@ public:
       std::unique_ptr<kafka::data::rpc::partition_manager> partition_manager,
       std::unique_ptr<link_registry> registry,
       std::unique_ptr<link_factory> link_factory,
+      std::unique_ptr<cluster_factory> cluster_factory,
       ss::lowres_clock::duration task_reconciler_interval);
     manager(const manager&) = delete;
     manager(manager&&) = delete;
@@ -79,6 +80,7 @@ private:
     std::unique_ptr<kafka::data::rpc::partition_manager> _partition_manager;
     std::unique_ptr<link_registry> _registry;
     std::unique_ptr<link_factory> _link_factory;
+    std::unique_ptr<cluster_factory> _cluster_factory;
     ssx::work_queue _queue;
 
     chunked_vector<std::unique_ptr<task_factory>> _task_factories;
