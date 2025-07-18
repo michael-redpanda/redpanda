@@ -79,6 +79,7 @@ private:
 class link_test_base : public seastar_test {
 public:
     virtual ss::future<> SetUpAsync() override {
+        setup_cluster_mock();
         _partition_leader_cache_impl
           = std::make_unique<fake_partition_leader_cache_impl>();
         _partition_manager_proxy
@@ -127,6 +128,7 @@ public:
     void unregister_callback(notification_id id) { _callbacks.erase(id); }
 
 protected:
+    kafka::client::cluster_mock _cluster_mock;
     std::unique_ptr<fake_partition_leader_cache_impl>
       _partition_leader_cache_impl;
     std::unique_ptr<fake_partition_manager_proxy> _partition_manager_proxy;
@@ -137,6 +139,17 @@ protected:
     absl::flat_hash_map<notification_id, ss::noncopyable_function<void(uuid_t)>>
       _callbacks;
     notification_id _latest_id{0};
+
+private:
+    void setup_cluster_mock() {
+        _cluster_mock.register_default_handlers();
+        _cluster_mock.add_broker(
+          ::model::node_id(0), net::unresolved_address{"localhost", 9092});
+        _cluster_mock.add_broker(
+          ::model::node_id(1), net::unresolved_address{"localhost", 9093});
+        _cluster_mock.add_broker(
+          ::model::node_id(2), net::unresolved_address{"localhost", 9094});
+    }
 };
 
 class link_test : public link_test_base {

@@ -14,6 +14,8 @@ redpanda_test_cc_library(
         "//src/v/cluster",
         "//src/v/cluster/cluster_link/tests:test_lib",
         "//src/v/cluster_link:impl",
+        "//src/v/cluster_link:utils",
+        "//src/v/kafka/client/test:cluster_mock",
         "//src/v/kafka/data/rpc",
         "//src/v/model",
         "@seastar",
