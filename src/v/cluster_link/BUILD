@@ -50,6 +50,7 @@ redpanda_cc_library(
 redpanda_cc_library(
     name = "impl",
     srcs = [
+        "deps.cc",
         "link.cc",
         "manager.cc",
         "task.cc",
@@ -69,10 +70,12 @@ redpanda_cc_library(
     deps = [
         ":errc",
         ":fwd",
+        ":utils",
         "//src/v/base",
         "//src/v/cluster",
         "//src/v/cluster_link/model",
         "//src/v/container:fragmented_vector",
+        "//src/v/kafka/client:cluster",
         "//src/v/kafka/data/rpc",
         "//src/v/model",
         "//src/v/ssx:future_util",

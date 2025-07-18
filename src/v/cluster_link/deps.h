@@ -11,8 +11,10 @@
 
 #pragma once
 
+#include "cluster_link/errc.h"
 #include "cluster_link/fwd.h"
 #include "cluster_link/model/types.h"
+#include "kafka/client/cluster.h"
 #include "kafka/data/rpc/deps.h"
 #include "model/fundamental.h"
 
@@ -59,5 +61,21 @@ public:
       kafka::data::rpc::partition_leader_cache* partition_leader_cache,
       kafka::data::rpc::partition_manager* partition_manager)
       = 0;
+};
+
+/**
+ * @brief Abstract class used to create cluster links
+ *
+ */
+class cluster_factory {
+public:
+    cluster_factory() = default;
+    cluster_factory(const cluster_factory&) = delete;
+    cluster_factory(cluster_factory&&) = delete;
+    cluster_factory& operator=(const cluster_factory&) = delete;
+    cluster_factory& operator=(cluster_factory&&) = delete;
+    virtual ~cluster_factory() = default;
+
+    virtual kafka::client::cluster create_cluster(const model::metadata& md);
 };
 } // namespace cluster_link
