@@ -67,6 +67,9 @@ public:
 
     model::link_task_status_report get_task_status_report() const;
 
+    const model::metadata& get_config() const noexcept;
+    kafka::client::cluster& get_cluster_connection() noexcept;
+
 private:
     bool should_start_task(task* t) const;
     bool should_stop_task(task* t) const;

@@ -212,6 +212,12 @@ model::link_task_status_report link::get_task_status_report() const {
     return report;
 }
 
+const model::metadata& link::get_config() const noexcept { return _config; }
+
+kafka::client::cluster& link::get_cluster_connection() noexcept {
+    return _cluster_connection;
+}
+
 bool link::should_start_task(task* t) const {
     if (t->get_state() != model::task_state::not_running) {
         // Can only start tasks that are currently not running
