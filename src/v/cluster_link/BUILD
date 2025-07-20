@@ -97,6 +97,24 @@ redpanda_cc_library(
 )
 
 redpanda_cc_library(
+    name = "auto_topic_sensor",
+    srcs = [
+        "auto_topic_sensor.cc",
+    ],
+    hdrs = [
+        "auto_topic_sensor.h",
+    ],
+    implementation_deps = [
+        ":logger",
+    ],
+    include_prefix = "cluster_link",
+    visibility = ["//src/v/cluster_link:__subpackages__"],
+    deps = [
+        ":impl",
+    ],
+)
+
+redpanda_cc_library(
     name = "cluster_link",
     srcs = [
         "service.cc",

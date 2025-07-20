@@ -98,3 +98,17 @@ redpanda_cc_gtest(
         "@googletest//:gtest",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "auto_topic_sensor_test",
+    timeout = "short",
+    srcs = [
+        "auto_topic_sensor_test.cc",
+    ],
+    deps = [
+        ":test_deps",
+        "//src/v/cluster_link:auto_topic_sensor",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+    ],
+)
