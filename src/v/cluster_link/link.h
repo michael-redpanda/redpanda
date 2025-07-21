@@ -31,6 +31,7 @@ public:
       model::metadata config,
       kafka::data::rpc::partition_leader_cache* partition_leader_cache,
       kafka::data::rpc::partition_manager* partition_manager,
+      kafka::data::rpc::topic_metadata_cache* topic_metadata_cache,
       kafka::client::cluster cluster_connection);
     link(const link&) = delete;
     link(link&&) = delete;
@@ -68,6 +69,10 @@ public:
     model::link_task_status_report get_task_status_report() const;
 
     const model::metadata& get_config() const noexcept;
+
+    kafka::data::rpc::topic_metadata_cache*
+    get_topic_metadata_cache() const noexcept;
+
     kafka::client::cluster& get_cluster_connection() noexcept;
 
 private:
@@ -85,6 +90,7 @@ private:
     model::metadata _config;
     kafka::data::rpc::partition_leader_cache* _partition_leader_cache;
     kafka::data::rpc::partition_manager* _partition_manager;
+    kafka::data::rpc::topic_metadata_cache* _topic_metadata_cache;
     kafka::client::cluster _cluster_connection;
 
     notification_list<task_state_change_cb, task_state_notification_id>

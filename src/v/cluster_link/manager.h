@@ -19,6 +19,7 @@
 #include "cluster_link/task.h"
 #include "cluster_link/types.h"
 #include "container/fragmented_vector.h"
+#include "kafka/data/rpc/deps.h"
 #include "model/fundamental.h"
 #include "ssx/work_queue.h"
 #include "utils/mutex.h"
@@ -38,6 +39,8 @@ public:
       std::unique_ptr<kafka::data::rpc::partition_leader_cache>
         partition_leader_cache,
       std::unique_ptr<kafka::data::rpc::partition_manager> partition_manager,
+      std::unique_ptr<kafka::data::rpc::topic_metadata_cache>
+        topic_metadata_cache,
       std::unique_ptr<link_registry> registry,
       std::unique_ptr<link_factory> link_factory,
       std::unique_ptr<cluster_factory> cluster_factory,
@@ -92,6 +95,8 @@ private:
     std::unique_ptr<kafka::data::rpc::partition_leader_cache>
       _partition_leader_cache;
     std::unique_ptr<kafka::data::rpc::partition_manager> _partition_manager;
+    std::unique_ptr<kafka::data::rpc::topic_metadata_cache>
+      _topic_metadata_cache;
     std::unique_ptr<link_registry> _registry;
     std::unique_ptr<link_factory> _link_factory;
     std::unique_ptr<cluster_factory> _cluster_factory;
