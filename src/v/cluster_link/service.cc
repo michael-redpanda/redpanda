@@ -25,6 +25,7 @@ namespace cluster_link {
 using ::cluster::cluster_link::frontend;
 using kafka::data::rpc::partition_leader_cache;
 using kafka::data::rpc::partition_manager;
+using kafka::data::rpc::topic_metadata_cache;
 
 class link_registry_adapter : public link_registry {
 public:
@@ -66,6 +67,7 @@ public:
       model::metadata config,
       partition_leader_cache* partition_leader_cache,
       partition_manager* partition_manager,
+      topic_metadata_cache* topic_metadata_cache,
       kafka::client::cluster cluster_connection) override {
         return std::make_unique<link>(
           self,
@@ -75,6 +77,7 @@ public:
           std::move(config),
           partition_leader_cache,
           partition_manager,
+          topic_metadata_cache,
           std::move(cluster_connection));
     }
 };
@@ -86,6 +89,7 @@ service::service(
   ss::sharded<cluster::partition_manager>* partition_manager,
   ss::sharded<cluster::partition_leaders_table>* partition_leaders_table,
   ss::sharded<cluster::shard_table>* shard_table,
+  ss::sharded<cluster::metadata_cache>* metadata_cache,
   ss::smp_service_group smp_group)
   : _self(self)
   , _plf(plf)
@@ -93,6 +97,7 @@ service::service(
   , _partition_manager(partition_manager)
   , _partition_leaders_table(partition_leaders_table)
   , _shard_table(shard_table)
+  , _metadata_cache(metadata_cache)
   , _smp_group(smp_group) {}
 
 service::~service() = default;
@@ -104,6 +109,7 @@ ss::future<> service::start() {
       partition_leader_cache::make_default(_partition_leaders_table),
       partition_manager::make_default(
         _shard_table, _partition_manager, _smp_group),
+      topic_metadata_cache::make_default(_metadata_cache),
       std::make_unique<link_registry_adapter>(&_plf->local()),
       std::make_unique<default_link_factory>(),
       std::make_unique<cluster_factory>(),

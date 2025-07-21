@@ -25,6 +25,7 @@ manager::manager(
   std::unique_ptr<kafka::data::rpc::partition_leader_cache>
     partition_leader_cache,
   std::unique_ptr<kafka::data::rpc::partition_manager> partition_manager,
+  std::unique_ptr<kafka::data::rpc::topic_metadata_cache> topic_metadata_cache,
   std::unique_ptr<link_registry> registry,
   std::unique_ptr<link_factory> link_factory,
   std::unique_ptr<cluster_factory> cluster_factory,
@@ -32,6 +33,7 @@ manager::manager(
   : _self(self)
   , _partition_leader_cache(std::move(partition_leader_cache))
   , _partition_manager(std::move(partition_manager))
+  , _topic_metadata_cache(std::move(topic_metadata_cache))
   , _registry(std::move(registry))
   , _link_factory(std::move(link_factory))
   , _cluster_factory(std::move(cluster_factory))
@@ -140,6 +142,7 @@ ss::future<> manager::handle_on_link_change(model::id_t id) {
               link_metadata.copy(),
               _partition_leader_cache.get(),
               _partition_manager.get(),
+              _topic_metadata_cache.get(),
               _cluster_factory->create_cluster(link_metadata));
             vassert(
               new_link, "Link factory returned a null link for id={}", id);

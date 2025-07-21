@@ -28,6 +28,7 @@ namespace cluster_link::tests {
 using ::cluster::cluster_link::table;
 using kafka::data::rpc::partition_leader_cache;
 using kafka::data::rpc::partition_manager;
+using kafka::data::rpc::topic_metadata_cache;
 
 class link_test;
 namespace {
@@ -43,6 +44,7 @@ public:
       model::metadata metadata,
       partition_leader_cache* partition_leader_cache,
       partition_manager* partition_manager,
+      topic_metadata_cache* topic_metadata_cache,
       kafka::client::cluster cluster_connection);
 
     ss::future<> start() override;
@@ -66,6 +68,7 @@ public:
       model::metadata metadata,
       partition_leader_cache* partition_leader_cache,
       partition_manager* partition_manager,
+      topic_metadata_cache* topic_metadata_cache,
       kafka::client::cluster cluster_connection) override {
         return std::make_unique<test_link>(
           self,
@@ -76,6 +79,7 @@ public:
           std::move(metadata),
           partition_leader_cache,
           partition_manager,
+          topic_metadata_cache,
           std::move(cluster_connection));
     }
 
@@ -172,6 +176,7 @@ public:
             _partition_leader_cache_impl.get()),
           std::make_unique<fake_partition_manager>(
             _partition_manager_proxy.get()),
+          std::make_unique<fake_topic_metadata_cache>(),
           std::make_unique<test_link_registry>(&_table.local()),
           std::make_unique<link_test_factory>(this, 1s),
           std::make_unique<cluster_mock_factory>(&_cluster_mock),
@@ -220,6 +225,7 @@ test_link::test_link(
   model::metadata metadata,
   partition_leader_cache* partition_leader_cache,
   partition_manager* partition_manager,
+  topic_metadata_cache* topic_metadata_cache,
   kafka::client::cluster cluster_connection)
   : link(
       self,
@@ -229,6 +235,7 @@ test_link::test_link(
       std::move(metadata),
       partition_leader_cache,
       partition_manager,
+      topic_metadata_cache,
       std::move(cluster_connection))
   , _link_test(link_test) {}
 
@@ -384,6 +391,7 @@ public:
       model::metadata metadata,
       partition_leader_cache* partition_leader_cache,
       partition_manager* partition_manager,
+      topic_metadata_cache* topic_metadata_cache,
       kafka::client::cluster cluster_connection) override {
         return std::make_unique<evil_link>(
           self,
@@ -393,6 +401,7 @@ public:
           std::move(metadata),
           partition_leader_cache,
           partition_manager,
+          topic_metadata_cache,
           std::move(cluster_connection));
     }
 };
@@ -410,6 +419,7 @@ public:
             _partition_leader_cache_impl.get()),
           std::make_unique<fake_partition_manager>(
             _partition_manager_proxy.get()),
+          std::make_unique<fake_topic_metadata_cache>(),
           std::make_unique<test_link_registry>(&_table.local()),
           std::move(elf),
           std::make_unique<cluster_mock_factory>(&_cluster_mock),

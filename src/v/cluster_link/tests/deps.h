@@ -33,6 +33,7 @@ public:
       model::metadata metadata,
       kafka::data::rpc::partition_leader_cache* leader_cache,
       kafka::data::rpc::partition_manager* pm,
+      kafka::data::rpc::topic_metadata_cache* topic_metadata_cache,
       kafka::client::cluster cluster_connection) override {
         auto name = metadata.name;
         auto created_link = std::make_unique<link>(
@@ -43,6 +44,7 @@ public:
           std::move(metadata),
           leader_cache,
           pm,
+          topic_metadata_cache,
           std::move(cluster_connection));
 
         _links.emplace(std::move(name), created_link.get());
@@ -229,6 +231,53 @@ private:
     kafka::client::cluster_mock* _cluster_mock;
 };
 
+class fake_topic_metadata_cache
+  : public kafka::data::rpc::topic_metadata_cache {
+public:
+    std::optional<cluster::topic_configuration>
+    find_topic_cfg(::model::topic_namespace_view tp_ns) const final {
+        auto it = _topic_cfgs.find(::model::topic_namespace(tp_ns));
+        if (it == _topic_cfgs.end()) {
+            return std::nullopt;
+        }
+        return it->second;
+    }
+
+    void set_topic_config(cluster::topic_configuration cfg) {
+        auto tp_ns = cfg.tp_ns;
+        _topic_cfgs.insert_or_assign(tp_ns, std::move(cfg));
+    }
+
+    void update_topic_config(const cluster::topic_properties_update& update) {
+        auto it = _topic_cfgs.find(update.tp_ns);
+        if (it == _topic_cfgs.end()) {
+            throw std::runtime_error(
+              ss::format("unknown topic: {}", update.tp_ns));
+        }
+        auto& config = it->second;
+        // NOTE: We just support batch_max_bytes because that's all we use in
+        // tests.
+        const auto& prop_update = update.properties.batch_max_bytes;
+        switch (prop_update.op) {
+        case cluster::incremental_update_operation::none:
+            return;
+        case cluster::incremental_update_operation::set:
+            config.properties.batch_max_bytes
+              = update.properties.batch_max_bytes.value;
+            break;
+        case cluster::incremental_update_operation::remove:
+            config.properties.batch_max_bytes.reset();
+            break;
+        }
+    }
+
+    uint32_t get_default_batch_max_bytes() const final { return 1_MiB; };
+
+private:
+    absl::flat_hash_map<::model::topic_namespace, cluster::topic_configuration>
+      _topic_cfgs;
+};
+
 class cluster_link_manager_test_fixture {
 public:
     explicit cluster_link_manager_test_fixture(::model::node_id self);
@@ -289,6 +338,7 @@ private:
     std::unique_ptr<fake_partition_manager_proxy> _fpmp;
     fake_partition_manager* _fpm{nullptr};
     fake_partition_leader_cache_impl* _fplci{nullptr};
+    fake_topic_metadata_cache* _tmc{nullptr};
     link_factory* _lf{nullptr};
     ss::sharded<manager> _manager;
 

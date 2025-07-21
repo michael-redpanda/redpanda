@@ -68,6 +68,7 @@ public:
       model::metadata config,
       kafka::data::rpc::partition_leader_cache* partition_leader_cache,
       kafka::data::rpc::partition_manager* partition_manager,
+      kafka::data::rpc::topic_metadata_cache* topic_metadata_cache,
       kafka::client::cluster cluster_connection)
       = 0;
 };
