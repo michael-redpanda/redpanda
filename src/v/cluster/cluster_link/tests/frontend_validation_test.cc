@@ -143,7 +143,7 @@ TEST_F_CORO(frontend_validation_test, no_bootstrap_servers) {
       .connection = connection_config{}};
     EXPECT_EQ(
       co_await upsert_cluster_link(std::move(m)),
-      cluster::cluster_link::errc::invalid_create);
+      cluster::cluster_link::errc::bootstrap_servers_empty);
 }
 
 TEST_F_CORO(frontend_validation_test, name_too_long) {
@@ -154,7 +154,7 @@ TEST_F_CORO(frontend_validation_test, name_too_long) {
         .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
     EXPECT_EQ(
       co_await upsert_cluster_link(std::move(m)),
-      cluster::cluster_link::errc::invalid_create);
+      cluster::cluster_link::errc::link_name_invalid);
 }
 
 TEST_F_CORO(frontend_validation_test, name_empty) {
@@ -165,7 +165,7 @@ TEST_F_CORO(frontend_validation_test, name_empty) {
         .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
     EXPECT_EQ(
       co_await upsert_cluster_link(std::move(m)),
-      cluster::cluster_link::errc::invalid_create);
+      cluster::cluster_link::errc::link_name_invalid);
 }
 
 TEST_F_CORO(frontend_validation_test, remote_non_existent) {
@@ -208,7 +208,7 @@ TEST_F_CORO(frontend_validation_test, update_existing_bad_uuid) {
 
     EXPECT_EQ(
       co_await upsert_cluster_link(std::move(mupdate)),
-      cluster::cluster_link::errc::invalid_update);
+      cluster::cluster_link::errc::uuid_conflict);
 }
 
 TEST_F_CORO(frontend_validation_test, update_existing_good_uuid) {
@@ -249,7 +249,7 @@ TEST_F_CORO(frontend_validation_test, update_no_bootstrap_servers) {
 
     EXPECT_EQ(
       co_await upsert_cluster_link(std::move(mupdate)),
-      cluster::cluster_link::errc::invalid_update);
+      cluster::cluster_link::errc::bootstrap_servers_empty);
 }
 
 TEST_F_CORO(frontend_validation_test, invalid_utf8_in_name) {
@@ -260,7 +260,7 @@ TEST_F_CORO(frontend_validation_test, invalid_utf8_in_name) {
         .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
     EXPECT_EQ(
       co_await upsert_cluster_link(std::move(m)),
-      cluster::cluster_link::errc::invalid_create);
+      cluster::cluster_link::errc::link_name_invalid);
 }
 
 TEST_F_CORO(frontend_validation_test, control_character_in_name) {
@@ -271,25 +271,25 @@ TEST_F_CORO(frontend_validation_test, control_character_in_name) {
         .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
     EXPECT_EQ(
       co_await upsert_cluster_link(std::move(m)),
-      cluster::cluster_link::errc::invalid_create);
+      cluster::cluster_link::errc::link_name_invalid);
 }
 
 TEST_F_CORO(frontend_validation_test, add_mirror_topic_missing_key) {
     metadata m{
-      .name = name_t("link1\x0d"), // Contains a control character
+      .name = name_t("link1"),
       .uuid = uuid_t(::uuid_t::create()),
       .connection = connection_config{
         .bootstrap_servers = {net::unresolved_address{"localhost", 9092}},
         .cert = tls_value("bah")}};
     EXPECT_EQ(
       co_await upsert_cluster_link(std::move(m)),
-      cluster::cluster_link::errc::invalid_create);
+      cluster::cluster_link::errc::tls_configuration_invalid);
 }
 
 TEST_F_CORO(
   frontend_validation_test, add_mirror_topic_key_cert_types_different) {
     metadata m{
-      .name = name_t("link1\x0d"), // Contains a control character
+      .name = name_t("link1"),
       .uuid = uuid_t(::uuid_t::create()),
       .connection = connection_config{
         .bootstrap_servers = {net::unresolved_address{"localhost", 9092}},
@@ -297,7 +297,7 @@ TEST_F_CORO(
         .key = tls_file_path("key.pem")}};
     EXPECT_EQ(
       co_await upsert_cluster_link(std::move(m)),
-      cluster::cluster_link::errc::invalid_create);
+      cluster::cluster_link::errc::tls_configuration_invalid);
 }
 
 TEST_F_CORO(frontend_validation_test, add_mirror_topic_success) {

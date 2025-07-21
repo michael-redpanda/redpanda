@@ -94,8 +94,7 @@ public:
 
     private:
         cluster::cluster_link::errc validate_connection_config(
-          const ::cluster_link::model::connection_config& config,
-          cluster::cluster_link::errc error_code) const;
+          const ::cluster_link::model::connection_config& config) const;
 
     private:
         table* _table;

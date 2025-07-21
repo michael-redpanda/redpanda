@@ -326,17 +326,16 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
                     cmd.value.name,
                     cmd.value.uuid,
                     meta.uuid);
-                  return errc::invalid_update;
+                  return errc::uuid_conflict;
               }
-              return validate_connection_config(
-                cmd.value.connection, errc::invalid_update);
+              return validate_connection_config(cmd.value.connection);
           }
           // New item!
           if (cmd.value.name().empty()) {
               vlog(
                 cluster::clusterlog.warn,
                 "Attempting to create a cluster link without a name");
-              return errc::invalid_create;
+              return errc::link_name_invalid;
           }
           constexpr static size_t max_name_size = 128;
           if (cmd.value.name().size() > max_name_size) {
@@ -347,7 +346,7 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
                 "{} > {}",
                 cmd.value.name().size(),
                 max_name_size);
-              return errc::invalid_create;
+              return errc::link_name_invalid;
           }
           if (!std::ranges::all_of(cmd.value.name(), [](char c) {
                   return std::isalnum(c) || c == '.' || c == '-' || c == '_';
@@ -356,7 +355,7 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
                 cluster::clusterlog.warn,
                 "Attempting to create a cluster link with a name containing "
                 "invalid characters");
-              return errc::invalid_create;
+              return errc::link_name_invalid;
           }
           if (_table->size() >= _max_links) {
               vlog(
@@ -367,8 +366,7 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
               return errc::limit_exceeded;
           }
 
-          return validate_connection_config(
-            cmd.value.connection, errc::invalid_create);
+          return validate_connection_config(cmd.value.connection);
       },
       [this](const cluster::cluster_link_remove_cmd& cmd) {
           auto meta = _table->find_link_by_name(cmd.key);
@@ -437,13 +435,12 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
 }
 
 errc frontend::validator::validate_connection_config(
-  const ::cluster_link::model::connection_config& config,
-  cluster::cluster_link::errc error_code) const {
+  const ::cluster_link::model::connection_config& config) const {
     if (config.bootstrap_servers.empty()) {
         vlog(
           cluster::clusterlog.warn,
           "Attempting to create a cluster link without bootstrap servers");
-        return error_code;
+        return errc::bootstrap_servers_empty;
     }
 
     if (config.cert.has_value() != config.key.has_value()) {
@@ -451,7 +448,7 @@ errc frontend::validator::validate_connection_config(
           cluster::clusterlog.warn,
           "If providing a certificate or key, both must be provided or "
           "neither");
-        return error_code;
+        return errc::tls_configuration_invalid;
     }
 
     if (
@@ -461,7 +458,7 @@ errc frontend::validator::validate_connection_config(
           cluster::clusterlog.warn,
           "If providing a certificate or key, both must be file paths or "
           "both must be values");
-        return error_code;
+        return errc::tls_configuration_invalid;
     }
 
     return errc::success;
