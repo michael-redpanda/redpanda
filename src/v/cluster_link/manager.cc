@@ -140,6 +140,7 @@ ss::future<> manager::handle_on_link_change(model::id_t id) {
               _partition_leader_cache.get(),
               _partition_manager.get(),
               _topic_metadata_cache.get(),
+              _registry.get(),
               _cluster_factory->create_cluster(link_metadata));
             vassert(
               new_link, "Link factory returned a null link for id={}", id);

@@ -32,6 +32,7 @@ public:
       kafka::data::rpc::partition_leader_cache* leader_cache,
       kafka::data::rpc::partition_manager* pm,
       kafka::data::rpc::topic_metadata_cache* topic_metadata_cache,
+      link_registry* link_registry,
       kafka::client::cluster cluster_connection) override {
         auto name = metadata.name;
         auto created_link = std::make_unique<link>(
@@ -41,6 +42,7 @@ public:
           leader_cache,
           pm,
           topic_metadata_cache,
+          link_registry,
           std::move(cluster_connection));
 
         _links.emplace(std::move(name), created_link.get());

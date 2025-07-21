@@ -12,6 +12,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "cluster/cluster_link/table.h"
 #include "cluster/cluster_link/tests/utils.h"
+#include "cluster_link/deps.h"
 #include "cluster_link/link.h"
 #include "cluster_link/manager.h"
 #include "cluster_link/tests/deps.h"
@@ -43,6 +44,7 @@ public:
       partition_leader_cache* partition_leader_cache,
       partition_manager* partition_manager,
       topic_metadata_cache* topic_metadata_cache,
+      link_registry* link_registry,
       kafka::client::cluster cluster_connection);
 
     ss::future<> start() override;
@@ -65,6 +67,7 @@ public:
       partition_leader_cache* partition_leader_cache,
       partition_manager* partition_manager,
       topic_metadata_cache* topic_metadata_cache,
+      link_registry* link_registry,
       kafka::client::cluster cluster_connection) override {
         return std::make_unique<test_link>(
           self,
@@ -74,6 +77,7 @@ public:
           partition_leader_cache,
           partition_manager,
           topic_metadata_cache,
+          link_registry,
           std::move(cluster_connection));
     }
 
@@ -218,6 +222,7 @@ test_link::test_link(
   partition_leader_cache* partition_leader_cache,
   partition_manager* partition_manager,
   topic_metadata_cache* topic_metadata_cache,
+  link_registry* link_registry,
   kafka::client::cluster cluster_connection)
   : link(
       self,
@@ -226,6 +231,7 @@ test_link::test_link(
       partition_leader_cache,
       partition_manager,
       topic_metadata_cache,
+      link_registry,
       std::move(cluster_connection))
   , _link_test(link_test) {}
 
@@ -380,6 +386,7 @@ public:
       partition_leader_cache* partition_leader_cache,
       partition_manager* partition_manager,
       topic_metadata_cache* topic_metadata_cache,
+      link_registry* link_registry,
       kafka::client::cluster cluster_connection) override {
         return std::make_unique<evil_link>(
           self,
@@ -388,6 +395,7 @@ public:
           partition_leader_cache,
           partition_manager,
           topic_metadata_cache,
+          link_registry,
           std::move(cluster_connection));
     }
 };

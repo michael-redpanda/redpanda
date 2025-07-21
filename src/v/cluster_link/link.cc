@@ -56,12 +56,14 @@ link::link(
   partition_leader_cache* partition_leader_cache,
   partition_manager* partition_manager,
   topic_metadata_cache* topic_metadata_cache,
+  link_registry* link_registry,
   kafka::client::cluster cluster_connection)
   : _self(self)
   , _config(std::move(config))
   , _partition_leader_cache(partition_leader_cache)
   , _partition_manager(partition_manager)
   , _topic_metadata_cache(topic_metadata_cache)
+  , _link_registry(link_registry)
   , _cluster_connection(std::move(cluster_connection))
   , _task_reconciler_interval(task_reconciler_interval) {}
 
@@ -223,6 +225,10 @@ topic_metadata_cache* link::get_topic_metadata_cache() const noexcept {
 
 kafka::client::cluster& link::get_cluster_connection() noexcept {
     return _cluster_connection;
+}
+
+link_registry* link::get_link_registry() const noexcept {
+    return _link_registry;
 }
 
 bool link::should_start_task(task* t) const {

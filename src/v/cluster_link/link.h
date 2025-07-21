@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include "cluster_link/deps.h"
 #include "cluster_link/model/types.h"
 #include "cluster_link/task.h"
 #include "cluster_link/types.h"
@@ -32,6 +33,7 @@ public:
       kafka::data::rpc::partition_leader_cache* partition_leader_cache,
       kafka::data::rpc::partition_manager* partition_manager,
       kafka::data::rpc::topic_metadata_cache* topic_metadata_cache,
+      link_registry* link_registry,
       kafka::client::cluster cluster_connection);
     link(const link&) = delete;
     link(link&&) = delete;
@@ -73,6 +75,8 @@ public:
     kafka::data::rpc::topic_metadata_cache*
     get_topic_metadata_cache() const noexcept;
 
+    link_registry* get_link_registry() const noexcept;
+
     kafka::client::cluster& get_cluster_connection() noexcept;
 
 private:
@@ -91,6 +95,7 @@ private:
     kafka::data::rpc::partition_leader_cache* _partition_leader_cache;
     kafka::data::rpc::partition_manager* _partition_manager;
     kafka::data::rpc::topic_metadata_cache* _topic_metadata_cache;
+    link_registry* _link_registry;
     kafka::client::cluster _cluster_connection;
 
     notification_list<task_state_change_cb, task_state_notification_id>

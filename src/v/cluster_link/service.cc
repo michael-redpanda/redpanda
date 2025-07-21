@@ -66,6 +66,7 @@ public:
       partition_leader_cache* partition_leader_cache,
       partition_manager* partition_manager,
       topic_metadata_cache* topic_metadata_cache,
+      link_registry* link_registry,
       kafka::client::cluster cluster_connection) override {
         return std::make_unique<link>(
           self,
@@ -74,6 +75,7 @@ public:
           partition_leader_cache,
           partition_manager,
           topic_metadata_cache,
+          link_registry,
           std::move(cluster_connection));
     }
 };
