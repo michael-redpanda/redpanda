@@ -31,6 +31,17 @@ using ::cluster_link::model::uuid_t;
 
 constexpr size_t max_links = 1;
 
+namespace {
+metadata create_base_metadata(
+  name_t name = name_t("link1"), uuid_t uuid = uuid_t{::uuid_t::create()}) {
+    return {
+      .name = std::move(name),
+      .uuid = uuid,
+      .connection = connection_config{
+        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+}
+} // namespace
+
 class frontend_validation_test : public seastar_test {
 public:
     ss::sharded<table> _table;
@@ -105,34 +116,20 @@ public:
 };
 
 TEST_F_CORO(frontend_validation_test, successful_upsert) {
-    metadata m{
-      .name = name_t("link1"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
     EXPECT_EQ(
-      co_await upsert_cluster_link(std::move(m)),
+      co_await upsert_cluster_link(create_base_metadata()),
       cluster::cluster_link::errc::success);
 }
 
 TEST_F_CORO(frontend_validation_test, too_many_links) {
     for (size_t i = 0; i < max_links; ++i) {
-        metadata m{
-          .name = name_t(fmt::format("link{}", i + 1)),
-          .uuid = uuid_t(::uuid_t::create()),
-          .connection = connection_config{
-            .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
         EXPECT_EQ(
-          co_await upsert_cluster_link(std::move(m)),
+          co_await upsert_cluster_link(
+            create_base_metadata(name_t(fmt::format("link{}", i + 1)))),
           cluster::cluster_link::errc::success);
     }
-    metadata m2{
-      .name = name_t("toomany"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
     EXPECT_EQ(
-      co_await upsert_cluster_link(std::move(m2)),
+      co_await upsert_cluster_link(create_base_metadata(name_t("toomany"))),
       cluster::cluster_link::errc::limit_exceeded);
 }
 
@@ -147,24 +144,15 @@ TEST_F_CORO(frontend_validation_test, no_bootstrap_servers) {
 }
 
 TEST_F_CORO(frontend_validation_test, name_too_long) {
-    metadata m{
-      .name = name_t(std::string(129, 'a')),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
     EXPECT_EQ(
-      co_await upsert_cluster_link(std::move(m)),
+      co_await upsert_cluster_link(
+        create_base_metadata(name_t(std::string(129, 'a')))),
       cluster::cluster_link::errc::link_name_invalid);
 }
 
 TEST_F_CORO(frontend_validation_test, name_empty) {
-    metadata m{
-      .name = name_t(""),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
     EXPECT_EQ(
-      co_await upsert_cluster_link(std::move(m)),
+      co_await upsert_cluster_link(create_base_metadata(name_t(""))),
       cluster::cluster_link::errc::link_name_invalid);
 }
 
@@ -175,13 +163,8 @@ TEST_F_CORO(frontend_validation_test, remote_non_existent) {
 }
 
 TEST_F_CORO(frontend_validation_test, remove_existing) {
-    metadata m{
-      .name = name_t("link1"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
     EXPECT_EQ(
-      co_await upsert_cluster_link(std::move(m)),
+      co_await upsert_cluster_link(create_base_metadata()),
       cluster::cluster_link::errc::success);
     EXPECT_EQ(
       co_await delete_cluster_link(name_t("link1")),
@@ -198,37 +181,26 @@ TEST_F_CORO(frontend_validation_test, update_existing_bad_uuid) {
       .connection = connection_config{
         .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
     EXPECT_EQ(
-      co_await upsert_cluster_link(std::move(m)),
+      co_await upsert_cluster_link(create_base_metadata()),
       cluster::cluster_link::errc::success);
-    metadata mupdate{
-      .name = name_t("link1"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
 
+    // Create base metadata will generate a new UUID
     EXPECT_EQ(
-      co_await upsert_cluster_link(std::move(mupdate)),
+      co_await upsert_cluster_link(create_base_metadata()),
       cluster::cluster_link::errc::uuid_conflict);
 }
 
 TEST_F_CORO(frontend_validation_test, update_existing_good_uuid) {
     auto link_uuid = uuid_t(::uuid_t::create());
-    metadata m{
-      .name = name_t("link1"),
-      .uuid = link_uuid,
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
-    EXPECT_EQ(
-      co_await upsert_cluster_link(std::move(m)),
-      cluster::cluster_link::errc::success);
-    metadata mupdate{
-      .name = name_t("link1"),
-      .uuid = link_uuid,
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost1", 9092}}}};
 
     EXPECT_EQ(
-      co_await upsert_cluster_link(std::move(mupdate)),
+      co_await upsert_cluster_link(
+        create_base_metadata(name_t("link1"), link_uuid)),
+      cluster::cluster_link::errc::success);
+
+    EXPECT_EQ(
+      co_await upsert_cluster_link(
+        create_base_metadata(name_t("link1"), link_uuid)),
       cluster::cluster_link::errc::success);
 }
 
@@ -253,34 +225,21 @@ TEST_F_CORO(frontend_validation_test, update_no_bootstrap_servers) {
 }
 
 TEST_F_CORO(frontend_validation_test, invalid_utf8_in_name) {
-    metadata m{
-      .name = name_t("\xFF\xFF\xFF"), // Invalid UTF-8
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
     EXPECT_EQ(
-      co_await upsert_cluster_link(std::move(m)),
+      co_await upsert_cluster_link(
+        create_base_metadata(name_t("\xFF\xFF\xFF"))),
       cluster::cluster_link::errc::link_name_invalid);
 }
 
 TEST_F_CORO(frontend_validation_test, control_character_in_name) {
-    metadata m{
-      .name = name_t("link1\x0d"), // Contains a control character
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
     EXPECT_EQ(
-      co_await upsert_cluster_link(std::move(m)),
+      co_await upsert_cluster_link(create_base_metadata(name_t("link1\x0d"))),
       cluster::cluster_link::errc::link_name_invalid);
 }
 
 TEST_F_CORO(frontend_validation_test, add_mirror_topic_missing_key) {
-    metadata m{
-      .name = name_t("link1"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}},
-        .cert = tls_value("bah")}};
+    auto m = create_base_metadata();
+    m.connection.cert = tls_value("bah");
     EXPECT_EQ(
       co_await upsert_cluster_link(std::move(m)),
       cluster::cluster_link::errc::tls_configuration_invalid);
@@ -288,25 +247,17 @@ TEST_F_CORO(frontend_validation_test, add_mirror_topic_missing_key) {
 
 TEST_F_CORO(
   frontend_validation_test, add_mirror_topic_key_cert_types_different) {
-    metadata m{
-      .name = name_t("link1"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}},
-        .cert = tls_value("bah"),
-        .key = tls_file_path("key.pem")}};
+    auto m = create_base_metadata();
+    m.connection.cert = tls_value("bah");
+    m.connection.key = tls_file_path("key.pem");
     EXPECT_EQ(
       co_await upsert_cluster_link(std::move(m)),
       cluster::cluster_link::errc::tls_configuration_invalid);
 }
 
 TEST_F_CORO(frontend_validation_test, add_mirror_topic_success) {
-    metadata m{
-      .name = name_t("link1"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
-    ASSERT_EQ_CORO(co_await upsert_cluster_link(std::move(m)), errc::success);
+    ASSERT_EQ_CORO(
+      co_await upsert_cluster_link(create_base_metadata()), errc::success);
     auto id = _table.local().find_id_by_name(name_t("link1"));
     ASSERT_TRUE_CORO(id.has_value());
 
@@ -319,12 +270,8 @@ TEST_F_CORO(frontend_validation_test, add_mirror_topic_success) {
 }
 
 TEST_F_CORO(frontend_validation_test, add_mirror_topic_invalid_name) {
-    metadata m{
-      .name = name_t("link1"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
-    ASSERT_EQ_CORO(co_await upsert_cluster_link(std::move(m)), errc::success);
+    ASSERT_EQ_CORO(
+      co_await upsert_cluster_link(create_base_metadata()), errc::success);
     auto id = _table.local().find_id_by_name(name_t("link1"));
     ASSERT_TRUE_CORO(id.has_value());
 
@@ -349,11 +296,7 @@ TEST_F_CORO(frontend_validation_test, add_mirror_topic_no_link) {
 TEST_F_CORO(frontend_validation_test, add_mirror_topic_already_mirrored) {
     model::topic test_topic("mirror-link1");
     mirror_topic_state mirror_state = mirror_topic_state::active;
-    metadata m{
-      .name = name_t("link1"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+    auto m = create_base_metadata();
     m.state.set_mirror_topics(
       {{test_topic,
         testing::create_mirror_topic_metadata(mirror_state, test_topic)}});
@@ -374,20 +317,12 @@ TEST_F_CORO(frontend_validation_test, add_mirror_topic_already_mirrored) {
 TEST_F_CORO(frontend_validation_test, add_mirror_topic_mirrored_by_other_link) {
     model::topic test_topic("mirror-link1");
     mirror_topic_state mirror_state = mirror_topic_state::active;
-    metadata m1{
-      .name = name_t("link1"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+    auto m1 = create_base_metadata();
     m1.state.set_mirror_topics(
       {{test_topic,
         testing::create_mirror_topic_metadata(mirror_state, test_topic)}});
 
-    metadata m2{
-      .name = name_t("link2"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+    auto m2 = create_base_metadata(name_t("link2"));
 
     ASSERT_EQ_CORO(
       co_await _table.local().apply_update(
@@ -412,11 +347,7 @@ TEST_F_CORO(frontend_validation_test, add_mirror_topic_mirrored_by_other_link) {
 TEST_F_CORO(frontend_validation_test, update_mirror_topic_state_success) {
     model::topic test_topic("mirror-link1");
     mirror_topic_state mirror_state = mirror_topic_state::active;
-    metadata m{
-      .name = name_t("link1"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+    auto m = create_base_metadata();
     m.state.set_mirror_topics(
       {{test_topic,
         testing::create_mirror_topic_metadata(mirror_state, test_topic)}});
@@ -434,14 +365,12 @@ TEST_F_CORO(frontend_validation_test, update_mirror_topic_state_success) {
 TEST_F_CORO(frontend_validation_test, update_mirror_topic_state_invalid_name) {
     model::topic test_topic("mirror-link1");
     mirror_topic_state mirror_state = mirror_topic_state::active;
-    metadata m{
-      .name = name_t("link1"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+
+    auto m = create_base_metadata();
     m.state.set_mirror_topics(
       {{test_topic,
         testing::create_mirror_topic_metadata(mirror_state, test_topic)}});
+
     ASSERT_EQ_CORO(co_await upsert_cluster_link(std::move(m)), errc::success);
     auto id = _table.local().find_id_by_name(name_t("link1"));
     ASSERT_TRUE_CORO(id.has_value());
@@ -464,12 +393,8 @@ TEST_F_CORO(frontend_validation_test, update_mirror_topic_non_existant_link) {
 
 TEST_F_CORO(
   frontend_validation_test, update_mirror_topic_mirror_topic_does_not_exist) {
-    metadata m{
-      .name = name_t("link1"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
-    ASSERT_EQ_CORO(co_await upsert_cluster_link(std::move(m)), errc::success);
+    ASSERT_EQ_CORO(
+      co_await upsert_cluster_link(create_base_metadata()), errc::success);
     auto id = _table.local().find_id_by_name(name_t("link1"));
     ASSERT_TRUE_CORO(id.has_value());
 
@@ -483,20 +408,12 @@ TEST_F_CORO(
 TEST_F_CORO(frontend_validation_test, update_mirror_topic_mirrored_by_other) {
     model::topic test_topic("mirror-link1");
     mirror_topic_state mirror_state = mirror_topic_state::active;
-    metadata m1{
-      .name = name_t("link1"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+    auto m1 = create_base_metadata();
     m1.state.set_mirror_topics(
       {{test_topic,
         testing::create_mirror_topic_metadata(mirror_state, test_topic)}});
 
-    metadata m2{
-      .name = name_t("link2"),
-      .uuid = uuid_t(::uuid_t::create()),
-      .connection = connection_config{
-        .bootstrap_servers = {net::unresolved_address{"localhost", 9092}}}};
+    auto m2 = create_base_metadata(name_t("link2"));
 
     ASSERT_EQ_CORO(
       co_await _table.local().apply_update(
