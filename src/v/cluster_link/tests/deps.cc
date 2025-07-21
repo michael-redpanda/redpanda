@@ -107,6 +107,24 @@ cluster_link_manager_test_fixture::upsert_link(model::metadata metadata) {
       });
 }
 
+ss::future<std::optional<model::cluster_link_task_status_report>>
+cluster_link_manager_test_fixture::await_status_report(
+  ss::lowres_clock::duration timeout,
+  ss::lowres_clock::duration backoff,
+  std::function<bool(const model::cluster_link_task_status_report&)>
+    predicate) {
+    auto timeout_time = ss::lowres_clock::now() + timeout;
+    while (ss::lowres_clock::now() < timeout_time) {
+        auto report = _manager.local().get_task_status_report();
+        if (predicate(report)) {
+            co_return report;
+        }
+        co_await ss::sleep(backoff);
+    }
+
+    co_return std::nullopt;
+}
+
 void cluster_link_manager_test_fixture::setup_cluster_mock() {
     _cluster_mock.register_default_handlers();
     _cluster_mock.add_broker(
