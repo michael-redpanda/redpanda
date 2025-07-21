@@ -12,6 +12,7 @@
 #pragma once
 
 #include "cluster/cluster_link/table.h"
+#include "cluster/cluster_link/tests/utils.h"
 #include "cluster_link/manager.h"
 #include "cluster_link/utils.h"
 #include "kafka/client/test/cluster_mock.h"
@@ -74,6 +75,22 @@ public:
 
     chunked_vector<model::id_t> get_all_link_ids() const override {
         return _table->get_all_link_ids();
+    }
+
+    ss::future<::cluster::cluster_link::errc> add_mirror_topic(
+      model::id_t id,
+      model::add_mirror_topic_cmd cmd,
+      ::model::timeout_clock::time_point) override {
+        auto link = _table->find_link_by_id(id);
+        if (!link) {
+            co_return ::cluster::cluster_link::errc::does_not_exist;
+        }
+        auto batch
+          = ::cluster::cluster_link::testing::create_add_mirror_topic_command(
+            id, std::move(cmd));
+
+        auto ec = co_await _table->apply_update(std::move(batch));
+        co_return ec.value();
     }
 
 private:

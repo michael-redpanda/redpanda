@@ -45,6 +45,13 @@ public:
         return _plf->get_all_link_ids();
     }
 
+    ss::future<::cluster::cluster_link::errc> add_mirror_topic(
+      model::id_t id,
+      model::add_mirror_topic_cmd cmd,
+      ::model::timeout_clock::time_point timeout) override {
+        return _plf->add_mirror_topic(id, std::move(cmd), timeout);
+    }
+
 private:
     frontend* _plf;
 };
