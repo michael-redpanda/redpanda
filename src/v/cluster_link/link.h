@@ -28,6 +28,7 @@ class link {
 public:
     explicit link(
       ::model::node_id self,
+      model::id_t link_id,
       ss::lowres_clock::duration task_reconciler_interval,
       model::metadata config,
       kafka::data::rpc::partition_leader_cache* partition_leader_cache,
@@ -68,6 +69,8 @@ public:
     void
     unregister_for_task_state_changes(task_state_notification_id id) noexcept;
 
+    model::id_t get_link_id() const noexcept;
+
     model::link_task_status_report get_task_status_report() const;
 
     const model::metadata& get_config() const noexcept;
@@ -90,6 +93,7 @@ private:
 
 private:
     ::model::node_id _self;
+    model::id_t _link_id;
     chunked_hash_map<ss::sstring, std::unique_ptr<task>> _tasks;
     model::metadata _config;
     kafka::data::rpc::partition_leader_cache* _partition_leader_cache;

@@ -38,6 +38,7 @@ class test_link : public link {
 public:
     test_link(
       ::model::node_id self,
+      model::id_t link_id,
       ss::lowres_clock::duration task_reconciler_interval,
       link_test* link_test,
       model::metadata metadata,
@@ -63,6 +64,7 @@ public:
 
     std::unique_ptr<link> create_link(
       ::model::node_id self,
+      model::id_t link_id,
       model::metadata metadata,
       partition_leader_cache* partition_leader_cache,
       partition_manager* partition_manager,
@@ -71,6 +73,7 @@ public:
       kafka::client::cluster cluster_connection) override {
         return std::make_unique<test_link>(
           self,
+          link_id,
           _task_reconciler_interval,
           _link_test,
           std::move(metadata),
@@ -216,6 +219,7 @@ public:
 namespace {
 test_link::test_link(
   ::model::node_id self,
+  model::id_t link_id,
   ss::lowres_clock::duration task_reconciler_interval,
   link_test* link_test,
   model::metadata metadata,
@@ -226,6 +230,7 @@ test_link::test_link(
   kafka::client::cluster cluster_connection)
   : link(
       self,
+      link_id,
       task_reconciler_interval,
       std::move(metadata),
       partition_leader_cache,
@@ -382,6 +387,7 @@ class evil_link_factory : public link_factory {
 public:
     std::unique_ptr<link> create_link(
       ::model::node_id self,
+      model::id_t link_id,
       model::metadata metadata,
       partition_leader_cache* partition_leader_cache,
       partition_manager* partition_manager,
@@ -390,6 +396,7 @@ public:
       kafka::client::cluster cluster_connection) override {
         return std::make_unique<evil_link>(
           self,
+          link_id,
           1s,
           std::move(metadata),
           partition_leader_cache,

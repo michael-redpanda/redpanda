@@ -63,6 +63,7 @@ public:
 
     virtual std::unique_ptr<link> create_link(
       ::model::node_id self,
+      model::id_t link_id,
       model::metadata config,
       kafka::data::rpc::partition_leader_cache* partition_leader_cache,
       kafka::data::rpc::partition_manager* partition_manager,

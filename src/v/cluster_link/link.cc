@@ -12,6 +12,7 @@
 #include "cluster_link/link.h"
 
 #include "cluster_link/logger.h"
+#include "cluster_link/model/types.h"
 #include "model/namespace.h"
 #include "ssx/future-util.h"
 
@@ -51,6 +52,7 @@ using kafka::data::rpc::topic_metadata_cache;
 
 link::link(
   ::model::node_id self,
+  model::id_t link_id,
   ss::lowres_clock::duration task_reconciler_interval,
   model::metadata config,
   partition_leader_cache* partition_leader_cache,
@@ -59,6 +61,7 @@ link::link(
   link_registry* link_registry,
   kafka::client::cluster cluster_connection)
   : _self(self)
+  , _link_id(link_id)
   , _config(std::move(config))
   , _partition_leader_cache(partition_leader_cache)
   , _partition_manager(partition_manager)
@@ -206,6 +209,8 @@ void link::unregister_for_task_state_changes(
   task_state_notification_id id) noexcept {
     _task_state_change_notifications.unregister_cb(id);
 }
+
+model::id_t link::get_link_id() const noexcept { return _link_id; }
 
 model::link_task_status_report link::get_task_status_report() const {
     model::link_task_status_report report;
