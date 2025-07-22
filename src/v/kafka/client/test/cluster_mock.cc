@@ -10,7 +10,109 @@
  */
 #include "kafka/client/test/cluster_mock.h"
 
+#include "kafka/server/handlers/configs/config_response_utils.h"
+
 namespace kafka::client {
+
+class cluster_link_test_metadata_adapter : public kafka::metadata_cache_info {
+public:
+    ::model::compression get_default_compression() const override {
+        return config::shard_local_cfg().log_compression_type();
+    }
+    ::model::cleanup_policy_bitflags
+    get_default_cleanup_policy_bitflags() const override {
+        return config::shard_local_cfg().log_cleanup_policy();
+    }
+    size_t get_default_compacted_topic_segment_size() const override {
+        return config::shard_local_cfg().compacted_log_segment_size();
+    }
+    size_t get_default_segment_size() const override {
+        return config::shard_local_cfg().log_segment_size();
+    }
+    std::optional<std::chrono::milliseconds>
+    get_default_retention_duration() const override {
+        return config::shard_local_cfg().log_retention_ms();
+    }
+    std::optional<size_t> get_default_retention_bytes() const override {
+        return config::shard_local_cfg().retention_bytes();
+    }
+    ::model::timestamp_type get_default_timestamp_type() const override {
+        return config::shard_local_cfg().log_message_timestamp_type();
+    }
+    uint32_t get_default_batch_max_bytes() const override {
+        return config::shard_local_cfg().kafka_batch_max_bytes();
+    }
+    ::model::shadow_indexing_mode
+    get_default_shadow_indexing_mode() const override {
+        ::model::shadow_indexing_mode m
+          = ::model::shadow_indexing_mode::disabled;
+        if (config::shard_local_cfg().cloud_storage_enable_remote_write()) {
+            m = ::model::shadow_indexing_mode::archival;
+        }
+        if (config::shard_local_cfg().cloud_storage_enable_remote_read()) {
+            m = ::model::add_shadow_indexing_flag(
+              m, ::model::shadow_indexing_mode::fetch);
+        }
+        return m;
+    }
+    std::optional<size_t>
+    get_default_retention_local_target_bytes() const override {
+        return config::shard_local_cfg().retention_local_target_bytes_default();
+    }
+    std::chrono::milliseconds
+    get_default_retention_local_target_ms() const override {
+        return config::shard_local_cfg().retention_local_target_ms_default();
+    }
+    std::optional<std::chrono::milliseconds>
+    get_default_segment_ms() const override {
+        return config::shard_local_cfg().log_segment_ms();
+    }
+    std::optional<std::chrono::milliseconds>
+    get_default_delete_retention_ms() const override {
+        return config::shard_local_cfg().tombstone_retention_ms();
+    }
+    bool get_default_record_key_schema_id_validation() const override {
+        return false;
+    }
+
+    pandaproxy::schema_registry::subject_name_strategy
+    get_default_record_key_subject_name_strategy() const override {
+        return pandaproxy::schema_registry::subject_name_strategy::topic_name;
+    }
+    bool get_default_record_value_schema_id_validation() const override {
+        return false;
+    }
+    pandaproxy::schema_registry::subject_name_strategy
+    get_default_record_value_subject_name_strategy() const override {
+        return pandaproxy::schema_registry::subject_name_strategy::topic_name;
+    }
+    std::optional<size_t>
+    get_default_initial_retention_local_target_bytes() const override {
+        return config::shard_local_cfg()
+          .initial_retention_local_target_bytes_default();
+    }
+    std::optional<std::chrono::milliseconds>
+    get_default_initial_retention_local_target_ms() const override {
+        return config::shard_local_cfg()
+          .initial_retention_local_target_ms_default();
+    }
+    std::chrono::milliseconds
+    get_default_iceberg_target_lag_ms() const override {
+        return config::shard_local_cfg().iceberg_target_lag_ms();
+    }
+    std::optional<double>
+    get_default_min_cleanable_dirty_ratio() const override {
+        return config::shard_local_cfg().min_cleanable_dirty_ratio();
+    }
+    std::chrono::milliseconds
+    get_default_min_compaction_lag_ms() const override {
+        return config::shard_local_cfg().min_compaction_lag_ms();
+    }
+    std::chrono::milliseconds
+    get_default_max_compaction_lag_ms() const override {
+        return config::shard_local_cfg().max_compaction_lag_ms();
+    }
+};
 
 broker_mock::broker_mock(
   cluster_mock* cluster_mock, model::node_id id, net::unresolved_address addr)
@@ -59,6 +161,12 @@ void cluster_mock::register_default_handlers() {
       metadata_api::key,
       [this](model::node_id id, request_t req, api_version version) {
           return handle_metadata_request(id, std::move(req), version);
+      });
+
+    register_handler(
+      describe_configs_api::key,
+      [this](model::node_id id, request_t req, api_version version) {
+          return handle_describe_configs_request(id, std::move(req), version);
       });
 
     register_handler(
@@ -114,6 +222,66 @@ ss::future<response_t> cluster_mock::handle_metadata_request(
     r_data.controller_id = _brokers.begin()->first;
 
     co_return metadata_response{.data = std::move(r_data)};
+}
+
+namespace {
+void report_topic_config(
+  const describe_configs_resource& resource,
+  describe_configs_result& result,
+  const metadata_cache_info& metadata_cache,
+  const cluster::topic_properties& topic_properties,
+  bool include_synonyms,
+  bool include_documentation) {
+    auto res = make_topic_configs(
+      metadata_cache,
+      topic_properties,
+      resource.configuration_keys,
+      include_synonyms,
+      include_documentation);
+
+    result.configs.reserve(res.size());
+    for (auto& conf : res) {
+        result.configs.push_back(conf.to_describe_config());
+    }
+}
+} // namespace
+
+ss::future<response_t> cluster_mock::handle_describe_configs_request(
+  model::node_id, request_t req, api_version) {
+    auto dc_req = std::get<describe_configs_request>(std::move(req));
+    describe_configs_response_data r_data;
+    r_data.results.reserve(dc_req.data.resources.size());
+
+    for (const auto& resource : dc_req.data.resources) {
+        describe_configs_result result;
+        result.resource_name = resource.resource_name;
+        result.resource_type = resource.resource_type;
+        if (resource.resource_type != kafka::config_resource_type::topic) {
+            result.error_code = kafka::error_code::unsupported_version;
+            result.error_message = ssx::sformat(
+              "Unsupported resource type: {}", resource.resource_type);
+            r_data.results.emplace_back(std::move(result));
+            continue;
+        }
+        auto topic_it = _topics.find(model::topic{resource.resource_name});
+        if (topic_it == _topics.end()) {
+            result.error_code = kafka::error_code::unknown_topic_or_partition;
+            result.error_message = ssx::sformat(
+              "Unknown topic: {}", resource.resource_name);
+            r_data.results.emplace_back(std::move(result));
+            continue;
+        }
+        report_topic_config(
+          resource,
+          result,
+          cluster_link_test_metadata_adapter{},
+          topic_it->second.topic_properties,
+          dc_req.data.include_synonyms,
+          dc_req.data.include_documentation);
+        r_data.results.emplace_back(std::move(result));
+    }
+
+    co_return describe_configs_response{.data = std::move(r_data)};
 }
 
 namespace {
@@ -224,5 +392,8 @@ cluster_mock::cluster_mock()
     default_supported_versions[api_versions_api::key] = {
       .min = kafka::api_versions_api::min_valid,
       .max = kafka::api_versions_api::max_valid};
+    default_supported_versions[describe_configs_api::key] = {
+      .min = kafka::describe_configs_api::min_valid,
+      .max = kafka::describe_configs_api::max_valid};
 }
 } // namespace kafka::client
