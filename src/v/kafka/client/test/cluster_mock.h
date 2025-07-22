@@ -10,6 +10,7 @@
  */
 #pragma once
 
+#include "cluster/topic_properties.h"
 #include "container/chunked_hash_map.h"
 #include "kafka/client/broker.h"
 #include "kafka/client/brokers.h"
@@ -80,6 +81,7 @@ struct topic_metadata {
       = kafka::topic_authorized_operations_not_set;
     model::topic_id topic_id;
     chunked_hash_map<model::partition_id, partition_metadata> partitions;
+    ::cluster::topic_properties topic_properties;
 };
 
 class cluster_mock {
@@ -104,6 +106,9 @@ public:
       model::node_id node_id, request_t req, api_version version);
 
     ss::future<response_t> handle_api_versions_request(
+      model::node_id node_id, request_t req, api_version version);
+
+    ss::future<response_t> handle_describe_configs_request(
       model::node_id node_id, request_t req, api_version version);
 
     void set_supported_versions(
