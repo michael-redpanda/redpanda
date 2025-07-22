@@ -55,8 +55,12 @@ public:
 
         // Re-arm the timer to run with the new interval, calculate the new
         // timepoint for when the timer should run
-        _timer.cancel();
-        _timer.arm((cur_timeout - _task->_run_interval) + interval);
+        if (_timer.armed()) {
+            // If the timer isn't armed, then we may be executing the task which
+            // will pick up the new interval once it completes
+            _timer.cancel();
+            _timer.arm((cur_timeout - _task->_run_interval) + interval);
+        }
     }
 
 private:
@@ -180,6 +184,11 @@ task::change_state(model::task_state new_state, ss::sstring reason) {
 
 void task::set_run_interval(ss::lowres_clock::duration interval) {
     vlog(logger().trace, "set_run_interval called with {}", interval);
+
+    if (interval == _run_interval) {
+        vlog(logger().trace, "Interval is unchanged, skipping update");
+        return;
+    }
 
     if (_task_runner) {
         _task_runner->set_task_interval(interval);
