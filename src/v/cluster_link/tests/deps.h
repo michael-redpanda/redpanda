@@ -317,6 +317,12 @@ public:
 
     ss::future<> upsert_link(model::metadata metadata);
 
+    std::optional<std::reference_wrapper<const model::metadata>>
+    find_link_by_id(model::id_t id);
+
+    std::optional<std::reference_wrapper<const model::metadata>>
+    find_link_by_name(const model::name_t& name);
+
     link_factory* get_link_factory() { return _lf; }
 
     ss::future<std::optional<model::cluster_link_task_status_report>>
@@ -325,6 +331,8 @@ public:
       ss::lowres_clock::duration backoff,
       std::function<bool(const model::cluster_link_task_status_report&)>
         predicate);
+
+    kafka::client::cluster_mock& get_cluster_mock() { return _cluster_mock; }
 
 private:
     void setup_cluster_mock();

@@ -113,6 +113,17 @@ cluster_link_manager_test_fixture::upsert_link(model::metadata metadata) {
       });
 }
 
+std::optional<std::reference_wrapper<const model::metadata>>
+cluster_link_manager_test_fixture::find_link_by_id(model::id_t id) {
+    return _table.local().find_link_by_id(id);
+}
+
+std::optional<std::reference_wrapper<const model::metadata>>
+cluster_link_manager_test_fixture::find_link_by_name(
+  const model::name_t& name) {
+    return _table.local().find_link_by_name(name);
+}
+
 ss::future<std::optional<model::cluster_link_task_status_report>>
 cluster_link_manager_test_fixture::await_status_report(
   ss::lowres_clock::duration timeout,
