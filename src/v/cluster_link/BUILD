@@ -106,11 +106,14 @@ redpanda_cc_library(
     ],
     implementation_deps = [
         ":logger",
+        "//src/v/cluster_link/model",
+        "@fmt",
     ],
     include_prefix = "cluster_link",
     visibility = ["//src/v/cluster_link:__subpackages__"],
     deps = [
         ":impl",
+        "//src/v/kafka/client:cluster",
     ],
 )
 

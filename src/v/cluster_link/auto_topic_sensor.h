@@ -11,12 +11,17 @@
 
 #pragma once
 
+#include "cluster_link/model/types.h"
 #include "cluster_link/task.h"
+#include "kafka/client/cluster.h"
 
 namespace cluster_link {
 class auto_topic_sensor : public task {
 public:
     static constexpr auto task_name = "Auto Topic Creator";
+    static constexpr kafka::topic_authorized_operations required_permissions
+      = kafka::topic_authorized_operations{
+        0x508}; // DESCRIBE_CONFIG, DESCRIBE, READ
     auto_topic_sensor(link* link, const model::metadata& config);
     auto_topic_sensor(const auto_topic_sensor&) = delete;
     auto_topic_sensor(auto_topic_sensor&&) = delete;
@@ -30,6 +35,22 @@ public:
 
 protected:
     ss::future<> run_impl() override;
+
+private:
+    struct topic_metadata {
+        size_t partition_count;
+        size_t rf;
+    };
+    chunked_hash_map<::model::topic, topic_metadata> find_candidate_topics();
+    ss::future<kafka::describe_configs_response> describe_topics(
+      kafka::client::cluster& cluster,
+      ::model::node_id controller_id,
+      kafka::api_version describe_configs_version,
+      const chunked_vector<::model::topic>& topics,
+      const chunked_vector<ss::sstring>& configs);
+
+private:
+    model::topic_metadata_mirroring_config _config;
 };
 
 class auto_topic_sensor_factory : public task_factory {
