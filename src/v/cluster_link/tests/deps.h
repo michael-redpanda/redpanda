@@ -334,6 +334,8 @@ public:
 
     kafka::client::cluster_mock& get_cluster_mock() { return _cluster_mock; }
 
+    void set_topic_config(cluster::topic_configuration cfg);
+
 private:
     void setup_cluster_mock();
 

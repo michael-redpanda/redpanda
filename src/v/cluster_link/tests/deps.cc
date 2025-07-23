@@ -142,6 +142,11 @@ cluster_link_manager_test_fixture::await_status_report(
     co_return std::nullopt;
 }
 
+void cluster_link_manager_test_fixture::set_topic_config(
+  cluster::topic_configuration cfg) {
+    _tmc->set_topic_config(std::move(cfg));
+}
+
 void cluster_link_manager_test_fixture::setup_cluster_mock() {
     _cluster_mock.register_default_handlers();
     _cluster_mock.add_broker(
