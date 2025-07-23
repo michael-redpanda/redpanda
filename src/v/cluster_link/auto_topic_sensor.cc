@@ -14,10 +14,21 @@
 #include "cluster_link/link.h"
 #include "cluster_link/model/filter_utils.h"
 #include "cluster_link/model/types.h"
+#include "kafka/server/handlers/topics/types.h"
 
 #include <fmt/ranges.h>
 
 namespace cluster_link {
+
+namespace {
+const absl::flat_hash_set<ss::sstring> required_topic_properties{
+  ss::sstring{kafka::topic_property_max_message_bytes},
+  ss::sstring{kafka::topic_property_cleanup_policy},
+  ss::sstring{kafka::topic_property_timestamp_type},
+};
+
+}
+
 auto_topic_sensor::auto_topic_sensor(link* link, const model::metadata& config)
   : task(
       link,
@@ -296,7 +307,12 @@ ss::future<kafka::describe_configs_response> auto_topic_sensor::describe_topics(
   ::model::node_id controller_id,
   kafka::api_version describe_configs_version,
   const chunked_vector<::model::topic>& topics,
-  const chunked_vector<ss::sstring>& configs) {
+  const absl::flat_hash_set<ss::sstring>& configs) {
+    absl::flat_hash_set<ss::sstring> requested_configs_set = configs;
+    requested_configs_set.insert(
+      required_topic_properties.begin(), required_topic_properties.end());
+    chunked_vector<ss::sstring> requested_configs(
+      requested_configs_set.begin(), requested_configs_set.end());
     kafka::describe_configs_request request;
     request.data.include_documentation = false;
     request.data.include_synonyms = false;
@@ -306,7 +322,7 @@ ss::future<kafka::describe_configs_response> auto_topic_sensor::describe_topics(
         kafka::describe_configs_resource resource;
         resource.resource_type = kafka::config_resource_type::topic;
         resource.resource_name = topic;
-        resource.configuration_keys = configs.copy();
+        resource.configuration_keys = requested_configs.copy();
         request.data.resources.emplace_back(std::move(resource));
     }
 

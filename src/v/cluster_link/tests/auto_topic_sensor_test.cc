@@ -145,6 +145,10 @@ TEST_F_CORO(auto_topic_sensor_test, select_all_filter) {
       mirror_topic_it->second.source_topic_name, ::model::topic("test_topic"));
     EXPECT_EQ(mirror_topic_it->second.partition_count, 3);
     EXPECT_EQ(mirror_topic_it->second.replication_factor, 3);
+    const auto& configs = mirror_topic_it->second.topic_configs;
+    EXPECT_NE(configs.find("max.message.bytes"), configs.end());
+    EXPECT_NE(configs.find("message.timestamp.type"), configs.end());
+    EXPECT_NE(configs.find("cleanup.policy"), configs.end());
 }
 
 TEST_F_CORO(auto_topic_sensor_test, select_all_with_exclude) {

@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include "absl/container/flat_hash_set.h"
 #include "container/chunked_hash_map.h"
 #include "model/fundamental.h"
 #include "model/metadata.h"
@@ -248,7 +249,7 @@ struct topic_metadata_mirroring_config
     /// Filters
     chunked_vector<topic_filter_pattern> filters;
     /// List of topic properties to mirror
-    chunked_vector<ss::sstring> topic_properties_to_mirror;
+    absl::flat_hash_set<ss::sstring> topic_properties_to_mirror;
 
     friend bool operator==(
       const topic_metadata_mirroring_config&,

@@ -47,7 +47,7 @@ private:
       ::model::node_id controller_id,
       kafka::api_version describe_configs_version,
       const chunked_vector<::model::topic>& topics,
-      const chunked_vector<ss::sstring>& configs);
+      const absl::flat_hash_set<ss::sstring>& configs);
 
 private:
     model::topic_metadata_mirroring_config _config;

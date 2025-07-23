@@ -42,10 +42,7 @@ topic_metadata_mirroring_config topic_metadata_mirroring_config::copy() const {
     for (const auto& filter : filters) {
         copy.filters.emplace_back(filter);
     }
-    copy.topic_properties_to_mirror.reserve(topic_properties_to_mirror.size());
-    for (const auto& prop : topic_properties_to_mirror) {
-        copy.topic_properties_to_mirror.emplace_back(prop);
-    }
+    copy.topic_properties_to_mirror = topic_properties_to_mirror;
 
     return copy;
 }
