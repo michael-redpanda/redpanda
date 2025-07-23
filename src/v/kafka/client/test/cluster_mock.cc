@@ -376,7 +376,9 @@ void cluster_mock::add_topic(
           replication_factor,
           std::back_inserter(p_md.replicas));
         std::ranges::rotate(cluster_nodes, cluster_nodes.begin() + 1);
-        p_md.leader = p_md.replicas[0];
+        if (!p_md.replicas.empty()) {
+            p_md.leader = p_md.replicas[0];
+        }
         p_md.leader_epoch = kafka::invalid_leader_epoch;
         md.partitions.emplace(model::partition_id(p_id), std::move(p_md));
     }
