@@ -49,10 +49,7 @@ redpanda_cc_library(
         "handlers/topics/validators.h",
     ],
     include_prefix = "kafka/server",
-    visibility = [
-        ":__subpackages__",
-        "//src/v/kafka/client/test:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":errors",
         "//src/v/base",
