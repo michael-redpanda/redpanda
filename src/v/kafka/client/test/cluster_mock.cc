@@ -219,7 +219,7 @@ ss::future<response_t> cluster_mock::handle_metadata_request(
         r_data.topics.push_back(std::move(md_topic));
     }
 
-    r_data.controller_id = _brokers.begin()->first;
+    r_data.controller_id = _controller_id.value_or(_brokers.begin()->first);
 
     co_return metadata_response{.data = std::move(r_data)};
 }
