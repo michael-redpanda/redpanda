@@ -27,6 +27,8 @@ class link {
 public:
     explicit link(
       ::model::node_id self,
+      model::id_t link_id,
+      manager* manager,
       ss::lowres_clock::duration task_reconciler_interval,
       model::metadata config,
       kafka::data::rpc::partition_leader_cache* partition_leader_cache,
@@ -67,6 +69,9 @@ public:
 
     model::link_task_status_report get_task_status_report() const;
 
+    ss::future<::cluster::cluster_link::errc>
+    add_mirror_topic(model::add_mirror_topic_cmd cmd);
+
 private:
     bool should_start_task(task* t) const;
     bool should_stop_task(task* t) const;
@@ -78,6 +83,8 @@ private:
 
 private:
     ::model::node_id _self;
+    model::id_t _link_id;
+    manager* _manager;
     chunked_hash_map<ss::sstring, std::unique_ptr<task>> _tasks;
     model::metadata _config;
     kafka::data::rpc::partition_leader_cache* _partition_leader_cache;

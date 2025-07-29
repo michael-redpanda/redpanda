@@ -61,12 +61,16 @@ public:
     static constexpr auto link_reconciler_period = 5min;
     std::unique_ptr<link> create_link(
       ::model::node_id self,
+      model::id_t link_id,
+      manager* manager,
       model::metadata config,
       partition_leader_cache* partition_leader_cache,
       partition_manager* partition_manager,
       kafka::client::cluster cluster_connection) override {
         return std::make_unique<link>(
           self,
+          link_id,
+          manager,
           link_reconciler_period,
           std::move(config),
           partition_leader_cache,

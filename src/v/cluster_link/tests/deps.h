@@ -28,6 +28,8 @@ public:
       : _task_reconciler_interval(task_reconciler_interval) {}
     std::unique_ptr<link> create_link(
       ::model::node_id self,
+      model::id_t link_id,
+      manager* manager,
       model::metadata metadata,
       kafka::data::rpc::partition_leader_cache* leader_cache,
       kafka::data::rpc::partition_manager* pm,
@@ -35,6 +37,8 @@ public:
         auto name = metadata.name;
         auto created_link = std::make_unique<link>(
           self,
+          link_id,
+          manager,
           _task_reconciler_interval,
           std::move(metadata),
           leader_cache,

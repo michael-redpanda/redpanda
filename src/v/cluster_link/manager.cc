@@ -135,6 +135,8 @@ ss::future<> manager::handle_on_link_change(model::id_t id) {
             auto units = co_await _link_task_reconciler_mutex.get_units(_as);
             auto new_link = _link_factory->create_link(
               _self,
+              id,
+              this,
               link_metadata.copy(),
               _partition_leader_cache.get(),
               _partition_manager.get(),
