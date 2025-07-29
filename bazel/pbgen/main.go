@@ -317,6 +317,11 @@ func mapImport(path string) string {
 	if strings.HasPrefix(path, "proto/redpanda/pbgen") {
 		return ""
 	}
+	// Skip any google API headers
+	// TODO maybe too strict?
+	if strings.HasPrefix(path, "google/api/") {
+		return ""
+	}
 	if path == "google/protobuf/duration.proto" {
 		return "absl/time/time.h"
 	}
