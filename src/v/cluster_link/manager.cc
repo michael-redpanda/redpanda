@@ -233,6 +233,12 @@ ss::future<> manager::handle_on_leadership_change(
     });
 }
 
+ss::future<::cluster::cluster_link::errc> manager::add_mirror_topic(
+  model::id_t link_id, model::add_mirror_topic_cmd cmd) {
+    return _registry->add_mirror_topic(
+      link_id, std::move(cmd), ::model::timeout_clock::now() + 5s);
+}
+
 model::cluster_link_task_status_report manager::get_task_status_report() const {
     model::cluster_link_task_status_report report;
     report.link_reports.reserve(_links.size());

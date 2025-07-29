@@ -60,6 +60,9 @@ public:
     ss::future<> handle_on_link_change(model::id_t id);
     /// Handles leadership changes for a given NTP
     ss::future<> handle_on_leadership_change(::model::ntp, ntp_leader);
+    /// Used to add a mirror topic to a cluster link
+    ss::future<::cluster::cluster_link::errc>
+    add_mirror_topic(model::id_t link_id, model::add_mirror_topic_cmd cmd);
 
     /// Registers a task factory that will be used to create tasks when links
     /// are created
