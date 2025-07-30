@@ -213,6 +213,17 @@ public:
         vassert(_leader_map.find(ntp) != _leader_map.end(), "what??");
     }
 
+    std::optional<int32_t>
+    partition_count(model::topic_namespace_view tp_ns) const {
+        int32_t count = 0;
+        for (const auto& [ntp, _] : _leader_map) {
+            if (ntp.ns == tp_ns.ns && ntp.tp.topic == tp_ns.tp) {
+                count++;
+            }
+        }
+        return count == 0 ? std::nullopt : std::make_optional(count);
+    }
+
 private:
     absl::flat_hash_map<model::ntp, model::node_id> _leader_map;
 };
@@ -313,10 +324,14 @@ public:
       ss::noncopyable_function<void(const cluster::topic_properties_update&)>
         update_topic_cb,
       ss::noncopyable_function<void(const model::ntp&, model::node_id)>
-        new_ntp_cb)
+        new_ntp_cb,
+      ss::noncopyable_function<
+        cluster::errc(model::topic_namespace_view, int32_t, model::node_id)>
+        new_partition_count_cb)
       : _new_topic_cb(std::move(new_topic_cb))
       , _update_topic_cb(std::move(update_topic_cb))
-      , _new_ntp_cb(std::move(new_ntp_cb)) {}
+      , _new_ntp_cb(std::move(new_ntp_cb))
+      , _new_partition_count_cb(std::move(new_partition_count_cb)) {}
 
     ss::future<cluster::errc> create_topic(
       model::topic_namespace_view tp_ns,
@@ -339,6 +354,14 @@ public:
         co_return cluster::errc::success;
     }
 
+    ss::future<cluster::errc> create_partitions(
+      model::topic_namespace_view tp_ns,
+      int32_t new_partition_count,
+      model::timeout_clock::time_point) override {
+        return ss::make_ready_future<cluster::errc>(_new_partition_count_cb(
+          tp_ns, new_partition_count, _default_new_topic_leader));
+    }
+
     ss::future<cluster::errc>
     update_topic(cluster::topic_properties_update update) override {
         _update_topic_cb(update);
@@ -357,6 +380,9 @@ private:
       _update_topic_cb;
     ss::noncopyable_function<void(const model::ntp&, model::node_id)>
       _new_ntp_cb;
+    ss::noncopyable_function<cluster::errc(
+      model::topic_namespace_view, int32_t, model::node_id)>
+      _new_partition_count_cb;
 };
 
 class fake_partition_manager_proxy {
@@ -507,6 +533,11 @@ public:
     fake_topic_creator* topic_creator() { return _ftpc; }
 
     void elect_leader(const model::ntp& ntp, model::node_id node_id);
+
+    cluster::errc update_partition_count(
+      model::topic_namespace_view tp_ns,
+      int32_t partition_count,
+      model::node_id node_id);
 
     ss::sharded<client>& client() { return _client; }
 
