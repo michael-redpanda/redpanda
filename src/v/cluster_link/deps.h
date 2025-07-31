@@ -46,6 +46,12 @@ public:
       model::add_mirror_topic_cmd,
       ::model::timeout_clock::time_point)
       = 0;
+
+    virtual ss::future<::cluster::cluster_link::errc> update_mirror_topic_state(
+      model::id_t,
+      model::update_mirror_topic_state_cmd,
+      ::model::timeout_clock::time_point)
+      = 0;
 };
 
 /**
