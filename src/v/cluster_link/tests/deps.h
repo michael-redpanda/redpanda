@@ -249,6 +249,19 @@ public:
         _leader_map.insert_or_assign(ntp, node_id);
     }
 
+    std::optional<int32_t>
+    partition_count(::model::topic_namespace_view tp_ns) const {
+        int32_t count = 0;
+        bool found_ntp = false;
+        for (const auto& [ntp, _] : _leader_map) {
+            if (ntp.ns == tp_ns.ns && ntp.tp.topic == tp_ns.tp) {
+                found_ntp = true;
+                count++;
+            }
+        }
+        return found_ntp ? std::make_optional(count) : std::nullopt;
+    }
+
 private:
     chunked_hash_map<::model::ntp, ::model::node_id> _leader_map;
 };
@@ -361,6 +374,11 @@ public:
       ::model::node_id node_id,
       std::optional<ss::shard_id> shard_id);
 
+    cluster::errc update_partition_count(
+      ::model::topic_namespace_view tp_ns,
+      int32_t partition_count,
+      ::model::node_id node_id);
+
     fake_partition_leader_cache_impl* partition_leader_cache() {
         return _fplci;
     }
@@ -402,6 +420,7 @@ private:
     fake_partition_manager* _fpm{nullptr};
     fake_partition_leader_cache_impl* _fplci{nullptr};
     fake_topic_metadata_cache* _tmc{nullptr};
+    kafka::data::rpc::test::fake_topic_creator* _ftpc{nullptr};
     link_factory* _lf{nullptr};
     ss::sharded<manager> _manager;
 
