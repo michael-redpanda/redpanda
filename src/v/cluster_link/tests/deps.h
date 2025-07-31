@@ -17,6 +17,7 @@
 #include "cluster_link/utils.h"
 #include "kafka/client/test/cluster_mock.h"
 #include "kafka/data/rpc/deps.h"
+#include "kafka/data/rpc/test/deps.h"
 
 #include <seastar/util/defer.hh>
 namespace cluster_link::tests {
