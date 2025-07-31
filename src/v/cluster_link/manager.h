@@ -90,6 +90,12 @@ public:
 
     model::cluster_link_task_status_report get_task_status_report() const;
 
+    kafka::data::rpc::topic_metadata_cache& topic_metadata_cache() noexcept;
+
+    kafka::data::rpc::partition_leader_cache& partition_leader_cache() noexcept;
+
+    kafka::data::rpc::partition_manager& partition_manager() noexcept;
+
 private:
     /// Called periodically to reconcile registered tasks on created links
     ss::future<> link_task_reconciler();

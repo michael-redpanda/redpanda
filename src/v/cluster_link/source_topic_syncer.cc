@@ -263,8 +263,8 @@ source_topic_syncer::find_candidate_topics() {
           rf);
 
         if (get_link()
-              ->get_topic_metadata_cache()
-              ->find_topic_cfg({::model::kafka_namespace, topic})
+              ->topic_metadata_cache()
+              .find_topic_cfg({::model::kafka_namespace, topic})
               .has_value()) {
             vlog(logger().trace, "Topic {} already exists", topic);
             continue;

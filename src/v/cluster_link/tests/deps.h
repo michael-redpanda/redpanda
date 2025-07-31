@@ -31,9 +31,6 @@ public:
       model::id_t link_id,
       manager* manager,
       model::metadata metadata,
-      kafka::data::rpc::partition_leader_cache* leader_cache,
-      kafka::data::rpc::partition_manager* pm,
-      kafka::data::rpc::topic_metadata_cache* topic_metadata_cache,
       kafka::client::cluster cluster_connection) override {
         auto name = metadata.name;
         auto created_link = std::make_unique<link>(
@@ -42,9 +39,6 @@ public:
           manager,
           _task_reconciler_interval,
           std::move(metadata),
-          leader_cache,
-          pm,
-          topic_metadata_cache,
           std::move(cluster_connection));
 
         _links.emplace(std::move(name), created_link.get());

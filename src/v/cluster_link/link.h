@@ -31,9 +31,6 @@ public:
       manager* manager,
       ss::lowres_clock::duration task_reconciler_interval,
       model::metadata config,
-      kafka::data::rpc::partition_leader_cache* partition_leader_cache,
-      kafka::data::rpc::partition_manager* partition_manager,
-      kafka::data::rpc::topic_metadata_cache* topic_metadata_cache,
       kafka::client::cluster cluster_connection);
     link(const link&) = delete;
     link(link&&) = delete;
@@ -75,14 +72,17 @@ public:
 
     const model::metadata& get_config() const noexcept;
 
-    kafka::data::rpc::topic_metadata_cache*
-    get_topic_metadata_cache() const noexcept;
+    kafka::data::rpc::topic_metadata_cache& topic_metadata_cache() noexcept;
+
+    kafka::data::rpc::partition_leader_cache& partition_leader_cache() noexcept;
+
+    kafka::data::rpc::partition_manager& partition_manager() noexcept;
 
     kafka::client::cluster& get_cluster_connection() noexcept;
 
 private:
-    bool should_start_task(task* t) const;
-    bool should_stop_task(task* t) const;
+    bool should_start_task(task* t);
+    bool should_stop_task(task* t);
     ss::future<> handle_controller_leadership_change(ntp_leader is_ntp_leader);
     ss::future<>
     do_handle_controller_leadership_change(ntp_leader is_ntp_leader);
@@ -95,9 +95,6 @@ private:
     manager* _manager;
     chunked_hash_map<ss::sstring, std::unique_ptr<task>> _tasks;
     model::metadata _config;
-    kafka::data::rpc::partition_leader_cache* _partition_leader_cache;
-    kafka::data::rpc::partition_manager* _partition_manager;
-    kafka::data::rpc::topic_metadata_cache* _topic_metadata_cache;
     kafka::client::cluster _cluster_connection;
 
     notification_list<task_state_change_cb, task_state_notification_id>

@@ -56,17 +56,11 @@ link::link(
   manager* manager,
   ss::lowres_clock::duration task_reconciler_interval,
   model::metadata config,
-  partition_leader_cache* partition_leader_cache,
-  partition_manager* partition_manager,
-  topic_metadata_cache* topic_metadata_cache,
   kafka::client::cluster cluster_connection)
   : _self(self)
   , _link_id(link_id)
   , _manager(manager)
   , _config(std::move(config))
-  , _partition_leader_cache(partition_leader_cache)
-  , _partition_manager(partition_manager)
-  , _topic_metadata_cache(topic_metadata_cache)
   , _cluster_connection(std::move(cluster_connection))
   , _task_reconciler_interval(task_reconciler_interval) {}
 
@@ -227,8 +221,16 @@ link::add_mirror_topic(model::add_mirror_topic_cmd cmd) {
 
 const model::metadata& link::get_config() const noexcept { return _config; }
 
-topic_metadata_cache* link::get_topic_metadata_cache() const noexcept {
-    return _topic_metadata_cache;
+topic_metadata_cache& link::topic_metadata_cache() noexcept {
+    return _manager->topic_metadata_cache();
+}
+
+partition_leader_cache& link::partition_leader_cache() noexcept {
+    return _manager->partition_leader_cache();
+}
+
+partition_manager& link::partition_manager() noexcept {
+    return _manager->partition_manager();
 }
 
 kafka::client::cluster& link::get_cluster_connection() noexcept {
@@ -241,12 +243,12 @@ bool link::should_start_task(task* t) const {
         return false;
     }
     if (t->locked_to_controller() == task::is_locked_to_controller::yes) {
-        auto controller_leader_node = _partition_leader_cache->get_leader_node(
+        auto controller_leader_node = partition_leader_cache().get_leader_node(
           ::model::controller_ntp);
         if (!controller_leader_node || *controller_leader_node != _self) {
             return false;
         }
-        auto controller_leader_shard = _partition_manager->shard_owner(
+        auto controller_leader_shard = partition_manager().shard_owner(
           ::model::controller_ntp);
         return controller_leader_shard.has_value()
                && *controller_leader_shard == ss::this_shard_id();
@@ -254,18 +256,18 @@ bool link::should_start_task(task* t) const {
     return true;
 }
 
-bool link::should_stop_task(task* t) const {
+bool link::should_stop_task(task* t) {
     if (t->get_state() == model::task_state::not_running) {
         // Can only stop tasks that are currently running
         return false;
     }
     if (t->locked_to_controller() == task::is_locked_to_controller::yes) {
-        auto controller_leader_node = _partition_leader_cache->get_leader_node(
+        auto controller_leader_node = partition_leader_cache().get_leader_node(
           ::model::controller_ntp);
         if (!controller_leader_node || *controller_leader_node != _self) {
             return true;
         }
-        auto controller_leader_shard = _partition_manager->shard_owner(
+        auto controller_leader_shard = partition_manager().shard_owner(
           ::model::controller_ntp);
         return !controller_leader_shard.has_value()
                || *controller_leader_shard != ss::this_shard_id();
