@@ -244,11 +244,13 @@ source_topic_syncer::find_candidate_topics() {
             continue;
         }
 
-        auto partition_count = it->second.partitions.size();
+        auto partition_count = static_cast<int32_t>(
+          it->second.partitions.size());
         if (partition_count < 1) {
             vlog(logger().trace, "Skipping topic {} with no partitions", topic);
             continue;
         }
+
         auto rf = it->second.replication_factor;
         if (rf < 1) {
             vlog(logger().trace, "Skipping topic {} with no replicas", topic);

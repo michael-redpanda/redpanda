@@ -162,9 +162,9 @@ struct mirror_topic_metadata
     /// The topic ID of the destination topic
     ::model::topic_id destination_topic_id;
     /// The number of partitions on the source topic
-    size_t partition_count;
+    int32_t partition_count;
     /// The replication factor
-    size_t replication_factor;
+    int16_t replication_factor;
     /// The configuration for the topic
     chunked_hash_map<ss::sstring, ss::sstring> topic_configs;
 

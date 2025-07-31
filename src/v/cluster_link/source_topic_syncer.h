@@ -48,8 +48,8 @@ protected:
 
 private:
     struct topic_metadata {
-        size_t partition_count;
-        size_t rf;
+        int32_t partition_count;
+        int16_t rf;
     };
     chunked_hash_map<::model::topic, topic_metadata> find_candidate_topics();
     ss::future<kafka::describe_configs_response> describe_topics(
