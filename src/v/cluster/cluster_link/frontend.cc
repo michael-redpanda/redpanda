@@ -27,6 +27,7 @@ using ::cluster_link::model::add_mirror_topic_cmd;
 using ::cluster_link::model::id_t;
 using ::cluster_link::model::metadata;
 using ::cluster_link::model::name_t;
+using ::cluster_link::model::update_mirror_topic_properties_cmd;
 using ::cluster_link::model::update_mirror_topic_state_cmd;
 
 namespace {
@@ -126,6 +127,18 @@ ss::future<errc> frontend::update_mirror_topic_state(
     }
     cluster_link_cmd c{
       cluster::cluster_link_update_mirror_topic_state_cmd(id, std::move(cmd))};
+    co_return co_await do_mutation(std::move(c), timeout);
+}
+
+ss::future<errc> frontend::update_mirror_topic_properties(
+  id_t id,
+  update_mirror_topic_properties_cmd cmd,
+  model::timeout_clock::time_point timeout) {
+    if (!cluster_link_active()) {
+        co_return errc::feature_disabled;
+    }
+    cluster_link_cmd c{cluster::cluster_link_update_mirror_topic_properties_cmd(
+      id, std::move(cmd))};
     co_return co_await do_mutation(std::move(c), timeout);
 }
 
@@ -253,6 +266,28 @@ ss::future<errc> frontend::dispatch_mutation_to_remote(
                     .then(
                       [](
                         result<cluster::update_mirror_topic_state_response> r) {
+                          if (r.has_error()) {
+                              return result<void>(r.error());
+                          }
+                          return result<void>(r.value().ec);
+                      });
+              },
+              [client,
+               timeout](cluster::cluster_link_update_mirror_topic_properties_cmd
+                          cmd) mutable {
+                  return client
+                    .update_mirror_topic_properties(
+                      cluster::update_mirror_topic_properties_request{
+                        .link_id = cmd.key,
+                        .cmd = std::move(cmd.value),
+                        .timeout = timeout},
+                      rpc::client_opts(timeout))
+                    .then(&rpc::get_ctx_data<
+                          cluster::update_mirror_topic_properties_response>)
+                    .then(
+                      [](
+                        result<cluster::update_mirror_topic_properties_response>
+                          r) {
                           if (r.has_error()) {
                               return result<void>(r.error());
                           }
@@ -449,6 +484,60 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
                 cmd.value.topic);
               return errc::topic_being_mirrored_by_other_link;
           }
+          return errc::success;
+      },
+      [this](
+        const cluster::cluster_link_update_mirror_topic_properties_cmd& cmd) {
+          auto ec = model::validate_kafka_topic_name(cmd.value.topic);
+          if (ec) {
+              vlog(cluster::clusterlog.warn, "Invalid topic name: {}", ec);
+              return errc::mirror_topic_name_invalid;
+          }
+          auto meta = _table->find_link_by_id(cmd.key);
+          if (!meta.has_value()) {
+              return errc::does_not_exist;
+          }
+          auto id = _table->find_id_by_topic(cmd.value.topic);
+          if (!id.has_value()) {
+              vlog(
+                cluster::clusterlog.warn,
+                "Topic '{}' is not being mirrored",
+                cmd.value.topic);
+              return errc::topic_not_being_mirrored;
+          } else if (id.value() != cmd.key) {
+              vlog(
+                cluster::clusterlog.warn,
+                "Topic '{}' is being mirrored by another link",
+                cmd.value.topic);
+              return errc::topic_being_mirrored_by_other_link;
+          }
+          const auto& mirror_state = meta->get().state;
+          const auto it = mirror_state.mirror_topics.find(cmd.value.topic);
+
+          vassert(
+            it != mirror_state.mirror_topics.end(),
+            "State inconsistency detected, should have been able to find {}",
+            cmd.value.topic);
+
+          if (cmd.value.partition_count < it->second.partition_count) {
+              vlog(
+                cluster::clusterlog.warn,
+                "Attempting to update partition count of topic '{}' to {}, "
+                "which is less than the current partition count {}",
+                cmd.value.topic,
+                cmd.value.partition_count,
+                it->second.partition_count);
+              return errc::invalid_update;
+          }
+
+          if (cmd.value.replication_factor < 1) {
+              vlog(
+                cluster::clusterlog.warn,
+                "Invalid replication factor: {}",
+                cmd.value.replication_factor);
+              return errc::invalid_update;
+          }
+
           return errc::success;
       });
 }
