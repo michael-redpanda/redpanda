@@ -56,18 +56,6 @@ void source_topic_syncer::update_config(const model::metadata& config) {
 }
 
 ss::future<> source_topic_syncer::run_impl() {
-    /// The auto topic sensor task is responsible for identifying topics on the
-    /// source cluster that are candidates to be mirrored.  To determine if a
-    /// topic is a candidate the task will:
-    /// 1. Grab the metadata from the source cluster
-    /// 2. Check to see if the topic already exists or if it is already being
-    /// mirrored
-    /// 3. Check to see if there are inclusive filters for that topic
-    /// 4. Validate that the topic's permissions are sufficient for mirroring
-    /// Once that selection criteria is set, then the task will fetch the
-    /// configs for that topic and then add that topic to the table or mirror
-    /// topics.  A seperate task will then be responsible for reconciling the
-    /// contents of that table with the destination cluster
     vlog(logger().trace, "Running auto topic sensor task");
 
     auto& cluster = get_link()->get_cluster_connection();
@@ -119,6 +107,32 @@ ss::future<> source_topic_syncer::run_impl() {
         co_return;
     }
 
+    co_await maybe_create_mirror_topics(
+      controller_id.value(), describe_configs_version);
+
+    if (get_state() != model::task_state::active) {
+        std::ignore = change_state(
+          model::task_state::active, "Auto topic sensor task completed");
+    }
+    vlog(logger().trace, "Auto topic sensor task completed");
+}
+
+ss::future<> source_topic_syncer::maybe_create_mirror_topics(
+  ::model::node_id controller_id, kafka::api_version describe_configs_version) {
+    /// The auto topic sensor task is responsible for identifying topics on the
+    /// source cluster that are candidates to be mirrored.  To determine if a
+    /// topic is a candidate the task will:
+    /// 1. Grab the metadata from the source cluster
+    /// 2. Check to see if the topic already exists or if it is already being
+    /// mirrored
+    /// 3. Check to see if there are inclusive filters for that topic
+    /// 4. Validate that the topic's permissions are sufficient for mirroring
+    /// Once that selection criteria is set, then the task will fetch the
+    /// configs for that topic and then add that topic to the table or mirror
+    /// topics.  A seperate task will then be responsible for reconciling the
+    /// contents of that table with the destination cluster
+    vlog(logger().trace, "Creating mirror topics");
+    auto& cluster = get_link()->get_cluster_connection();
     auto candidate_topics = find_candidate_topics();
 
     vlog(
@@ -135,7 +149,7 @@ ss::future<> source_topic_syncer::run_impl() {
         }
         response = co_await describe_topics(
           cluster,
-          *controller_id,
+          controller_id,
           describe_configs_version,
           topics_to_describe,
           _config.topic_properties_to_mirror);
@@ -216,12 +230,6 @@ ss::future<> source_topic_syncer::run_impl() {
         }
         vlog(logger().debug, "Successfully added mirror topic {}", topic_name);
     }
-
-    if (get_state() != model::task_state::active) {
-        std::ignore = change_state(
-          model::task_state::active, "Auto topic sensor task completed");
-    }
-    vlog(logger().trace, "Auto topic sensor task completed");
 }
 
 chunked_hash_map<::model::topic, source_topic_syncer::topic_metadata>
