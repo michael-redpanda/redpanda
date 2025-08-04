@@ -169,6 +169,25 @@ chunked_vector<id_t> frontend::get_all_link_ids() const {
     return _table->get_all_link_ids();
 }
 
+std::optional<chunked_hash_map<
+  ::model::topic,
+  ::cluster_link::model::mirror_topic_metadata>>
+frontend::get_mirror_topics_for_link(id_t id) const {
+    auto link = _table->find_link_by_id(id);
+    if (!link) {
+        return std::nullopt;
+    }
+    chunked_hash_map<
+      ::model::topic,
+      ::cluster_link::model::mirror_topic_metadata>
+      mirror_topics;
+    mirror_topics.reserve(link->get().state.mirror_topics.size());
+    for (const auto& [topic, metadata] : link->get().state.mirror_topics) {
+        mirror_topics.emplace(topic, metadata.copy());
+    }
+    return mirror_topics;
+}
+
 ss::future<errc> frontend::do_mutation(
   cluster_link_cmd cmd, model::timeout_clock::time_point timeout) {
     auto cluster_leader = _leaders->get_leader(model::controller_ntp);

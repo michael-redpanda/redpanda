@@ -122,6 +122,25 @@ public:
         co_return ec.value();
     }
 
+    std::optional<chunked_hash_map<
+      ::model::topic,
+      ::cluster_link::model::mirror_topic_metadata>>
+    get_mirror_topics_for_link(model::id_t id) override {
+        auto link = _table->find_link_by_id(id);
+        if (!link) {
+            return std::nullopt;
+        }
+        chunked_hash_map<
+          ::model::topic,
+          ::cluster_link::model::mirror_topic_metadata>
+          mirror_topics;
+        mirror_topics.reserve(link->get().state.mirror_topics.size());
+        for (const auto& [topic, metadata] : link->get().state.mirror_topics) {
+            mirror_topics.emplace(topic, metadata.copy());
+        }
+        return mirror_topics;
+    }
+
 private:
     cluster::cluster_link::table* _table;
 };

@@ -76,6 +76,11 @@ public:
 
     chunked_vector<::cluster_link::model::id_t> get_all_link_ids() const;
 
+    std::optional<chunked_hash_map<
+      ::model::topic,
+      ::cluster_link::model::mirror_topic_metadata>>
+    get_mirror_topics_for_link(::cluster_link::model::id_t id) const;
+
 private:
     ss::future<errc>
       do_mutation(cluster_link_cmd, model::timeout_clock::time_point);

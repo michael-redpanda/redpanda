@@ -67,6 +67,13 @@ public:
           id, std::move(cmd), timeout);
     }
 
+    std::optional<chunked_hash_map<
+      ::model::topic,
+      ::cluster_link::model::mirror_topic_metadata>>
+    get_mirror_topics_for_link(model::id_t id) override {
+        return _plf->get_mirror_topics_for_link(id);
+    }
+
 private:
     frontend* _plf;
 };

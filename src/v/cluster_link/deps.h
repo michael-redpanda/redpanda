@@ -59,6 +59,11 @@ public:
         model::update_mirror_topic_properties_cmd,
         ::model::timeout_clock::time_point)
       = 0;
+
+    virtual std::optional<chunked_hash_map<
+      ::model::topic,
+      ::cluster_link::model::mirror_topic_metadata>>
+    get_mirror_topics_for_link(model::id_t id) = 0;
 };
 
 /**
