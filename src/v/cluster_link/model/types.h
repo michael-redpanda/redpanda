@@ -405,6 +405,34 @@ struct update_mirror_topic_state_cmd
     auto serde_fields() { return std::tie(topic, state); }
 };
 
+/// \brief Command used to update the properties of a mirror topic
+///
+/// Will be used by the cluster linking metadata sync test to update
+/// the properties of a mirror topic
+struct update_mirror_topic_properties_cmd
+  : serde::envelope<
+      update_mirror_topic_properties_cmd,
+      serde::version<0>,
+      serde::compat_version<0>> {
+    /// Name of the topic
+    ::model::topic topic;
+    int32_t partition_count;
+    int16_t replication_factor;
+    chunked_hash_map<ss::sstring, ss::sstring> topic_configs;
+
+    friend bool operator==(
+      const update_mirror_topic_properties_cmd&,
+      const update_mirror_topic_properties_cmd&)
+      = default;
+
+    auto serde_fields() {
+        return std::tie(
+          topic, partition_count, replication_factor, topic_configs);
+    }
+
+    update_mirror_topic_properties_cmd copy() const;
+};
+
 /// Status report for a task
 struct task_status_report
   : serde::envelope<
@@ -635,6 +663,14 @@ struct fmt::formatter<cluster_link::model::update_mirror_topic_state_cmd>
   : fmt::formatter<string_view> {
     auto format(
       const cluster_link::model::update_mirror_topic_state_cmd& m,
+      format_context& ctx) -> decltype(ctx.out());
+};
+
+template<>
+struct fmt::formatter<cluster_link::model::update_mirror_topic_properties_cmd>
+  : fmt::formatter<string_view> {
+    auto format(
+      const cluster_link::model::update_mirror_topic_properties_cmd& m,
       format_context& ctx) -> decltype(ctx.out());
 };
 
