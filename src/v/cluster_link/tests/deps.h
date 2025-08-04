@@ -108,6 +108,20 @@ public:
         co_return ec.value();
     }
 
+    ss::future<::cluster::cluster_link::errc> update_mirror_topic_properties(
+      model::id_t id,
+      model::update_mirror_topic_properties_cmd cmd,
+      ::model::timeout_clock::time_point) override {
+        auto link = _table->find_link_by_id(id);
+        if (!link) {
+            co_return ::cluster::cluster_link::errc::does_not_exist;
+        }
+        auto batch = ::cluster::cluster_link::testing::
+          create_update_mirror_topic_properties_command(id, std::move(cmd));
+        auto ec = co_await _table->apply_update(std::move(batch));
+        co_return ec.value();
+    }
+
 private:
     cluster::cluster_link::table* _table;
 };
