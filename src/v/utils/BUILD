@@ -294,11 +294,18 @@ redpanda_cc_library(
 
 redpanda_cc_library(
     name = "unresolved_address",
+    srcs = [
+        "unresolved_address.cc",
+    ],
     hdrs = [
         "unresolved_address.h",
     ],
     deps = [
+        "//src/v/base",
         "//src/v/serde",
+        "@boost//:container_hash",
+        "@fmt",
+        "@seastar",
     ],
 )
 
