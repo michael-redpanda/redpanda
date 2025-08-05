@@ -1508,6 +1508,24 @@ void application::wire_up_runtime_services(
           .get();
     }
 
+    construct_service(
+      _cluster_link_service,
+      node_id,
+      &controller->get_cluster_link_frontend(),
+      ss::sharded_parameter([this] {
+          return cluster::partition_change_notifier_impl::make_default(
+            raft_group_manager,
+            partition_manager,
+            controller->get_topics_state());
+      }),
+      &partition_manager,
+      &controller->get_partition_leaders(),
+      &controller->get_shard_table(),
+      &metadata_cache,
+      controller.get(),
+      smp_service_groups.cluster_link_smp_sg())
+      .get();
+
     syschecks::systemd_message("Creating kafka usage manager frontend").get();
     construct_service(
       usage_manager,
