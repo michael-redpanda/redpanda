@@ -70,6 +70,12 @@ public:
     ss::future<::cluster::cluster_link::errc>
     add_mirror_topic(model::add_mirror_topic_cmd cmd);
 
+    ss::future<::cluster::cluster_link::errc>
+    update_mirror_topic_state(model::update_mirror_topic_state_cmd cmd);
+
+    ss::future<::cluster::cluster_link::errc> update_mirror_topic_properties(
+      model::update_mirror_topic_properties_cmd cmd);
+
     const model::metadata& get_config() const noexcept;
 
     kafka::data::rpc::topic_metadata_cache& topic_metadata_cache() noexcept;
@@ -79,6 +85,10 @@ public:
     kafka::data::rpc::partition_manager& partition_manager() noexcept;
 
     kafka::client::cluster& get_cluster_connection() noexcept;
+
+    std::optional<
+      chunked_hash_map<::model::topic, model::mirror_topic_metadata>>
+    get_mirror_topics_for_link() const;
 
 private:
     bool should_start_task(task* t);

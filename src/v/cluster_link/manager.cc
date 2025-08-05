@@ -260,6 +260,30 @@ ss::future<::cluster::cluster_link::errc> manager::add_mirror_topic(
       ::model::timeout_clock::now() + mirror_topic_timeout);
 }
 
+ss::future<::cluster::cluster_link::errc> manager::update_mirror_topic_state(
+  model::id_t link_id, model::update_mirror_topic_state_cmd cmd) {
+    static constexpr auto mirror_topic_timeout = 5s;
+    return _registry->update_mirror_topic_state(
+      link_id,
+      std::move(cmd),
+      ::model::timeout_clock::now() + mirror_topic_timeout);
+}
+
+ss::future<::cluster::cluster_link::errc>
+manager::update_mirror_topic_properties(
+  model::id_t link_id, model::update_mirror_topic_properties_cmd cmd) {
+    static constexpr auto mirror_topic_timeout = 5s;
+    return _registry->update_mirror_topic_properties(
+      link_id,
+      std::move(cmd),
+      ::model::timeout_clock::now() + mirror_topic_timeout);
+}
+
+std::optional<chunked_hash_map<::model::topic, model::mirror_topic_metadata>>
+manager::get_mirror_topics_for_link(model::id_t id) const {
+    return _registry->get_mirror_topics_for_link(id);
+}
+
 model::cluster_link_task_status_report manager::get_task_status_report() const {
     model::cluster_link_task_status_report report;
     report.link_reports.reserve(_links.size());

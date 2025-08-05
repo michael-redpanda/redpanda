@@ -66,6 +66,14 @@ public:
     /// Used to add a mirror topic to a cluster link
     ss::future<::cluster::cluster_link::errc>
     add_mirror_topic(model::id_t link_id, model::add_mirror_topic_cmd cmd);
+    ss::future<::cluster::cluster_link::errc> update_mirror_topic_state(
+      model::id_t link_id, model::update_mirror_topic_state_cmd cmd);
+    ss::future<::cluster::cluster_link::errc> update_mirror_topic_properties(
+      model::id_t link_id, model::update_mirror_topic_properties_cmd cmd);
+
+    std::optional<
+      chunked_hash_map<::model::topic, model::mirror_topic_metadata>>
+    get_mirror_topics_for_link(model::id_t id) const;
 
     /// Registers a task factory that will be used to create tasks when links
     /// are created

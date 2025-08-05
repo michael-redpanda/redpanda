@@ -219,6 +219,16 @@ link::add_mirror_topic(model::add_mirror_topic_cmd cmd) {
     return _manager->add_mirror_topic(_link_id, std::move(cmd));
 }
 
+ss::future<::cluster::cluster_link::errc>
+link::update_mirror_topic_state(model::update_mirror_topic_state_cmd cmd) {
+    return _manager->update_mirror_topic_state(_link_id, std::move(cmd));
+}
+
+ss::future<::cluster::cluster_link::errc> link::update_mirror_topic_properties(
+  model::update_mirror_topic_properties_cmd cmd) {
+    return _manager->update_mirror_topic_properties(_link_id, std::move(cmd));
+}
+
 const model::metadata& link::get_config() const noexcept { return _config; }
 
 topic_metadata_cache& link::topic_metadata_cache() noexcept {
@@ -237,7 +247,12 @@ kafka::client::cluster& link::get_cluster_connection() noexcept {
     return _cluster_connection;
 }
 
-bool link::should_start_task(task* t) const {
+std::optional<chunked_hash_map<::model::topic, model::mirror_topic_metadata>>
+link::get_mirror_topics_for_link() const {
+    return _manager->get_mirror_topics_for_link(_link_id);
+}
+
+bool link::should_start_task(task* t) {
     if (t->get_state() != model::task_state::not_running) {
         // Can only start tasks that are currently not running
         return false;
