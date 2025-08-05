@@ -51,6 +51,9 @@ private:
         int32_t partition_count;
         int16_t rf;
     };
+    ss::future<> maybe_sync_mirror_topic_properties(
+      ::model::node_id controller_id,
+      kafka::api_version describe_configs_version);
     ss::future<> maybe_create_mirror_topics(
       ::model::node_id controller_id,
       kafka::api_version describe_configs_version);
@@ -61,6 +64,13 @@ private:
       kafka::api_version describe_configs_version,
       const chunked_vector<::model::topic>& topics,
       const absl::flat_hash_set<ss::sstring>& configs);
+    void enqueue_update_mirror_topic_properties_with_cached_values(
+      chunked_vector<model::update_mirror_topic_properties_cmd>&
+        update_properties_cmds,
+      ::model::topic_view topic,
+      const model::mirror_topic_metadata& cached_metadata,
+      int32_t partition_count,
+      int16_t replication_factor);
 
 private:
     model::topic_metadata_mirroring_config _config;

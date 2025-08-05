@@ -107,6 +107,9 @@ ss::future<> source_topic_syncer::run_impl() {
         co_return;
     }
 
+    co_await maybe_sync_mirror_topic_properties(
+      controller_id.value(), describe_configs_version);
+
     co_await maybe_create_mirror_topics(
       controller_id.value(), describe_configs_version);
 
@@ -115,6 +118,271 @@ ss::future<> source_topic_syncer::run_impl() {
           model::task_state::active, "Auto topic sensor task completed");
     }
     vlog(logger().trace, "Auto topic sensor task completed");
+}
+
+ss::future<> source_topic_syncer::maybe_sync_mirror_topic_properties(
+  ::model::node_id controller_id, kafka::api_version describe_configs_version) {
+    // This portion of the task is responsible for syncing the properties of the
+    // source topic with the mirror topic.  It will:
+    // 1. Fetch the mirror topics from the cluster link table
+    // 2. Describe the topics to get their properties
+    // 3. Compare the properties of the source topic with the mirror topic
+    // 4. If there are differences, update the mirror topic properties
+    vlog(logger().trace, "Syncing mirror topic properties");
+    auto& cluster = get_link()->get_cluster_connection();
+    const auto mirror_topics = get_link()->get_mirror_topics_for_link();
+    if (!mirror_topics.has_value()) {
+        vlog(
+          logger().error,
+          "Cluster link table reporting that link does not exist!");
+        co_return;
+    }
+    if (mirror_topics->empty()) {
+        vlog(logger().debug, "No mirror topics to sync properties for");
+        co_return;
+    }
+
+    chunked_vector<::model::topic> topics_to_describe;
+    topics_to_describe.reserve(mirror_topics->size());
+    for (const auto& [topic, metadata] : *mirror_topics) {
+        if (metadata.state != model::mirror_topic_state::active) {
+            vlog(
+              logger().debug,
+              "Skipping topic {} with state {}",
+              topic,
+              metadata.state);
+            continue;
+        }
+        topics_to_describe.emplace_back(topic);
+    }
+
+    if (topics_to_describe.empty()) {
+        vlog(logger().debug, "No active mirror topics to sync properties for");
+        co_return;
+    }
+
+    // Fetch the configs for the mirror topics
+    kafka::describe_configs_response response;
+    try {
+        vlog(logger().trace, "Describing topics: {}", topics_to_describe);
+        response = co_await describe_topics(
+          cluster,
+          controller_id,
+          describe_configs_version,
+          topics_to_describe,
+          _config.topic_properties_to_mirror);
+        vlog(logger().trace, "Describe topics response: {}", response);
+    } catch (const std::exception& e) {
+        auto msg = ssx::sformat("Failed to describe topics: {}", e.what());
+        vlog(logger().warn, "{}", msg);
+        std::ignore = change_state(
+          model::task_state::link_unavailable, std::move(msg));
+        co_return;
+    }
+
+    /// A list of topics to put into the failed state if we detect that the
+    /// topic may have been deleted and then re-created.  This is detected if
+    /// the topic ID has changed or if the partition count has gone down
+    chunked_vector<::model::topic> topics_to_fail;
+
+    chunked_vector<model::update_mirror_topic_properties_cmd>
+      update_properties_cmds;
+
+    update_properties_cmds.reserve(mirror_topics->size());
+
+    const auto& topic_cache = cluster.get_topics().cache();
+    const auto& config_response = response.data.results;
+    const auto find_config_response =
+      [&config_response](const ::model::topic& topic) {
+          return std::ranges::find_if(
+            config_response, [&topic](const kafka::describe_configs_result& r) {
+                return r.resource_name == topic;
+            });
+      };
+
+    for (const auto& [topic, metadata] : *mirror_topics) {
+        // Only enqueue update commands if a difference is detected
+        bool enqueue_command = false;
+        const auto& topic_cache_it = topic_cache.find(topic);
+        if (topic_cache_it == topic_cache.end()) {
+            vlog(logger().info, "Topic {} not found in topic cache", topic);
+            continue;
+        }
+        const auto& cache_entry = topic_cache_it->second;
+        // TODO: Once Topic IDs are supported, check that the Topic ID in the
+        // metadata response matches the expecteed Topic ID for this topic.
+
+        // If we detect that the partition count has gone down, this indicates
+        // that the topic may have been deleted and then re-created, so we will
+        // put the topic into the failed state
+        if (
+          cache_entry.partitions.size()
+          < static_cast<size_t>(metadata.partition_count)) {
+            vlog(
+              logger().warn,
+              "Topic {} has fewer partitions than expected",
+              topic);
+            topics_to_fail.emplace_back(topic);
+            continue;
+        }
+        // Detect if the partition count has changed
+        if (
+          cache_entry.partitions.size()
+          != static_cast<size_t>(metadata.partition_count)) {
+            vlog(
+              logger().trace,
+              "Topic {} has updated its partition count: {} -> {}",
+              topic,
+              metadata.partition_count,
+              cache_entry.partitions.size());
+            enqueue_command = true;
+        }
+        // Detect if the RF has changed
+        if (cache_entry.replication_factor != metadata.replication_factor) {
+            vlog(
+              logger().trace,
+              "Topic {} has updated its RF: {} -> {}",
+              topic,
+              metadata.replication_factor,
+              cache_entry.replication_factor);
+            enqueue_command = true;
+        }
+        auto config_resp_it = find_config_response(topic);
+        if (config_resp_it == config_response.end()) {
+            if (enqueue_command) {
+                vlog(
+                  logger().info,
+                  "Topic {} not found in config response, however other "
+                  "properties have been updated, using cached property values",
+                  topic);
+                enqueue_update_mirror_topic_properties_with_cached_values(
+                  update_properties_cmds,
+                  topic,
+                  metadata,
+                  static_cast<int32_t>(cache_entry.partitions.size()),
+                  cache_entry.replication_factor);
+                continue;
+            } else {
+                vlog(
+                  logger().info,
+                  "Topic {} not found in config response.  Skipping",
+                  topic);
+                continue;
+            }
+        }
+        if (config_resp_it->error_code != kafka::error_code::none) {
+            vlog(
+              logger().warn,
+              "Failed to fetch configs for topic {}: {}{}",
+              topic,
+              config_resp_it->error_code,
+              config_resp_it->error_message.has_value()
+                ? " - " + *config_resp_it->error_message
+                : "");
+            // If partition count or RF has changed, enqueue the update and used
+            // the cached values for the topic properties
+            if (enqueue_command) {
+                enqueue_update_mirror_topic_properties_with_cached_values(
+                  update_properties_cmds,
+                  topic,
+                  metadata,
+                  static_cast<int32_t>(cache_entry.partitions.size()),
+                  cache_entry.replication_factor);
+            }
+            continue;
+        }
+        if (
+          config_resp_it->resource_type != kafka::config_resource_type::topic) {
+            vlog(
+              logger().warn,
+              "Unexpected resource type {} for topic {}",
+              config_resp_it->resource_type,
+              topic);
+            // If partition count or RF has changed, enqueue the update and used
+            // the cached values for the topic properties
+            if (enqueue_command) {
+                enqueue_update_mirror_topic_properties_with_cached_values(
+                  update_properties_cmds,
+                  topic,
+                  metadata,
+                  static_cast<int32_t>(cache_entry.partitions.size()),
+                  cache_entry.replication_factor);
+            }
+            continue;
+        }
+        for (const auto& c : config_resp_it->configs) {
+            if (c.value.has_value()) {
+                vlog(
+                  logger().trace,
+                  "Config {} for topic {}: {}",
+                  c.name,
+                  topic,
+                  c.value.value());
+                auto metadata_it = metadata.topic_configs.find(c.name);
+                if (
+                  metadata_it == metadata.topic_configs.end()
+                  || metadata_it->second != c.value.value()) {
+                    vlog(
+                      logger().trace,
+                      "Config {} has changed for topic {}",
+                      c.name,
+                      topic);
+                    enqueue_command = true;
+                }
+            }
+        }
+
+        if (enqueue_command) {
+            chunked_hash_map<ss::sstring, ss::sstring> topic_configs;
+            topic_configs.reserve(config_resp_it->configs.size());
+            for (const auto& conf : config_resp_it->configs) {
+                if (conf.value.has_value()) {
+                    topic_configs.emplace(conf.name, conf.value.value());
+                }
+            }
+            model::update_mirror_topic_properties_cmd cmd{
+              .topic = topic,
+              .partition_count = static_cast<int32_t>(
+                topic_cache_it->second.partitions.size()),
+              .replication_factor = topic_cache_it->second.replication_factor,
+              .topic_configs = std::move(topic_configs)};
+            vlog(logger().trace, "Enqueuing update command: {}", cmd);
+            update_properties_cmds.emplace_back(std::move(cmd));
+        }
+    }
+
+    // Now that we have built up the list of commands, we can now execute them,
+    // first start by failing the mirror topics
+    for (const auto& t : topics_to_fail) {
+        vlog(logger().warn, "Failing mirror topic {}", t);
+        auto res = co_await get_link()->update_mirror_topic_state(
+          model::update_mirror_topic_state_cmd{
+            .topic = t, .state = model::mirror_topic_state::failed});
+        if (res != ::cluster::cluster_link::errc::success) {
+            vlog(logger().error, "Failed to fail mirror topic {}: {}", t, res);
+        } else {
+            vlog(logger().info, "Successfully failed mirror topic {}", t);
+        }
+    }
+
+    // Now update the properties of the mirror topics
+    for (auto& cmd : update_properties_cmds) {
+        vlog(logger().trace, "Updating mirror topic properties: {}", cmd);
+        auto res = co_await get_link()->update_mirror_topic_properties(
+          std::move(cmd));
+        if (res != ::cluster::cluster_link::errc::success) {
+            vlog(
+              logger().error,
+              "Failed to update mirror topic properties for {}: {}",
+              cmd.topic,
+              res);
+        } else {
+            vlog(
+              logger().info,
+              "Successfully updated mirror topic properties for {}",
+              cmd.topic);
+        }
+    }
 }
 
 ss::future<> source_topic_syncer::maybe_create_mirror_topics(
@@ -355,6 +623,27 @@ source_topic_syncer::describe_topics(
 
     co_return co_await cluster.dispatch_to(
       controller_id, std::move(request), describe_configs_version);
+}
+
+void source_topic_syncer::
+  enqueue_update_mirror_topic_properties_with_cached_values(
+    chunked_vector<model::update_mirror_topic_properties_cmd>&
+      update_properties_cmds,
+    ::model::topic_view topic,
+    const model::mirror_topic_metadata& cached_metadata,
+    int32_t partition_count,
+    int16_t replication_factor) {
+    chunked_hash_map<ss::sstring, ss::sstring> topic_configs;
+    topic_configs.reserve(cached_metadata.topic_configs.size());
+    for (const auto& [key, value] : cached_metadata.topic_configs) {
+        topic_configs.emplace(key, value);
+    }
+    update_properties_cmds.emplace_back(
+      model::update_mirror_topic_properties_cmd{
+        .topic = topic,
+        .partition_count = partition_count,
+        .replication_factor = replication_factor,
+        .topic_configs = std::move(topic_configs)});
 }
 
 std::string_view
