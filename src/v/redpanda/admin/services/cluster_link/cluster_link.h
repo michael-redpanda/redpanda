@@ -11,12 +11,16 @@
 
 #pragma once
 
+#include "cluster_link/fwd.h"
 #include "proto/redpanda/core/admin/cluster_link.proto.h"
+
+#include <seastar/core/sharded.hh>
 
 namespace admin {
 class cluster_link_service_impl : public proto::admin::cluster_link_service {
 public:
-    cluster_link_service_impl() = default;
+    explicit cluster_link_service_impl(
+      ss::sharded<cluster_link::service>* service);
 
     ss::future<proto::admin::cluster_link>
       create_cluster_link(proto::admin::create_cluster_link_request) override;
@@ -35,5 +39,8 @@ public:
 
     ss::future<proto::admin::cluster_link>
       fail_over(proto::admin::fail_over_request) override;
+
+private:
+    ss::sharded<cluster_link::service>* _service;
 };
 } // namespace admin
