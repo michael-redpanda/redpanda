@@ -120,6 +120,19 @@ ss::future<> manager::stop() {
     vlog(cllog.info, "Cluster link manager stopped");
 }
 
+ss::future<result<void>> manager::create_cluster_link(model::metadata md) {
+    vlog(cllog.info, "Attempting to create cluster link named '{}'", md.name);
+    vlog(cllog.trace, "Cluster link metadata: {}", md);
+    auto ec = co_await _registry->upsert_link(
+      std::move(md), ::model::timeout_clock::now() + 30s);
+    auto err = map_cluster_errc(ec);
+    if (err != errc::success) {
+        co_return err_info(
+          err, fmt::format("Failed to create cluster link: {}", ec));
+    }
+    co_return outcome::success();
+}
+
 void manager::on_link_change(model::id_t id) {
     vlog(cllog.trace, "Cluster link with id={} has changed", id);
     if (_topic_reconciler && _is_controller_leader) {
