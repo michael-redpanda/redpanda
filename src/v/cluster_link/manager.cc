@@ -104,12 +104,55 @@ ss::future<> manager::stop() {
     co_await _queue.shutdown();
     _link_task_reconciler_timer.cancel();
     _as.request_abort();
+    _link_created_cv.broken();
     co_await _g.close();
     for (auto& [_, link] : _links) {
         co_await link->stop();
     }
 
     vlog(cllog.info, "Cluster link manager stopped");
+}
+
+ss::future<result<model::metadata>>
+manager::create_cluster_link(model::metadata md) {
+    static constexpr auto wait_for_link_creation_timeout = 30s;
+    auto hold = _g.hold();
+    auto name = md.name;
+    vlog(cllog.info, "Attempting to create cluster link named '{}'", md.name);
+    vlog(cllog.trace, "Cluster link metadata: {}", md);
+    auto ec = co_await _registry->upsert_link(
+      std::move(md), ::model::timeout_clock::now() + 30s);
+    auto err = map_cluster_errc(ec);
+    if (err != errc::success) {
+        co_return err_info(
+          err, fmt::format("Failed to create cluster link: {}", ec));
+    }
+
+    try {
+        co_await _link_created_cv.wait(
+          wait_for_link_creation_timeout, [this, name] {
+              return _registry->find_link_by_name(name).has_value();
+          });
+    } catch (const ss::condition_variable_timed_out&) {
+        co_return err_info(
+          errc::link_id_not_found,
+          fmt::format(
+            "Timed out waiting for cluster link '{}' to be created", name));
+    } catch (const ss::broken_condition_variable&) {
+        co_return err_info(
+          errc::cluster_link_disabled,
+          fmt::format(
+            "Aborted waiting for cluster link '{}' to be created", name));
+    }
+
+    auto metadata_resp = _registry->find_link_by_name(name);
+    if (!metadata_resp) {
+        co_return err_info(
+          errc::link_id_not_found,
+          fmt::format("Failed to find cluster link with name '{}'", name));
+    }
+
+    co_return metadata_resp->get().copy();
 }
 
 void manager::on_link_change(model::id_t id) {
@@ -208,6 +251,7 @@ ss::future<> manager::handle_on_link_change(model::id_t id) {
             }
             co_await new_link->start();
             _links.emplace(id, std::move(new_link));
+            _link_created_cv.broadcast();
         } catch (const ss::semaphore_aborted&) {
             vlog(cllog.debug, "Semaphore aborted, stopping link creation");
             co_return;

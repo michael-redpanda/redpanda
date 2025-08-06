@@ -54,6 +54,8 @@ public:
     ss::future<> start();
     ss::future<> stop();
 
+    ss::future<result<model::metadata>> create_cluster_link(model::metadata md);
+
     /// Used to notify that a cluster link has been updated
     void on_link_change(model::id_t id);
     /// Used to notify manager in a change of NTP leadership
@@ -133,6 +135,7 @@ private:
     mutex _link_task_reconciler_mutex{
       "cluster_link::manager::link_task_reconciler"};
     ss::timer<ss::lowres_clock> _link_task_reconciler_timer;
+    ss::condition_variable _link_created_cv;
     ss::abort_source _as;
     ss::gate _g;
 };
