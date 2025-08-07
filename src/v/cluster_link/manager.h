@@ -55,6 +55,7 @@ public:
     ss::future<> stop();
 
     ss::future<result<model::metadata>> create_cluster_link(model::metadata md);
+    result<model::metadata> get_cluster_link(model::name_t name);
 
     /// Used to notify that a cluster link has been updated
     void on_link_change(model::id_t id);
