@@ -22,4 +22,7 @@ namespace admin {
 /// \throws std::invalid_argument if the request contains invalid data
 cluster_link::model::metadata
 convert_create_to_metadata(proto::admin::create_cluster_link_request req);
+
+proto::admin::cluster_link
+metadata_to_cluster_link(cluster_link::model::metadata md);
 } // namespace admin
