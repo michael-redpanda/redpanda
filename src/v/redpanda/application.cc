@@ -1151,7 +1151,9 @@ void application::configure_admin_server() {
           // Add RPC services
           s.add_service(
             std::make_unique<admin::debug_service_impl>(stress_fiber_manager));
-          s.add_service(std::make_unique<admin::shadow_link_service_impl>());
+          s.add_service(
+            std::make_unique<admin::shadow_link_service_impl>(
+              &_cluster_link_service));
       })
       .get();
 }
