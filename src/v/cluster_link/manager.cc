@@ -165,6 +165,24 @@ result<model::metadata> manager::get_cluster_link(model::name_t name) {
     return metadata_resp->get().copy();
 }
 
+result<chunked_vector<model::metadata>> manager::list_cluster_links() {
+    auto link_ids = _registry->get_all_link_ids();
+    chunked_vector<model::metadata> resp;
+    resp.reserve(link_ids.size());
+
+    for (const auto id : link_ids) {
+        auto maybe_md = _registry->find_link_by_id(id);
+        if (!maybe_md) {
+            vlog(cllog.warn, "Failed to find link ID {}", id);
+            continue;
+        }
+
+        resp.emplace_back(maybe_md.value().get().copy());
+    }
+
+    return resp;
+}
+
 void manager::on_link_change(model::id_t id) {
     vlog(cllog.trace, "Cluster link with id={} has changed", id);
     _queue.submit([this, id] { return handle_on_link_change(id); });

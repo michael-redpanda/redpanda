@@ -56,6 +56,7 @@ public:
 
     ss::future<result<model::metadata>> create_cluster_link(model::metadata md);
     result<model::metadata> get_cluster_link(model::name_t name);
+    result<chunked_vector<model::metadata>> list_cluster_links();
 
     /// Used to notify that a cluster link has been updated
     void on_link_change(model::id_t id);

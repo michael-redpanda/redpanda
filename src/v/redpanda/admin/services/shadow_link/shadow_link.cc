@@ -105,7 +105,20 @@ shadow_link_service_impl::get_shadow_link(
 ss::future<proto::admin::list_shadow_links_response>
 shadow_link_service_impl::list_shadow_links(
   proto::admin::list_shadow_links_request) {
-    throw serde::pb::rpc::unimplemented_exception();
+    vlog(sllog.info, "list_shadow_links");
+
+    auto resp = handle_error(_service->local().list_cluster_links());
+
+    proto::admin::list_shadow_links_response list_resp;
+    chunked_vector<proto::admin::shadow_link> links;
+    links.reserve(resp.size());
+    for (auto& md : resp) {
+        links.emplace_back(metadata_to_shadow_link(std::move(md)));
+    }
+
+    list_resp.set_shadow_links(std::move(links));
+
+    co_return list_resp;
 }
 
 ss::future<proto::admin::update_shadow_link_response>

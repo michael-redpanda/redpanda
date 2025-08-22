@@ -51,6 +51,7 @@ public:
     ss::future<> stop();
     ss::future<result<model::metadata>> create_cluster_link(model::metadata md);
     result<model::metadata> get_cluster_link(model::name_t name);
+    result<chunked_vector<model::metadata>> list_cluster_links();
 
 private:
     void register_notifications();
