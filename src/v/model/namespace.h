@@ -68,8 +68,10 @@ inline const model::ntp id_allocator_ntp(
   model::id_allocator_topic,
   model::partition_id(0));
 
+inline const model::topic schema_registry_topic("_schemas");
+
 inline const model::topic_partition schema_registry_internal_tp{
-  model::topic{"_schemas"}, model::partition_id{0}};
+  schema_registry_topic, model::partition_id{0}};
 
 inline const model::ntp wasm_binaries_internal_ntp(
   model::kafka_internal_namespace,
