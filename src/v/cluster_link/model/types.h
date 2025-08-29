@@ -317,6 +317,8 @@ struct topic_metadata_mirroring_config
     chunked_vector<resource_name_filter_pattern> topic_name_filters;
     /// List of topic properties to mirror
     absl::flat_hash_set<ss::sstring> topic_properties_to_mirror;
+    /// Flag to indicate if the schema registry topic should be mirrored
+    bool mirror_schema_registry_topic;
 
     ss::lowres_clock::duration get_task_interval() const {
         return task_interval.value_or(task_interval_default);
@@ -332,7 +334,8 @@ struct topic_metadata_mirroring_config
           is_enabled,
           task_interval,
           topic_name_filters,
-          topic_properties_to_mirror);
+          topic_properties_to_mirror,
+          mirror_schema_registry_topic);
     }
 
     topic_metadata_mirroring_config copy() const;

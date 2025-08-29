@@ -267,11 +267,12 @@ auto fmt::formatter<cluster_link::model::topic_metadata_mirroring_config>::
     return fmt::format_to(
       ctx.out(),
       "{{is_enabled: {}, task_interval: {}, filters: {}, "
-      "topic_properties_to_mirror: {}}}",
+      "topic_properties_to_mirror: {}, mirror_schema_registry_topic: {}}}",
       m.is_enabled,
       m.task_interval,
       m.topic_name_filters,
-      m.topic_properties_to_mirror);
+      m.topic_properties_to_mirror,
+      m.mirror_schema_registry_topic);
 }
 
 auto fmt::formatter<cluster_link::model::link_state>::format(
