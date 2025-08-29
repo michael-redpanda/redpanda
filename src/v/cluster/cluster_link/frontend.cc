@@ -677,7 +677,8 @@ errc frontend::validator::validate_metadata_mirroring_config(
           if (
             p.pattern.starts_with("_redpanda")
             || p.pattern.starts_with("__redpanda")
-            || p.pattern == ::model::kafka_consumer_offsets_topic()) {
+            || p.pattern == ::model::kafka_consumer_offsets_topic()
+            || p.pattern == ::model::schema_registry_topic()) {
               vlog(
                 cluster::clusterlog.info,
                 "Filter pattern filtering on invalid topic name: {}",

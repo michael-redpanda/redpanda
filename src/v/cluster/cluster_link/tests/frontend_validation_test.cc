@@ -590,18 +590,62 @@ TEST_F_CORO(
 
 TEST_F_CORO(
   frontend_validation_test, test_mirror_properties_invalid_topic_name) {
-    auto m1 = create_base_metadata();
-    m1.configuration.topic_metadata_mirroring_cfg.topic_properties_to_mirror
-      = absl::flat_hash_set<ss::sstring>{"segment.ms"};
-    m1.configuration.topic_metadata_mirroring_cfg.topic_name_filters = {{
-      .pattern_type = ::cluster_link::model::filter_pattern_type::literal,
-      .filter = ::cluster_link::model::filter_type::include,
-      .pattern = "__redpanda.internal",
-    }};
+    {
+        auto m1 = create_base_metadata();
+        m1.configuration.topic_metadata_mirroring_cfg.topic_properties_to_mirror
+          = absl::flat_hash_set<ss::sstring>{"segment.ms"};
+        m1.configuration.topic_metadata_mirroring_cfg.topic_name_filters = {{
+          .pattern_type = ::cluster_link::model::filter_pattern_type::literal,
+          .filter = ::cluster_link::model::filter_type::include,
+          .pattern = "_redpanda.internal",
+        }};
 
-    EXPECT_EQ(
-      co_await upsert_cluster_link(std::move(m1)),
-      cluster::cluster_link::errc::topic_filter_invalid);
+        EXPECT_EQ(
+          co_await upsert_cluster_link(std::move(m1)),
+          cluster::cluster_link::errc::topic_filter_invalid);
+    }
+    {
+        auto m1 = create_base_metadata();
+        m1.configuration.topic_metadata_mirroring_cfg.topic_properties_to_mirror
+          = absl::flat_hash_set<ss::sstring>{"segment.ms"};
+        m1.configuration.topic_metadata_mirroring_cfg.topic_name_filters = {{
+          .pattern_type = ::cluster_link::model::filter_pattern_type::literal,
+          .filter = ::cluster_link::model::filter_type::include,
+          .pattern = "__redpanda.internal",
+        }};
+
+        EXPECT_EQ(
+          co_await upsert_cluster_link(std::move(m1)),
+          cluster::cluster_link::errc::topic_filter_invalid);
+    }
+    {
+        auto m1 = create_base_metadata();
+        m1.configuration.topic_metadata_mirroring_cfg.topic_properties_to_mirror
+          = absl::flat_hash_set<ss::sstring>{"segment.ms"};
+        m1.configuration.topic_metadata_mirroring_cfg.topic_name_filters = {{
+          .pattern_type = ::cluster_link::model::filter_pattern_type::literal,
+          .filter = ::cluster_link::model::filter_type::include,
+          .pattern = "__consumer_offsets",
+        }};
+
+        EXPECT_EQ(
+          co_await upsert_cluster_link(std::move(m1)),
+          cluster::cluster_link::errc::topic_filter_invalid);
+    }
+    {
+        auto m1 = create_base_metadata();
+        m1.configuration.topic_metadata_mirroring_cfg.topic_properties_to_mirror
+          = absl::flat_hash_set<ss::sstring>{"segment.ms"};
+        m1.configuration.topic_metadata_mirroring_cfg.topic_name_filters = {{
+          .pattern_type = ::cluster_link::model::filter_pattern_type::literal,
+          .filter = ::cluster_link::model::filter_type::include,
+          .pattern = "_schemas",
+        }};
+
+        EXPECT_EQ(
+          co_await upsert_cluster_link(std::move(m1)),
+          cluster::cluster_link::errc::topic_filter_invalid);
+    }
 }
 
 TEST_F_CORO(
