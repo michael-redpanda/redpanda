@@ -546,6 +546,9 @@ class TopicMetadataSyncOptions(google.protobuf.message.Message):
     INTERVAL_FIELD_NUMBER: builtins.int
     TOPIC_FILTERS_FIELD_NUMBER: builtins.int
     SHADOWED_TOPIC_PROPERTIES_FIELD_NUMBER: builtins.int
+    MIRROR_SCHEMA_REGISTRY_FIELD_NUMBER: builtins.int
+    mirror_schema_registry: builtins.bool
+    'If set, will mirror _schemas topic byte-for-byte.  Once set, this cannot\n    be changed.\n    '
 
     @property
     def interval(self) -> google.protobuf.duration_pb2.Duration:
@@ -564,13 +567,13 @@ class TopicMetadataSyncOptions(google.protobuf.message.Message):
         `timestamp.type` will always be replicated
         """
 
-    def __init__(self, *, interval: google.protobuf.duration_pb2.Duration | None=..., topic_filters: collections.abc.Iterable[global___NameFilter] | None=..., shadowed_topic_properties: collections.abc.Iterable[builtins.str] | None=...) -> None:
+    def __init__(self, *, interval: google.protobuf.duration_pb2.Duration | None=..., topic_filters: collections.abc.Iterable[global___NameFilter] | None=..., shadowed_topic_properties: collections.abc.Iterable[builtins.str] | None=..., mirror_schema_registry: builtins.bool=...) -> None:
         ...
 
     def HasField(self, field_name: typing.Literal['interval', b'interval']) -> builtins.bool:
         ...
 
-    def ClearField(self, field_name: typing.Literal['interval', b'interval', 'shadowed_topic_properties', b'shadowed_topic_properties', 'topic_filters', b'topic_filters']) -> None:
+    def ClearField(self, field_name: typing.Literal['interval', b'interval', 'mirror_schema_registry', b'mirror_schema_registry', 'shadowed_topic_properties', b'shadowed_topic_properties', 'topic_filters', b'topic_filters']) -> None:
         ...
 global___TopicMetadataSyncOptions = TopicMetadataSyncOptions
 

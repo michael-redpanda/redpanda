@@ -219,6 +219,9 @@ message TopicMetadataSyncOptions {
     // Partition count, `max.message.bytes`, `cleanup.policy` and
     // `timestamp.type` will always be replicated
     repeated string shadowed_topic_properties = 3;
+    // If set, will mirror _schemas topic byte-for-byte.  Once set, this cannot
+    // be changed.
+    bool mirror_schema_registry = 4;
 }
 // Options for syncing consumer offsets
 message ConsumerOffsetSyncOptions {
