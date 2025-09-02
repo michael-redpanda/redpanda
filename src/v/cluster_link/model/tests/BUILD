@@ -21,6 +21,7 @@ redpanda_cc_gtest(
     ],
     deps = [
         "//src/v/cluster_link/model",
+        "//src/v/model",
         "//src/v/test_utils:gtest",
         "@googletest//:gtest",
     ],

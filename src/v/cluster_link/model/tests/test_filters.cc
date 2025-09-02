@@ -11,6 +11,7 @@
 
 #include "cluster_link/model/filter_utils.h"
 #include "cluster_link/model/types.h"
+#include "model/namespace.h"
 
 #include <gtest/gtest.h>
 
@@ -63,5 +64,10 @@ TEST(test_filters, test_exclude_pattern) {
       }};
     EXPECT_FALSE(select_topic(::model::topic{"test-topic"}, patterns));
     EXPECT_TRUE(select_topic(::model::topic{"other-topic"}, patterns));
+}
+
+TEST(test_filters, test_mirror_schema_registry) {
+    EXPECT_FALSE(select_topic(::model::schema_registry_topic, {}, false));
+    EXPECT_TRUE(select_topic(::model::schema_registry_topic, {}, true));
 }
 } // namespace cluster_link::model::tests
