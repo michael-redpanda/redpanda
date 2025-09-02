@@ -865,4 +865,32 @@ TEST_F_CORO(
       << "Expected error for mirrored by other link, got: " << res.message();
 }
 
+TEST_F_CORO(cluster_link_table_test, validate_schema_fuse) {
+    metadata link{
+      .name = name_t("link1"),
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{}};
+    link.configuration.topic_metadata_mirroring_cfg.mirror_schema_registry_topic
+      = true;
+
+    auto res = co_await _table.local().apply_update(
+      testing::create_upsert_command(model::offset{1}, link.copy()));
+    ASSERT_EQ_CORO(res.value(), int(errc::success))
+      << "Failed to upsert link1: " << res.message();
+    ASSERT_EQ_CORO(res.value(), int(errc::success)) << "Failed to upsert link";
+
+    link.configuration.topic_metadata_mirroring_cfg.mirror_schema_registry_topic
+      = false;
+    res = co_await _table.local().apply_update(
+      testing::create_upsert_command(model::offset{1}, link.copy()));
+    ASSERT_EQ_CORO(res.value(), int(errc::success))
+      << "Failed to upsert link: " << res.message();
+
+    auto md = _table.local().find_link_by_name(name_t("link1"));
+    ASSERT_TRUE_CORO(md.has_value());
+    EXPECT_TRUE(md->get()
+                  .configuration.topic_metadata_mirroring_cfg
+                  .mirror_schema_registry_topic);
+}
+
 } // namespace cluster::cluster_link

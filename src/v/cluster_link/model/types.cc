@@ -45,6 +45,7 @@ topic_metadata_mirroring_config topic_metadata_mirroring_config::copy() const {
         copy.topic_name_filters.emplace_back(filter);
     }
     copy.topic_properties_to_mirror = topic_properties_to_mirror;
+    copy.mirror_schema_registry_topic = mirror_schema_registry_topic;
 
     return copy;
 }

@@ -290,6 +290,19 @@ cluster::cluster_link::errc table::upsert_link(id_t id, metadata meta) {
         return it.second == id && !meta.state.mirror_topics.contains(it.first);
     });
 
+    const auto cur_settings = find_link_by_id(id);
+    if (cur_settings.has_value()) {
+        if (cur_settings->get()
+              .configuration.topic_metadata_mirroring_cfg
+              .mirror_schema_registry_topic) {
+            // `mirror_schema_registry_topic` is a fuse that once set, it's
+            // always on
+            meta.configuration.topic_metadata_mirroring_cfg
+              .mirror_schema_registry_topic
+              = true;
+        }
+    }
+
     _link_metadata.insert_or_assign(id, std::move(meta));
     run_callbacks(id);
     return cluster::cluster_link::errc::success;
