@@ -103,6 +103,8 @@ create_topic_metadata_mirroring_config(
         config.topic_properties_to_mirror,
         config.topic_properties_to_mirror.end()));
 
+    config.mirror_schema_registry_topic = options.get_mirror_schema_registry();
+
     return config;
 }
 
@@ -460,6 +462,7 @@ topic_metadata_sync_options create_topic_metadata_sync_options(
     }
 
     options.set_shadowed_topic_properties(std::move(mirrored_properties));
+    options.set_mirror_schema_registry(cfg.mirror_schema_registry_topic);
 
     return options;
 }

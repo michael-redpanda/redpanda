@@ -411,6 +411,7 @@ TEST(converter_test, create_with_metadata_sync_options) {
       "test-prefix-exclude"));
     topic_metadata_sync_options.set_topic_filters(std::move(filters));
     topic_metadata_sync_options.set_shadowed_topic_properties({"prop"});
+    topic_metadata_sync_options.set_mirror_schema_registry(true);
 
     shadow_link_client_options.set_bootstrap_servers({"localhost:9092"});
     shadow_link_configurations.set_client_options(
@@ -459,6 +460,9 @@ TEST(converter_test, create_with_metadata_sync_options) {
     EXPECT_EQ(
       expected,
       md.configuration.topic_metadata_mirroring_cfg.topic_name_filters);
+
+    EXPECT_TRUE(md.configuration.topic_metadata_mirroring_cfg
+                  .mirror_schema_registry_topic);
 }
 
 TEST(converter_test, metadata_to_shadow_link) {
@@ -663,6 +667,8 @@ TEST(converter_test, metadata_to_shadow_link_topic_mirroring_cfg) {
         .filter = cluster_link::model::filter_type::exclude,
         .pattern = "test-prefix-exclude",
       }};
+    md.configuration.topic_metadata_mirroring_cfg.mirror_schema_registry_topic
+      = true;
 
     auto sl = admin::metadata_to_shadow_link(std::move(md));
     const auto& topic_metadata_sync_options
@@ -689,6 +695,7 @@ TEST(converter_test, metadata_to_shadow_link_topic_mirroring_cfg) {
 
     EXPECT_EQ(
       topic_metadata_sync_options.get_topic_filters(), expected_filters);
+    EXPECT_TRUE(topic_metadata_sync_options.get_mirror_schema_registry());
 }
 
 proto::admin::shadow_topic_status create_shadow_topic_status(
