@@ -31,6 +31,10 @@ const absl::flat_hash_set<::model::topic> topic_denylist{
   ::model::kafka_consumer_offsets_topic,
 };
 
+// Do not create any topics that start with these prefixes
+const absl::flat_hash_set<ss::sstring> topic_prefix_denylist{
+  "_redpanda", "__redpanda"};
+
 bool has_required_permissions(
   kafka::topic_authorized_operations permissions_to_check,
   kafka::topic_authorized_operations required_permissions) {
@@ -121,6 +125,34 @@ validate_topic_cache_entry(
 
     return std::make_tuple(
       partition_count, replication_factor, it->second.authorized_operations);
+}
+
+std::optional<ss::sstring> is_valid_topic(
+  ::model::topic_view topic,
+  const model::topic_metadata_mirroring_config& config) {
+    if (topic_denylist.contains(topic)) {
+        return ssx::sformat(
+          "Skipping mirroring of {} topic, it is in the denylist", topic);
+    }
+
+    for (const auto& prefix : topic_prefix_denylist) {
+        if (topic().starts_with(prefix)) {
+            return ssx::sformat(
+              "Skipping mirroring of {} topic, it is in the prefix denylist",
+              topic);
+        }
+    }
+
+    if (
+      topic == ::model::schema_registry_topic
+      && !config.mirror_schema_registry_topic) {
+        return ssx::sformat(
+          "Skipping mirroring of schema registrry topic ({}), mirroring of "
+          "schema registry is not enabled",
+          topic);
+    }
+
+    return std::nullopt;
 }
 } // namespace
 
@@ -484,11 +516,9 @@ source_topic_syncer::find_candidate_topics_for_update(
     candidate_topics.reserve(mirror_topics->size());
 
     for (auto& [topic, mirror_metadata] : *mirror_topics) {
-        if (topic_denylist.contains(topic)) {
-            vlog(
-              logger().trace,
-              "Skipping mirroring of {} topic, it is in the denylist",
-              topic);
+        auto msg = is_valid_topic(topic, _config);
+        if (msg.has_value()) {
+            vlog(logger().trace, "{}", *msg);
             continue;
         }
 
@@ -535,11 +565,10 @@ source_topic_syncer::find_candidate_topics_for_creation(
 
     for (const auto& topic : topics) {
         vlog(logger().trace, "Checking topic: {}", topic);
-        if (topic_denylist.contains(topic)) {
-            vlog(
-              logger().trace,
-              "Skipping mirroring of {} topic, it is in the denylist",
-              topic);
+
+        auto msg = is_valid_topic(topic, _config);
+        if (msg.has_value()) {
+            vlog(logger().trace, "{}", *msg);
             continue;
         }
 
