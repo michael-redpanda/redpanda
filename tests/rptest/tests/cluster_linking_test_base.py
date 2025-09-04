@@ -8,6 +8,7 @@
 # by the Apache License, Version 2.0
 
 from rptest.clients.admin.v2 import Admin as AdminV2
+from rptest.clients.rpk import RpkTool
 from rptest.clients.admin.proto.redpanda.core.admin.v2 import (
     shadow_link_pb2,
     shadow_link_pb2_connect,
@@ -68,6 +69,10 @@ class ShadowLinkTestBase(RedpandaTest):
         return self.services.secondary
 
     @property
+    def source_cluster_rpk(self) -> RpkTool:
+        return self.source_cluster.rpk
+
+    @property
     def target_cluster_service(self) -> RedpandaService:
         return self.services.primary.service
 
@@ -75,7 +80,13 @@ class ShadowLinkTestBase(RedpandaTest):
     def target_cluster(self) -> RedpandaCluster:
         return self.services.primary
 
-    def create_link(self, link_name: str):
+    @property
+    def target_cluster_rpk(self) -> RpkTool:
+        return self.target_cluster.rpk
+
+    def create_default_link_request(
+        self, link_name: str
+    ) -> shadow_link_pb2.CreateShadowLinkRequest:
         topic_sync_options = shadow_link_pb2.TopicMetadataSyncOptions(
             interval=google.protobuf.duration_pb2.Duration(seconds=1)
         )
@@ -94,6 +105,15 @@ class ShadowLinkTestBase(RedpandaTest):
 
         req = shadow_link_pb2.CreateShadowLinkRequest()
         req.shadow_link.CopyFrom(link_resource)
+        return req
+
+    def create_link(self, link_name: str) -> shadow_link_pb2.CreateShadowLinkResponse:
+        req = self.create_default_link_request(link_name=link_name)
+        return self.create_link_with_request(req=req)
+
+    def create_link_with_request(
+        self, req: shadow_link_pb2.CreateShadowLinkRequest
+    ) -> shadow_link_pb2.CreateShadowLinkResponse:
         return self.client.create_shadow_link(req=req)
 
     def list_links(self) -> list[shadow_link_pb2.ShadowLink]:
