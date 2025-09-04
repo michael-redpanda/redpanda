@@ -9,11 +9,14 @@
 
 from connectrpc.errors import ConnectError, ConnectErrorCode
 
+from ducktape.utils.util import wait_until
+
 from rptest.clients.admin.v2 import Admin as AdminV2
 from rptest.clients.admin.proto.redpanda.core.admin.v2 import (
     shadow_link_pb2,
     shadow_link_pb2_connect,
 )
+from rptest.clients.rpk import RpkPartition
 from rptest.services.cluster import cluster
 from rptest.services.multi_cluster_services import (
     Cluster,
@@ -23,6 +26,10 @@ from rptest.services.multi_cluster_services import (
 from rptest.tests.cluster_linking_test_base import ShadowLinkTestBase
 from rptest.tests.redpanda_test import RedpandaTest
 from rptest.util import expect_exception, wait_until_result
+
+from google.protobuf import duration_pb2
+
+from typing import Iterator
 
 
 class MultiClusterTestBase(RedpandaTest):
@@ -180,3 +187,117 @@ class ShadowLinkBasicTests(ShadowLinkTestBase):
             assert e.code == ConnectErrorCode.RESOURCE_EXHAUSTED, (
                 f"Expected {ConnectErrorCode.RESOURCE_EXHAUSTED}, got {e.code}"
             )
+
+
+class ShadowLinkTopicPropertyMirroringTest(ShadowLinkTestBase):
+    """
+    Tests that validate mirroring of topic properties
+    """
+
+    @cluster(num_nodes=6)
+    def test_topic_mirroring(self):
+        """
+        This test will create a shadow link and validate that topics are automatically created and properties are replicated
+        """
+        req = self.create_default_link_request(link_name="test-link")
+
+        topic_filters: list[shadow_link_pb2.NameFilter] = [
+            shadow_link_pb2.NameFilter(
+                pattern_type=shadow_link_pb2.PATTERN_TYPE_LITERAL,
+                filter_type=shadow_link_pb2.FILTER_TYPE_INCLUDE,
+                name="*",
+            )
+        ]
+
+        topic_sync_options = shadow_link_pb2.TopicMetadataSyncOptions(
+            interval=duration_pb2.Duration(seconds=1), topic_filters=topic_filters
+        )
+
+        req.shadow_link.configurations.topic_metadata_sync_options.CopyFrom(
+            topic_sync_options
+        )
+
+        self.create_link_with_request(req=req)
+
+        # Create a topic on the source cluster and see that it gets created on the shadow
+        topic_name = "test-topic"
+        self.source_cluster_rpk.create_topic(topic=topic_name, partitions=1, replicas=3)
+
+        def topic_exists_on_target() -> tuple[bool, list[RpkPartition]]:
+            topic_partitions = list(
+                self.target_cluster_rpk.describe_topic(topic=topic_name)
+            )
+            return len(topic_partitions) != 0, topic_partitions
+
+        topic_partitions: list[RpkPartition] = wait_until_result(
+            topic_exists_on_target,
+            timeout_sec=30,
+            backoff_sec=1,
+            err_msg=f"Failed to replicate topic {topic_name}",
+            retry_on_exc=True,
+        )
+        self.logger.info(f"Topic partitions: {topic_partitions}")
+        assert len(topic_partitions) == 1, (
+            f"Expected one partition, got {len(topic_partitions)}"
+        )
+        assert len(topic_partitions[0].replicas) == 3, (
+            f"Expected 3 replicas, got {len(topic_partitions[0].replicas)}"
+        )
+
+        self.source_cluster_rpk.add_topic_partitions(topic=topic_name, additional=2)
+
+        def topic_has_three_partitions() -> bool:
+            topic_partitions = list(
+                self.target_cluster_rpk.describe_topic(topic=topic_name)
+            )
+            return len(topic_partitions) == 3
+
+        wait_until(
+            topic_has_three_partitions,
+            timeout_sec=30,
+            backoff_sec=1,
+            err_msg=f"Failed to replicate partition count for topic {topic_name}",
+            retry_on_exc=True,
+        )
+
+        # Verify that the _schemas topic was not created
+        assert (
+            len(list(self.target_cluster_rpk.describe_topic(topic="_schemas"))) == 0
+        ), "The _schemas topic should not exist"
+
+        # Now verify that the topic properties are replicated
+        self.source_cluster_rpk.alter_topic_config(
+            topic=topic_name, set_key="max.message.bytes", set_value="1"
+        )
+        self.source_cluster_rpk.alter_topic_config(
+            topic=topic_name, set_key="cleanup.policy", set_value="compact,delete"
+        )
+        self.source_cluster_rpk.alter_topic_config(
+            topic=topic_name,
+            set_key="message.timestamp.type",
+            set_value="LogAppendTime",
+        )
+        self.source_cluster_rpk.alter_topic_config(
+            topic=topic_name, set_key="replication.factor", set_value="1"
+        )
+
+        def wait_for_properties_to_sync() -> bool:
+            configs = self.target_cluster_rpk.describe_topic_configs(topic=topic_name)
+            return (
+                configs["max.message.bytes"][0] == "1"
+                and configs["cleanup.policy"][0] == "compact,delete"
+                and configs["message.timestamp.type"][0] == "LogAppendTime"
+            )
+
+        wait_until(
+            wait_for_properties_to_sync,
+            timeout_sec=30,
+            backoff_sec=1,
+            err_msg="Timed out waiting for properties to sync",
+        )
+
+        # Verify that the replication factor did not change
+        topic_info = list(self.target_cluster_rpk.describe_topic(topic=topic_name))
+        assert len(topic_info[0].replicas) == 3, (
+            f"Expected replication factor to remain 3, got {len(topic_info[0].replicas)}"
+        )

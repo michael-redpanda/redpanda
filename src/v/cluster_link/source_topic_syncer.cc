@@ -334,15 +334,14 @@ void source_topic_syncer::enqueue_create_mirror_topic_commands(
             continue;
         }
 
-        commands.emplace_back(
-          model::add_mirror_topic_cmd{
-            .topic = it->first,
-            .metadata = model::mirror_topic_metadata{
-              .source_topic_name = it->first,
-              .partition_count = it->second.partition_count,
-              .replication_factor = it->second.rf,
-              .topic_configs = std::move(*configs),
-            }});
+        commands.emplace_back(model::add_mirror_topic_cmd{
+          .topic = it->first,
+          .metadata = model::mirror_topic_metadata{
+            .source_topic_name = it->first,
+            .partition_count = it->second.partition_count,
+            .replication_factor = it->second.rf,
+            .topic_configs = std::move(*configs),
+          }});
     }
 }
 
@@ -394,11 +393,10 @@ void source_topic_syncer::enqueue_update_mirror_topic_commands(
               logger().warn,
               "Topic {} has fewer partitions than expected, marking as failed",
               topic);
-            commands.emplace_back(
-              model::update_mirror_topic_state_cmd{
-                .topic = topic,
-                .state = model::mirror_topic_state::failed,
-              });
+            commands.emplace_back(model::update_mirror_topic_state_cmd{
+              .topic = topic,
+              .state = model::mirror_topic_state::failed,
+            });
             continue;
         }
 
@@ -415,14 +413,20 @@ void source_topic_syncer::enqueue_update_mirror_topic_commands(
             enqueue_command = true;
         }
 
+        auto update_rf = _config.topic_properties_to_mirror.contains(
+          ss::sstring{kafka::topic_property_replication_factor});
+
         // Detect if RF has changed
         if (mirror_topic_cache.replication_factor != metadata_cache.rf) {
             vlog(
               logger().trace,
-              "Topic {} has updated its RF: {} -> {}",
+              "Topic {} has updated its RF: {} -> {}{}",
               topic,
               mirror_topic_cache.replication_factor,
-              metadata_cache.rf);
+              metadata_cache.rf,
+              update_rf ? ""
+                        : " (not updating - replication.factor not in mirrored "
+                          "properties list)");
             enqueue_command = true;
         }
 
@@ -460,14 +464,15 @@ void source_topic_syncer::enqueue_update_mirror_topic_commands(
         // forthwith. Note that in any case the new value(s) have been validated
         // already.
         if (enqueue_command) {
-            commands.emplace_back(
-              model::update_mirror_topic_properties_cmd{
-                .topic = topic,
-                .partition_count = metadata_cache.partition_count,
-                .replication_factor = metadata_cache.rf,
-                .topic_configs = std::move(configs).value_or(
-                  copy_hash_map(mirror_topic_cache.topic_configs)),
-              });
+            commands.emplace_back(model::update_mirror_topic_properties_cmd{
+              .topic = topic,
+              .partition_count = metadata_cache.partition_count,
+              .replication_factor = update_rf
+                                      ? std::make_optional(metadata_cache.rf)
+                                      : std::nullopt,
+              .topic_configs = std::move(configs).value_or(
+                copy_hash_map(mirror_topic_cache.topic_configs)),
+            });
         }
     }
 }

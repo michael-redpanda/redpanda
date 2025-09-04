@@ -499,7 +499,8 @@ struct update_mirror_topic_properties_cmd
     /// Name of the topic
     ::model::topic topic;
     int32_t partition_count;
-    int16_t replication_factor;
+    // If unset, will not change replication factor
+    std::optional<int16_t> replication_factor;
     chunked_hash_map<ss::sstring, ss::sstring> topic_configs;
 
     friend bool operator==(
