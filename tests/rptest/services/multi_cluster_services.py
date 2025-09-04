@@ -16,7 +16,7 @@ from ducktape.utils.util import wait_until
 from rptest.clients.rpk import RpkTool, TopicSpec
 from rptest.services.admin import Admin
 from rptest.services.kafka import KafkaServiceAdapter
-from rptest.services.redpanda import RedpandaService
+from rptest.services.redpanda import RedpandaService, SchemaRegistryConfig
 
 from kafkatest.services.kafka import KafkaService
 
@@ -107,8 +107,8 @@ class RedpandaCluster(Cluster):
         super().__init__(service)
 
     @classmethod
-    def create(cls: Type[RC], test_ctx, num_brokers) -> RC:
-        return cls(RedpandaService(test_ctx, num_brokers=num_brokers))
+    def create(cls: Type[RC], test_ctx, num_brokers, *args, **kwargs) -> RC:
+        return cls(RedpandaService(test_ctx, num_brokers=num_brokers, *args, **kwargs))
 
     @property
     def is_redpanda(self) -> bool:
@@ -130,12 +130,21 @@ class MultiClusterServices:
         redpanda: RedpandaService,
         secondary_type: ServiceType = ServiceType.REDPANDA,
         num_brokers=3,
+        source_schema_registry_config: Optional[
+            SchemaRegistryConfig
+        ] = SchemaRegistryConfig(),
     ):
         self.test_ctx = test_ctx
         self.logger = logger
         self._clusters: list[Cluster] = [RedpandaCluster(redpanda)]
         if secondary_type is ServiceType.REDPANDA:
-            self._clusters.append(RedpandaCluster.create(self.test_ctx, num_brokers))
+            self._clusters.append(
+                RedpandaCluster.create(
+                    self.test_ctx,
+                    num_brokers,
+                    schema_registry_config=source_schema_registry_config,
+                )
+            )
         elif secondary_type is ServiceType.KAFKA:
             self._clusters.append(KafkaCluster.create(self.test_ctx, num_brokers))
         assert len(self._clusters) == 2, f"Expected two clusters, got {self._clusters=}"
