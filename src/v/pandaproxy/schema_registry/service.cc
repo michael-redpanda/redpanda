@@ -19,11 +19,11 @@
 #include "kafka/client/config_utils.h"
 #include "kafka/client/exceptions.h"
 #include "kafka/data/rpc/deps.h"
-#include "kafka/protocol/create_topics.h"
 #include "kafka/protocol/errors.h"
 #include "kafka/protocol/list_offset.h"
-#include "kafka/protocol/topic_properties.h"
+#include "kafka/server/handlers/topics/types.h"
 #include "model/fundamental.h"
+#include "model/namespace.h"
 #include "pandaproxy/api/api-doc/schema_registry.json.hh"
 #include "pandaproxy/logger.h"
 #include "pandaproxy/schema_registry/auth.h"
@@ -39,6 +39,7 @@
 #include "security/ephemeral_credential_store.h"
 #include "security/request_auth.h"
 #include "ssx/semaphore.h"
+#include "utils/tristate.h"
 
 #include <seastar/core/coroutine.hh>
 #include <seastar/core/future-util.hh>
@@ -476,63 +477,62 @@ ss::future<> service::do_inform(model::node_id id) {
 }
 
 ss::future<> service::create_internal_topic() {
+    auto topic_cfg = _topic_metadata_cache->find_topic_cfg(
+      {model::kafka_namespace, model::schema_registry_internal_tp.topic});
+    if (topic_cfg.has_value()) {
+        vlog(srlog.debug, "Schema registry: found internal topic");
+        co_return;
+    }
     // Use the default topic replica count, unless our specific setting
     // for the schema registry chooses to override it.
     int16_t replication_factor
       = _config.schema_registry_replication_factor().value_or(
         _controller->internal_topic_replication());
 
+    // Create the base topic configuration to get the cluster defaults
+    auto base_topic_config = kafka::to_topic_config(
+      model::kafka_namespace,
+      model::schema_registry_internal_tp.topic,
+      /*partition_count=*/1,
+      replication_factor,
+      {});
+    // Now update the properties
+    base_topic_config.properties.cleanup_policy_bitflags
+      = model::cleanup_policy_bitflags::compaction;
+    base_topic_config.properties.compression = model::compression::none;
+    base_topic_config.properties.retention_bytes = tristate<size_t>{
+      disable_tristate};
+    base_topic_config.properties.retention_duration
+      = tristate<std::chrono::milliseconds>{disable_tristate};
+    base_topic_config.properties.retention_local_target_bytes
+      = tristate<size_t>{disable_tristate};
+    base_topic_config.properties.retention_local_target_ms
+      = tristate<std::chrono::milliseconds>{disable_tristate};
+    base_topic_config.properties.initial_retention_local_target_bytes
+      = tristate<size_t>{disable_tristate};
+    base_topic_config.properties.initial_retention_local_target_ms
+      = tristate<std::chrono::milliseconds>{disable_tristate};
+
     vlog(
       srlog.debug,
-      "Schema registry: attempting to create internal topic (replication={})",
+      "Schema registry: attempting to create internal topic (replication={}, "
+      "properties={})",
+      replication_factor,
+      base_topic_config.properties);
+
+    auto res = co_await _topic_creator->create_topic(
+      {model::kafka_namespace, model::schema_registry_internal_tp.topic},
+      1,
+      std::move(base_topic_config.properties),
       replication_factor);
 
-    auto make_internal_topic = [replication_factor]() {
-        constexpr std::string_view retain_forever = "-1";
-        return kafka::creatable_topic{
-          .name{model::schema_registry_internal_tp.topic},
-          .num_partitions = 1,
-          .replication_factor = replication_factor,
-          .assignments{},
-          .configs{
-            {.name{ss::sstring{kafka::topic_property_cleanup_policy}},
-             .value{"compact"}},
-            {.name{ss::sstring{kafka::topic_property_compression}},
-             .value{ssx::sformat("{}", model::compression::none)}},
-            {.name{ss::sstring{kafka::topic_property_retention_bytes}},
-             .value{retain_forever}},
-            {.name{ss::sstring{kafka::topic_property_retention_duration}},
-             .value{retain_forever}},
-            {.name{
-               ss::sstring{kafka::topic_property_retention_local_target_bytes}},
-             .value{retain_forever}},
-            {.name{
-               ss::sstring{kafka::topic_property_retention_local_target_ms}},
-             .value{retain_forever}},
-            {.name{ss::sstring{
-               kafka::topic_property_initial_retention_local_target_bytes}},
-             .value{retain_forever}},
-            {.name{ss::sstring{
-               kafka::topic_property_initial_retention_local_target_ms}},
-             .value{retain_forever}}}};
-    };
-    auto res = co_await _client.local().create_topic(make_internal_topic());
-    if (res.data.topics.size() != 1) {
-        throw std::runtime_error("Unexpected topic count");
-    }
-
-    const auto& topic = res.data.topics[0];
-    if (topic.error_code == kafka::error_code::none) {
+    if (res == cluster::errc::success) {
         vlog(srlog.debug, "Schema registry: created internal topic");
-    } else if (topic.error_code == kafka::error_code::topic_already_exists) {
+    } else if (res == cluster::errc::topic_already_exists) {
         vlog(srlog.debug, "Schema registry: found internal topic");
-    } else if (topic.error_code == kafka::error_code::not_controller) {
-        vlog(srlog.debug, "Schema registry: not controller");
     } else {
-        throw kafka::exception(
-          topic.error_code,
-          topic.error_message.value_or(
-            kafka::make_error_code(topic.error_code).message()));
+        throw std::runtime_error(
+          fmt::format("Failed to create internal topic: {}", res));
     }
 
     // TODO(Ben): Validate the _schemas topic
@@ -565,8 +565,8 @@ ss::future<> service::fetch_internal_topic() {
       .consume(consume_to_store{_store, writer()}, model::no_timeout);
 
     // If a schema failed to be compiled, it will be marked. We attempt to
-    // reprocess them once now that the whole topic has been read,  in case they
-    // have a reference to a schema declared later in the topic.
+    // reprocess them once now that the whole topic has been read,  in case
+    // they have a reference to a schema declared later in the topic.
     co_await _store.process_marked_schemas();
 }
 
