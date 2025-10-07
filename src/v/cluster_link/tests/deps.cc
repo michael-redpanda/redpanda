@@ -265,6 +265,20 @@ void cluster_link_manager_test_fixture::set_topic_config(
     _tmc->set_topic_config(std::move(cfg));
 }
 
+void cluster_link_manager_test_fixture::set_partition_hwm(
+  ::model::topic_partition_view tp, kafka::offset hwm) {
+    auto cur_offsets = _tmc->get_partition_offsets(
+      ::model::ntp(::model::kafka_namespace, tp.topic, tp.partition));
+    if (!cur_offsets.has_value()) {
+        throw std::runtime_error("unknown ntp");
+    }
+    cur_offsets->high_watermark = kafka::offset_cast(hwm);
+    _tmc->set_partition_offsets(
+      ::model::ntp(::model::kafka_namespace, tp.topic, tp.partition),
+      cur_offsets.value());
+    _partition_metadata_provider->hwms[::model::topic_partition(tp)] = hwm;
+}
+
 void cluster_link_manager_test_fixture::setup_cluster_mock() {
     _cluster_mock.register_default_handlers();
     _cluster_mock.add_broker(

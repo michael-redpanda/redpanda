@@ -661,6 +661,10 @@ public:
         return *_tkrcs;
     }
 
+    void set_partition_hwm(::model::topic_partition_view tp, kafka::offset hwm);
+
+    fake_topic_metadata_cache& topic_metadata_cache() { return *_tmc; }
+
 private:
     void setup_cluster_mock();
 
