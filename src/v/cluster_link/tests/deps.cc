@@ -91,6 +91,11 @@ ss::future<> cluster_link_manager_test_fixture::wire_up_and_start(
           _partition_metadata_provider = provider.get();
           return provider;
       }),
+      ss::sharded_parameter([this]() {
+          auto rpc = std::make_unique<test_kafka_rpc_client_service>();
+          _tkrcs = rpc.get();
+          return rpc;
+      }),
       1s,
       _default_topic_replication.bind(),
       ss::default_scheduling_group());
@@ -265,4 +270,74 @@ test_partition_metadata_provider::get_partition_high_watermark(
     }
     co_return std::nullopt;
 };
+
+ss::future<result<kafka::data::rpc::delete_records_result_map, cluster::errc>>
+test_kafka_rpc_client_service::delete_records(
+  kafka::data::rpc::delete_records_cmd_map map) {
+    if (inserted_delete_records_error.has_value()) {
+        auto err = *inserted_delete_records_error;
+        inserted_delete_records_error.reset();
+        co_return err;
+    }
+    if (inserted_delete_records_response.has_value()) {
+        auto val = std::move(inserted_delete_records_response).value();
+        inserted_delete_records_response.reset();
+        co_return val;
+    }
+
+    kafka::data::rpc::delete_records_result_map results;
+    results.reserve(map.size());
+
+    for (const auto& [topic, cmds] : map) {
+        for (const auto& [pid, cmd] : cmds) {
+            auto& topic_results = results[topic];
+            auto& result = topic_results[pid];
+            result.err = kafka::error_code::none;
+            result.low_watermark = cmd.offset;
+        }
+    }
+
+    co_return results;
+}
+
+ss::future<result<kafka::data::rpc::partition_offsets_map, cluster::errc>>
+test_kafka_rpc_client_service::get_partition_offsets(
+  chunked_vector<kafka::data::rpc::topic_partitions> tps) {
+    if (inserted_get_partition_offsets_error.has_value()) {
+        auto err = *inserted_get_partition_offsets_error;
+        inserted_get_partition_offsets_error.reset();
+        co_return err;
+    }
+    if (inserted_get_partition_offsets_response.has_value()) {
+        auto val = std::move(inserted_get_partition_offsets_response).value();
+        inserted_get_partition_offsets_response.reset();
+        co_return val;
+    }
+
+    kafka::data::rpc::partition_offsets_map results;
+    results.reserve(tps.size());
+
+    for (const auto& tp : tps) {
+        auto& topic_results = results[tp.topic];
+        topic_results.reserve(tp.partitions.size());
+        for (const auto& pid : tp.partitions) {
+            auto offsets = _ftmc->get_partition_offsets(
+              ::model::ntp(::model::kafka_namespace, tp.topic, pid));
+            if (!offsets.has_value()) {
+                topic_results[pid].err = cluster::errc::partition_not_exists;
+                continue;
+            }
+            topic_results[pid].err = cluster::errc::success;
+            topic_results[pid].offsets = kafka::data::rpc::partition_offsets{
+              .high_watermark = ::model::offset_cast(offsets->high_watermark),
+              .last_stable_offset = kafka::offset{-1},
+              .log_start_offset = ::model::offset_cast(
+                offsets->log_start_offset),
+            };
+        }
+    }
+
+    co_return results;
+}
+
 } // namespace cluster_link::tests
