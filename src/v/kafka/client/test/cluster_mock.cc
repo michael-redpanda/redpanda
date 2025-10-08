@@ -195,6 +195,12 @@ void cluster_mock::register_default_handlers() {
       [this](model::node_id id, request_t req, api_version version) {
           return handle_describe_acls_request(id, std::move(req), version);
       });
+
+    register_handler(
+      list_offsets_api::key,
+      [this](model::node_id id, request_t req, api_version version) {
+          return handle_list_offsets_request(id, std::move(req), version);
+      });
 }
 
 void cluster_mock::register_handler(api_key key, mock_handler handler) {
@@ -362,6 +368,54 @@ ss::future<response_t> cluster_mock::handle_describe_acls_request(
             entry.first,
             std::move(entry.second),
             describe_req.data.describe_registry_acls));
+    }
+
+    co_return response;
+}
+
+ss::future<response_t> cluster_mock::handle_list_offsets_request(
+  model::node_id, request_t req, api_version) {
+    auto list_offset_req = std::get<list_offsets_request>(std::move(req));
+
+    kafka::list_offsets_response response;
+
+    for (const auto& topic_req : list_offset_req.data.topics) {
+        kafka::list_offset_topic_response topic_resp;
+        topic_resp.name = topic_req.name;
+
+        auto topic_it = _topics.find(topic_req.name);
+        for (const auto& part_req : topic_req.partitions) {
+            kafka::list_offset_partition_response part_resp;
+            part_resp.partition_index = part_req.partition_index;
+            if (topic_it == _topics.end()) {
+                part_resp.error_code = error_code::unknown_topic_or_partition;
+                continue;
+            }
+            const auto& partitions = topic_it->second.partitions;
+            auto part_it = partitions.find(part_req.partition_index);
+            if (part_it == partitions.end()) {
+                part_resp.error_code = error_code::unknown_topic_or_partition;
+                continue;
+            }
+            const auto& part_meta = part_it->second;
+
+            if (
+              part_req.timestamp == list_offsets_request::earliest_timestamp) {
+                part_resp.offset = part_meta.start_offset;
+            } else if (
+              part_req.timestamp == list_offsets_request::latest_timestamp) {
+                if (list_offset_req.data.isolation_level == 1) {
+                    part_resp.offset = part_meta.last_stable_offset;
+                } else {
+                    part_resp.offset = part_meta.high_watermark;
+                }
+            }
+
+            part_resp.error_code = error_code::none;
+            part_resp.leader_epoch = part_meta.leader_epoch;
+            topic_resp.partitions.emplace_back(std::move(part_resp));
+        }
+        response.data.topics.emplace_back(std::move(topic_resp));
     }
 
     co_return response;
@@ -567,6 +621,33 @@ void cluster_mock::set_topic_properties(
     topics_it->second.topic_properties = std::move(properties);
 }
 
+void cluster_mock::set_partition_offsets(
+  model::topic_partition_view tp,
+  std::optional<model::offset> hwm,
+  std::optional<model::offset> lso,
+  std::optional<model::offset> start_offset) {
+    auto topics_it = _topics.find(tp.topic);
+    if (topics_it == _topics.end()) {
+        throw std::invalid_argument(
+          fmt::format("Topic {} does not exist", tp.topic));
+    }
+    auto part_it = topics_it->second.partitions.find(tp.partition);
+    if (part_it == topics_it->second.partitions.end()) {
+        throw std::invalid_argument(
+          fmt::format(
+            "Partition {} does not exist in topic {}", tp.partition, tp.topic));
+    }
+    if (hwm) {
+        part_it->second.high_watermark = *hwm;
+    }
+    if (lso) {
+        part_it->second.last_stable_offset = *lso;
+    }
+    if (start_offset) {
+        part_it->second.start_offset = *start_offset;
+    }
+}
+
 cluster_mock::cluster_mock()
   : _logger(kclog, "cluster-mock") {
     default_supported_versions[metadata_api::key] = {
@@ -580,5 +661,8 @@ cluster_mock::cluster_mock()
       .max = kafka::describe_configs_api::max_valid};
     default_supported_versions[describe_acls_api::key] = {
       .min = api_version{0}, .max = api_version{2}};
+    default_supported_versions[list_offsets_api::key] = {
+      .min = kafka::list_offsets_api::min_valid,
+      .max = kafka::list_offsets_api::max_valid};
 }
 } // namespace kafka::client

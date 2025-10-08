@@ -75,6 +75,7 @@ struct partition_metadata {
     kafka::leader_epoch leader_epoch = kafka::invalid_leader_epoch;
     model::offset start_offset = model::offset(0);
     model::offset high_watermark = model::offset(0);
+    model::offset last_stable_offset = model::offset(0);
 };
 
 struct topic_metadata {
@@ -115,6 +116,9 @@ public:
     ss::future<response_t> handle_describe_acls_request(
       model::node_id node_id, request_t req, api_version version);
 
+    ss::future<response_t> handle_list_offsets_request(
+      model::node_id node_id, request_t req, api_version version);
+
     void set_supported_versions(
       model::node_id id, api_key key, api_version_range range) {
         _broker_api_versions[id].insert_or_assign(key, range);
@@ -134,6 +138,11 @@ public:
     void set_topic_replication_factor(model::topic_view topic_name, int16_t rf);
     void set_topic_properties(
       model::topic_view topic_name, ::cluster::topic_properties properties);
+    void set_partition_offsets(
+      model::topic_partition_view tp,
+      std::optional<model::offset> hwm,
+      std::optional<model::offset> lso,
+      std::optional<model::offset> start_offset);
 
     std::vector<model::node_id> get_broker_ids() const {
         return std::ranges::views::keys(_brokers)
