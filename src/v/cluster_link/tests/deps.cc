@@ -14,6 +14,8 @@
 #include "cluster/types.h"
 #include "cluster_link/types.h"
 
+#include <stdexcept>
+
 using namespace std::chrono_literals;
 
 using kafka::data::rpc::test::fake_topic_creator;
@@ -29,6 +31,9 @@ ss::future<> cluster_link_manager_test_fixture::wire_up_and_start(
     setup_cluster_mock();
     co_await _table.start_single();
     _cluster_factory = std::make_unique<cluster_mock_factory>(&_cluster_mock);
+
+    auto tmc = std::make_unique<fake_topic_metadata_cache>();
+    _tmc = tmc.get();
 
     _fpmp = std::make_unique<fake_partition_manager_proxy>();
     auto fplc = std::make_unique<fake_partition_leader_cache_impl>();
@@ -63,11 +68,7 @@ ss::future<> cluster_link_manager_test_fixture::wire_up_and_start(
           _fpm = fpm.get();
           return fpm;
       }),
-      ss::sharded_parameter([this]() {
-          auto tmc = std::make_unique<fake_topic_metadata_cache>();
-          _tmc = tmc.get();
-          return tmc;
-      }),
+      ss::sharded_parameter([&tmc]() { return std::move(tmc); }),
       ss::sharded_parameter([&ftpc]() { return std::move(ftpc); }),
       ss::sharded_parameter([this]() {
           auto fss = std::make_unique<fake_security_service>();
@@ -92,7 +93,7 @@ ss::future<> cluster_link_manager_test_fixture::wire_up_and_start(
           return provider;
       }),
       ss::sharded_parameter([this]() {
-          auto rpc = std::make_unique<test_kafka_rpc_client_service>();
+          auto rpc = std::make_unique<test_kafka_rpc_client_service>(_tmc);
           _tkrcs = rpc.get();
           return rpc;
       }),
@@ -230,6 +231,20 @@ void cluster_link_manager_test_fixture::set_topic_config(
     _tmc->set_topic_config(std::move(cfg));
 }
 
+void cluster_link_manager_test_fixture::set_partition_hwm(
+  const ::model::topic_partition_view& tp, kafka::offset hwm) {
+    auto cur_offsets = _tmc->get_partition_offsets(
+      ::model::ntp(::model::kafka_namespace, tp.topic, tp.partition));
+    if (!cur_offsets.has_value()) {
+        throw std::runtime_error("unknown partition");
+    }
+    cur_offsets->high_watermark = kafka::offset_cast(hwm);
+    _tmc->set_partition_offsets(
+      ::model::ntp(::model::kafka_namespace, tp.topic, tp.partition),
+      cur_offsets.value());
+    _partition_metadata_provider->hwms[::model::topic_partition(tp)] = hwm;
+}
+
 void cluster_link_manager_test_fixture::setup_cluster_mock() {
     _cluster_mock.register_default_handlers();
     _cluster_mock.add_broker(
@@ -292,6 +307,26 @@ test_kafka_rpc_client_service::delete_records(
         for (const auto& [pid, cmd] : cmds) {
             auto& topic_results = results[topic];
             auto& result = topic_results[pid];
+            auto offsets = _ftmc->get_partition_offsets(
+              ::model::ntp(::model::kafka_namespace, topic, pid));
+            if (!offsets.has_value()) {
+                result.err = kafka::error_code::unknown_topic_or_partition;
+                continue;
+            }
+            if (kafka::offset_cast(cmd.offset) > offsets->high_watermark) {
+                result.err = kafka::error_code::offset_out_of_range;
+                continue;
+            }
+            if (kafka::offset_cast(cmd.offset) <= offsets->log_start_offset) {
+                // nothing to do here
+                result.err = kafka::error_code::none;
+                continue;
+            }
+
+            offsets->log_start_offset = kafka::offset_cast(cmd.offset);
+            _ftmc->set_partition_offsets(
+              ::model::ntp(::model::kafka_namespace, topic, pid),
+              offsets.value());
             result.err = kafka::error_code::none;
             result.low_watermark = cmd.offset;
         }

@@ -19,6 +19,7 @@
 #include "config/mock_property.h"
 #include "kafka/client/test/cluster_mock.h"
 #include "kafka/data/rpc/deps.h"
+#include "kafka/data/rpc/serde.h"
 #include "kafka/data/rpc/test/deps.h"
 #include "security/acl_entry_set.h"
 
@@ -418,6 +419,10 @@ private:
 class fake_topic_metadata_cache
   : public kafka::data::rpc::topic_metadata_cache {
 public:
+    struct partition_offsets {
+        ::model::offset log_start_offset{0};
+        ::model::offset high_watermark{0};
+    };
     std::optional<cluster::topic_configuration>
     find_topic_cfg(::model::topic_namespace_view tp_ns) const final {
         auto it = _topic_cfgs.find(::model::topic_namespace(tp_ns));
@@ -429,7 +434,17 @@ public:
 
     void set_topic_config(cluster::topic_configuration cfg) {
         auto tp_ns = cfg.tp_ns;
+        auto part_count = cfg.partition_count;
         _topic_cfgs.insert_or_assign(tp_ns, std::move(cfg));
+        for (auto i = 0; i < part_count; i++) {
+            auto it = _partition_offsets.find(
+              ::model::ntp(tp_ns.ns, tp_ns.tp, ::model::partition_id(i)));
+            if (it == _partition_offsets.end()) {
+                _partition_offsets.emplace(
+                  ::model::ntp(tp_ns.ns, tp_ns.tp, ::model::partition_id(i)),
+                  partition_offsets{});
+            }
+        }
     }
 
     void update_topic_config(const cluster::topic_properties_update& update) {
@@ -475,13 +490,41 @@ public:
             throw std::runtime_error(ss::format("unknown topic: {}", tp_ns));
         }
         it->second.partition_count = count;
+        for (auto i = 0; i < count; i++) {
+            auto it = _partition_offsets.find(
+              ::model::ntp(tp_ns.ns, tp_ns.tp, ::model::partition_id(i)));
+            if (it == _partition_offsets.end()) {
+                _partition_offsets.emplace(
+                  ::model::ntp(tp_ns.ns, tp_ns.tp, ::model::partition_id(i)),
+                  partition_offsets{});
+            }
+        }
     }
 
     uint32_t get_default_batch_max_bytes() const final { return 1_MiB; };
 
+    std::optional<partition_offsets>
+    get_partition_offsets(const ::model::ntp& ntp) const {
+        auto it = _partition_offsets.find(ntp);
+        if (it == _partition_offsets.end()) {
+            return std::nullopt;
+        }
+        return it->second;
+    }
+
+    void
+    set_partition_offsets(const ::model::ntp& ntp, partition_offsets offsets) {
+        auto it = _partition_offsets.find(ntp);
+        if (it == _partition_offsets.end()) {
+            throw std::runtime_error("unknown ntp");
+        }
+        it->second = std::move(offsets);
+    }
+
 private:
     absl::flat_hash_map<::model::topic_namespace, cluster::topic_configuration>
       _topic_cfgs;
+    chunked_hash_map<::model::ntp, partition_offsets> _partition_offsets;
 };
 
 struct test_consumer_group_router : public consumer_groups_router {
@@ -513,6 +556,8 @@ struct test_partition_metadata_provider : public partition_metadata_provider {
 };
 
 struct test_kafka_rpc_client_service : public kafka_rpc_client_service {
+    explicit test_kafka_rpc_client_service(fake_topic_metadata_cache* ftmc)
+      : _ftmc(ftmc) {}
     ss::future<
       result<kafka::data::rpc::delete_records_result_map, cluster::errc>>
       delete_records(kafka::data::rpc::delete_records_cmd_map) final;
@@ -520,7 +565,18 @@ struct test_kafka_rpc_client_service : public kafka_rpc_client_service {
     std::optional<kafka::data::rpc::delete_records_result_map>
       inserted_delete_records_response;
 
-    std::optional<cluster::errc> inserted_error;
+    std::optional<cluster::errc> inserted_delete_records_error;
+
+    ss::future<result<kafka::data::rpc::partition_offsets_map, cluster::errc>>
+      get_partition_offsets(
+        chunked_vector<kafka::data::rpc::topic_partitions>) final;
+
+    std::optional<kafka::data::rpc::partition_offsets_map>
+      inserted_get_partition_offsets_response;
+    std::optional<cluster::errc> inserted_get_partition_offsets_error;
+
+private:
+    fake_topic_metadata_cache* _ftmc;
 };
 
 class fake_security_service : public security_service {
@@ -632,6 +688,11 @@ public:
     test_kafka_rpc_client_service& kafka_rpc_client_service() {
         return *_tkrcs;
     }
+
+    void set_partition_hwm(
+      const ::model::topic_partition_view& tp, kafka::offset hwm);
+
+    fake_topic_metadata_cache& topic_metadata_cache() { return *_tmc; }
 
 private:
     void setup_cluster_mock();
