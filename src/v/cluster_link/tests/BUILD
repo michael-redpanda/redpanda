@@ -164,3 +164,18 @@ redpanda_cc_gtest(
         "@googletest//:gtest",
     ],
 )
+
+redpanda_cc_gtest(
+    name = "prefix_trimmer_test",
+    timeout = "short",
+    srcs = [
+        "prefix_trimmer_test.cc",
+    ],
+    deps = [
+        ":test_deps",
+        "//src/v/cluster_link:prefix_trimmer",
+        "//src/v/cluster_link:source_topic_syncer",
+        "//src/v/test_utils:gtest",
+        "@googletest//:gtest",
+    ],
+)
