@@ -554,8 +554,11 @@ class TopicMetadataSyncOptions(google.protobuf.message.Message):
     AUTO_CREATE_SHADOW_TOPIC_FILTERS_FIELD_NUMBER: builtins.int
     SYNCED_SHADOW_TOPIC_PROPERTIES_FIELD_NUMBER: builtins.int
     EXCLUDE_DEFAULT_FIELD_NUMBER: builtins.int
+    SELECT_SCHEMA_REGISTRY_FOR_SHADOWING_FIELD_NUMBER: builtins.int
     exclude_default: builtins.bool
     'If false, then the following topic properties will be synced by default:\n    - `compression.type`\n    - `retention.bytes`\n    - `retention.ms`\n    - `delete.retention.ms`\n    - Replication Factor\n    - `min.compaction.lag.ms`\n    - `max.compaction.lag.ms`\n\n    If this is true, then only the properties listed in\n    `synced_shadow_topic_properties` will be synced.\n    '
+    select_schema_registry_for_shadowing: builtins.bool
+    'If set, the `Source Topic Syncer` task will attempt to add the `_schemas`\n    topic to the list of Shadow Topics as long as:\n    1. The `_schemas` topic exists on the source cluster\n    2. The `_schemas` topic does not exist on the shadow cluster, or it is\n    empty. Unsetting this flag will _not_ remove the `_schemas` topic from\n    shadowing if it has already been added.  Once made a shadow topic, the\n    `_schemas` topic will be replicated byte-for-byte.  To stop shadowing the\n    `_schemas` topic, unset this field, then either fail-over the topic or\n    delete it.\n    '
 
     @property
     def interval(self) -> google.protobuf.duration_pb2.Duration:
@@ -600,13 +603,13 @@ class TopicMetadataSyncOptions(google.protobuf.message.Message):
         that will be synced.  See `exclude_default`.
         """
 
-    def __init__(self, *, interval: google.protobuf.duration_pb2.Duration | None=..., auto_create_shadow_topic_filters: collections.abc.Iterable[global___NameFilter] | None=..., synced_shadow_topic_properties: collections.abc.Iterable[builtins.str] | None=..., exclude_default: builtins.bool=...) -> None:
+    def __init__(self, *, interval: google.protobuf.duration_pb2.Duration | None=..., auto_create_shadow_topic_filters: collections.abc.Iterable[global___NameFilter] | None=..., synced_shadow_topic_properties: collections.abc.Iterable[builtins.str] | None=..., exclude_default: builtins.bool=..., select_schema_registry_for_shadowing: builtins.bool=...) -> None:
         ...
 
     def HasField(self, field_name: typing.Literal['interval', b'interval']) -> builtins.bool:
         ...
 
-    def ClearField(self, field_name: typing.Literal['auto_create_shadow_topic_filters', b'auto_create_shadow_topic_filters', 'exclude_default', b'exclude_default', 'interval', b'interval', 'synced_shadow_topic_properties', b'synced_shadow_topic_properties']) -> None:
+    def ClearField(self, field_name: typing.Literal['auto_create_shadow_topic_filters', b'auto_create_shadow_topic_filters', 'exclude_default', b'exclude_default', 'interval', b'interval', 'select_schema_registry_for_shadowing', b'select_schema_registry_for_shadowing', 'synced_shadow_topic_properties', b'synced_shadow_topic_properties']) -> None:
         ...
 global___TopicMetadataSyncOptions = TopicMetadataSyncOptions
 

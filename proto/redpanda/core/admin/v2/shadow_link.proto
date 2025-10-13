@@ -260,6 +260,16 @@ message TopicMetadataSyncOptions {
     // If this is true, then only the properties listed in
     // `synced_shadow_topic_properties` will be synced.
     bool exclude_default = 4;
+    // If set, the `Source Topic Syncer` task will attempt to add the `_schemas`
+    // topic to the list of Shadow Topics as long as:
+    // 1. The `_schemas` topic exists on the source cluster
+    // 2. The `_schemas` topic does not exist on the shadow cluster, or it is
+    // empty. Unsetting this flag will _not_ remove the `_schemas` topic from
+    // shadowing if it has already been added.  Once made a shadow topic, the
+    // `_schemas` topic will be replicated byte-for-byte.  To stop shadowing the
+    // `_schemas` topic, unset this field, then either fail-over the topic or
+    // delete it.
+    bool select_schema_registry_for_shadowing = 5;
 }
 // Options for syncing consumer offsets
 message ConsumerOffsetSyncOptions {
