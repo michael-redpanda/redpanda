@@ -170,6 +170,7 @@ topic_metadata_mirroring_config topic_metadata_mirroring_config::copy() const {
     }
     copy.topic_properties_to_mirror = topic_properties_to_mirror;
     copy.exclude_default = exclude_default;
+    copy.mirror_schema_registry_topic = mirror_schema_registry_topic;
 
     return copy;
 }
@@ -451,12 +452,14 @@ auto fmt::formatter<cluster_link::model::topic_metadata_mirroring_config>::
     return fmt::format_to(
       ctx.out(),
       "{{is_enabled: {}, task_interval: {}, filters: {}, "
-      "topic_properties_to_mirror: {}, exclude_default: {}}}",
+      "topic_properties_to_mirror: {}, exclude_default: {}, "
+      "mirror_schema_registry_topic: {}}}",
       m.is_enabled,
       m.task_interval,
       m.topic_name_filters,
       m.topic_properties_to_mirror,
-      m.exclude_default);
+      m.exclude_default,
+      m.mirror_schema_registry_topic);
 }
 
 auto fmt::formatter<cluster_link::model::consumer_groups_mirroring_config>::

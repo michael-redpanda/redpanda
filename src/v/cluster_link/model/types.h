@@ -421,6 +421,8 @@ struct topic_metadata_mirroring_config
       topic_metadata_mirroring_config,
       serde::version<0>,
       serde::compat_version<0>> {
+    using mirror_schemas_topic_t
+      = ss::bool_class<struct mirror_schemas_topic_tag>;
     /// Flag to indicate if the task is enabled or not
     enabled_t is_enabled{enabled_t::yes};
     /// Interval for the topic creation task
@@ -439,6 +441,8 @@ struct topic_metadata_mirroring_config
 
     properties_set get_topic_properties_to_mirror() const;
 
+    mirror_schemas_topic_t mirror_schema_registry_topic;
+
     ss::lowres_clock::duration get_task_interval() const {
         return task_interval.value_or(task_interval_default);
     }
@@ -454,7 +458,8 @@ struct topic_metadata_mirroring_config
           task_interval,
           topic_name_filters,
           topic_properties_to_mirror,
-          exclude_default);
+          exclude_default,
+          mirror_schema_registry_topic);
     }
 
     topic_metadata_mirroring_config copy() const;
