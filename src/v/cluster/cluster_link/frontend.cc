@@ -19,6 +19,7 @@
 #include "cluster_link/model/filter_utils.h"
 #include "cluster_link/model/types.h"
 #include "config/configuration.h"
+#include "model/namespace.h"
 #include "model/validation.h"
 #include "rpc/connection_cache.h"
 #include "ssx/when_all.h"
@@ -1007,7 +1008,8 @@ errc frontend::validator::validate_metadata_mirroring_config(
           // topic
           if (
             p.pattern == ::model::kafka_consumer_offsets_topic()
-            || p.pattern == ::model::kafka_audit_logging_topic()) {
+            || p.pattern == ::model::kafka_audit_logging_topic()
+            || p.pattern == ::model::schema_registry_internal_tp.topic()) {
               vlog(
                 cluster::clusterlog.info,
                 "Filter pattern filtering on invalid topic name: {}",
