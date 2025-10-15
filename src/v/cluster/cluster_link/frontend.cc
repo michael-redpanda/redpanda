@@ -84,6 +84,7 @@ frontend::frontend(
   cluster::controller_stm* controller,
   rpc::connection_cache* connections,
   features::feature_table* features,
+  health_monitor_frontend* hm_frontend,
   ss::abort_source* as)
   : _self(self)
   , _leaders(leaders)
@@ -91,7 +92,8 @@ frontend::frontend(
   , _table(table)
   , _as(as)
   , _controller(controller)
-  , _features(features) {}
+  , _features(features)
+  , _hm_frontend(hm_frontend) {}
 
 ss::future<errc> frontend::upsert_cluster_link(
   ::cluster_link::model::metadata meta,
@@ -503,12 +505,22 @@ ss::future<errc> frontend::dispatch_mutation_to_remote(
 ss::future<errc> frontend::do_local_mutation(
   cluster_link_cmd cmd, model::timeout_clock::time_point timeout) {
     auto u = co_await _mu.get_units();
+    auto offset = co_await _hm_frontend->get_partition_high_watermark(
+      {model::kafka_namespace, model::schema_registry_internal_tp.topic},
+      model::schema_registry_internal_tp.partition);
+    if (!offset.has_value()) {
+        vlog(
+          clusterlog.warn,
+          "Unable to get high watermark for _schemas topic, cannot proceed "
+          "with cluster link mutation");
+        co_return errc::rpc_error;
+    }
     auto result = co_await _controller->insert_linearizable_barrier(timeout);
     if (!result) {
         co_return errc::not_leader_controller;
     }
     auto [_, term] = result.value();
-    auto ec = validate_mutation(cmd);
+    auto ec = validate_mutation(cmd, offset.assume_value());
     if (ec != errc::success) {
         co_return ec;
     }
@@ -530,7 +542,8 @@ ss::future<errc> frontend::do_local_mutation(
     co_return map_errc(err_code);
 }
 
-errc frontend::validate_mutation(const cluster_link_cmd& cmd) const {
+errc frontend::validate_mutation(
+  const cluster_link_cmd& cmd, std::optional<kafka::offset> sr_offset) const {
     // Initially for DR, we will only support a single cluster link at a time.
     static constexpr size_t max_links = 1;
     if (!cluster_linking_enabled()) {
@@ -542,7 +555,7 @@ errc frontend::validate_mutation(const cluster_link_cmd& cmd) const {
       absl::flat_hash_set<std::string_view>(
         ::cluster_link::model::disallowed_topic_properties.begin(),
         ::cluster_link::model::disallowed_topic_properties.end())};
-    return v.validate_mutation(cmd);
+    return v.validate_mutation(cmd, sr_offset);
 }
 
 bool frontend::is_sanctioned() { return _features->should_sanction(); }
@@ -555,10 +568,11 @@ frontend::validator::validator(
   , _max_links(max_links)
   , _excluded_topic_properties(std::move(excluded_topic_properties)) {}
 
-errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
+errc frontend::validator::validate_mutation(
+  const cluster_link_cmd& cmd, std::optional<kafka::offset> sr_offset) const {
     return ss::visit(
       cmd,
-      [this](const cluster::cluster_link_upsert_cmd& cmd) {
+      [this, sr_offset](const cluster::cluster_link_upsert_cmd& cmd) {
           auto existing = _table->find_link_by_name(cmd.value.name);
           if (existing.has_value()) {
               // upsert
@@ -580,8 +594,21 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
                   return ec;
               }
 
-              return validate_metadata_mirroring_config(
+              ec = validate_metadata_mirroring_config(
                 cmd.value.configuration.topic_metadata_mirroring_cfg);
+              if (ec != errc::success) {
+                  return ec;
+              }
+
+              ec = validate_set_mirror_schemas_topic(
+                cmd.value.configuration.topic_metadata_mirroring_cfg,
+                existing->get(),
+                sr_offset);
+              if (ec != errc::success) {
+                  return ec;
+              }
+
+              return errc::success;
           }
           // New item!
           if (cmd.value.name().empty()) {
@@ -634,8 +661,24 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
               return ec;
           }
 
-          return validate_metadata_mirroring_config(
+          ec = validate_metadata_mirroring_config(
             cmd.value.configuration.topic_metadata_mirroring_cfg);
+          if (ec != errc::success) {
+              return ec;
+          }
+
+          if (
+            cmd.value.configuration.topic_metadata_mirroring_cfg
+              .mirror_schema_registry_topic
+            && sr_offset.value_or(kafka::offset(0)) > kafka::offset(0)) {
+              vlog(
+                cluster::clusterlog.warn,
+                "Attempting to create a cluster link with schema mirroring "
+                "enabled, due to data being present on _schemas topic");
+              return errc::unable_to_mirror_schemas_topic;
+          }
+
+          return errc::success;
       },
       [this](const cluster::cluster_link_remove_cmd& cmd) {
           auto meta = _table->find_link_by_name(cmd.value.link_name);
@@ -673,7 +716,7 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
             cmd.key);
           return errc::link_has_active_shadow_topics;
       },
-      [this](const cluster::cluster_link_add_mirror_topic_cmd& cmd) {
+      [this, sr_offset](const cluster::cluster_link_add_mirror_topic_cmd& cmd) {
           auto ec = model::validate_kafka_topic_name(cmd.value.topic);
           if (ec) {
               vlog(cluster::clusterlog.warn, "Invalid topic name: {}", ec);
@@ -743,6 +786,27 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
                 "Invalid replication factor: {}",
                 cmd.value.metadata.replication_factor);
               return errc::invalid_update;
+          }
+          if (cmd.value.topic == model::schema_registry_internal_tp.topic) {
+              if (!meta->get()
+                     .configuration.topic_metadata_mirroring_cfg
+                     .mirror_schema_registry_topic) {
+                  vlog(
+                    cluster::clusterlog.warn,
+                    "Attempting to add mirror topic {} without schema "
+                    "mirroring being enabled on link {}",
+                    cmd.value.topic,
+                    meta->get().name);
+                  return errc::mirror_schemas_topic_not_enabled;
+              }
+              if (sr_offset.value_or(kafka::offset(0)) > kafka::offset(0)) {
+                  vlog(
+                    cluster::clusterlog.warn,
+                    "Attempting to add mirror topic {} with schema mirroring "
+                    "enabled, due to data being present on _schemas topic",
+                    cmd.value.topic);
+                  return errc::unable_to_mirror_schemas_topic;
+              }
           }
           return errc::success;
       },
@@ -893,10 +957,11 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
 
           return errc::success;
       },
-      [this](
+      [this, sr_offset](
         const cluster::cluster_link_update_cluster_link_configuration_cmd&
           cmd) {
-          if (!_table->find_link_by_id(cmd.key).has_value()) {
+          auto meta = _table->find_link_by_id(cmd.key);
+          if (!meta.has_value()) {
               vlog(
                 cluster::clusterlog.warn,
                 "Attempting to update a non-existant link id {}",
@@ -911,6 +976,14 @@ errc frontend::validator::validate_mutation(const cluster_link_cmd& cmd) const {
 
           ec = validate_metadata_mirroring_config(
             cmd.value.link_config.topic_metadata_mirroring_cfg);
+          if (ec != errc::success) {
+              return ec;
+          }
+
+          ec = validate_set_mirror_schemas_topic(
+            cmd.value.link_config.topic_metadata_mirroring_cfg,
+            meta->get(),
+            sr_offset);
           if (ec != errc::success) {
               return ec;
           }
@@ -1069,6 +1142,35 @@ errc frontend::validator::validate_metadata_mirroring_config(
         }
     }
 
+    return errc::success;
+}
+
+cluster::cluster_link::errc
+frontend::validator::validate_set_mirror_schemas_topic(
+  const ::cluster_link::model::topic_metadata_mirroring_config& config,
+  const ::cluster_link::model::metadata& existing,
+  std::optional<kafka::offset> sr_offset) const {
+    if (!config.mirror_schema_registry_topic) {
+        // No-op if we are not enabling schema mirroring
+        return errc::success;
+    }
+    if (existing.state.mirror_topics.contains(
+          model::schema_registry_internal_tp.topic)) {
+        // No-op if the topic is already being mirrored
+        return errc::success;
+    }
+    if (existing.configuration.topic_metadata_mirroring_cfg
+          .mirror_schema_registry_topic) {
+        // No-op if schema mirroring is already enabled
+        return errc::success;
+    }
+    if (sr_offset.value_or(kafka::offset(0)) > kafka::offset(0)) {
+        vlog(
+          cluster::clusterlog.warn,
+          "Attempting to enable schema mirroring with data being present on "
+          "_schemas topic");
+        return errc::unable_to_mirror_schemas_topic;
+    }
     return errc::success;
 }
 

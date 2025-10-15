@@ -50,10 +50,12 @@ metadata create_base_metadata(
 class frontend_validation_test : public seastar_test {
 public:
     ss::sharded<table> _table;
+    std::optional<kafka::offset> _sr_offset{std::nullopt};
 
     std::unique_ptr<frontend::validator> _validator{nullptr};
 
     ss::future<> SetUpAsync() override {
+        _sr_offset = std::nullopt;
         co_await _table.start();
         _validator = std::make_unique<frontend::validator>(
           &_table.local(),
@@ -69,7 +71,7 @@ public:
 
     ss::future<cluster::cluster_link::errc> upsert_cluster_link(metadata m) {
         cluster::cluster_link_upsert_cmd cmd{0, m.copy()};
-        auto ec = _validator->validate_mutation(std::move(cmd));
+        auto ec = _validator->validate_mutation(std::move(cmd), _sr_offset);
         if (ec == cluster::cluster_link::errc::success) {
             auto existing = _table.local().find_id_by_name(m.name);
             auto id = existing.value_or(++_latest_id);
@@ -86,7 +88,7 @@ public:
     delete_cluster_link(name_t m, bool force) {
         cluster::cluster_link_remove_cmd cmd{
           0, {.link_name = std::move(m), .force = force}};
-        auto ec = _validator->validate_mutation(cmd);
+        auto ec = _validator->validate_mutation(cmd, _sr_offset);
         if (ec == cluster::cluster_link::errc::success) {
             auto err = co_await _table.local().apply_update(
               testing::create_remove_command(
@@ -99,7 +101,7 @@ public:
     ss::future<cluster::cluster_link::errc>
     add_mirror_topic(id_t id, add_mirror_topic_cmd cmd) {
         cluster::cluster_link_add_mirror_topic_cmd add_cmd{id, cmd.copy()};
-        auto ec = _validator->validate_mutation(std::move(add_cmd));
+        auto ec = _validator->validate_mutation(std::move(add_cmd), _sr_offset);
         if (ec == errc::success) {
             auto err = co_await _table.local().apply_update(
               testing::create_add_mirror_topic_command(id, std::move(cmd)));
@@ -111,7 +113,7 @@ public:
     ss::future<cluster::cluster_link::errc>
     delete_mirror_topic(id_t id, delete_mirror_topic_cmd cmd) {
         cluster::cluster_link_delete_mirror_topic_cmd del_cmd{id, cmd};
-        auto ec = _validator->validate_mutation(std::move(del_cmd));
+        auto ec = _validator->validate_mutation(std::move(del_cmd), _sr_offset);
         if (ec == errc::success) {
             auto err = co_await _table.local().apply_update(
               testing::create_delete_mirror_topic_command(id, std::move(cmd)));
@@ -124,7 +126,7 @@ public:
     update_mirror_topic_status(id_t id, update_mirror_topic_status_cmd cmd) {
         cluster::cluster_link_update_mirror_topic_status_cmd update_cmd{
           id, std::move(cmd)};
-        auto ec = _validator->validate_mutation(update_cmd);
+        auto ec = _validator->validate_mutation(update_cmd, _sr_offset);
         if (ec == errc::success) {
             auto err = co_await _table.local().apply_update(
               testing::create_update_mirror_topic_status_command(
@@ -139,7 +141,8 @@ public:
       id_t id, update_mirror_topic_properties_cmd cmd) {
         cluster::cluster_link_update_mirror_topic_properties_cmd update_cmd{
           id, cmd.copy()};
-        auto ec = _validator->validate_mutation(std::move(update_cmd));
+        auto ec = _validator->validate_mutation(
+          std::move(update_cmd), _sr_offset);
         if (ec == errc::success) {
             auto err = co_await _table.local().apply_update(
               testing::create_update_mirror_topic_properties_command(
@@ -156,7 +159,8 @@ public:
       id_t id, update_cluster_link_configuration_cmd cmd) {
         cluster::cluster_link_update_cluster_link_configuration_cmd update_cmd{
           id, cmd.copy()};
-        auto ec = _validator->validate_mutation(std::move(update_cmd));
+        auto ec = _validator->validate_mutation(
+          std::move(update_cmd), _sr_offset);
         if (ec == errc::success) {
             auto err = co_await _table.local().apply_update(
               testing::create_update_cluster_link_configuration_command(
@@ -1225,6 +1229,135 @@ TEST_F_CORO(
         EXPECT_EQ(
           co_await update_cluster_link_configuration(*id, update_cmd.copy()),
           errc::topic_property_excluded_from_mirroring);
+    }
+}
+
+TEST_F_CORO(frontend_validation_test, test_enable_schemas_on_insert) {
+    {
+        auto m1 = create_base_metadata();
+        m1.configuration.topic_metadata_mirroring_cfg
+          .mirror_schema_registry_topic
+          = ::cluster_link::model::topic_metadata_mirroring_config::
+            mirror_schemas_topic_t::yes;
+        _sr_offset = kafka::offset(1);
+
+        EXPECT_EQ(
+          co_await upsert_cluster_link(std::move(m1)),
+          cluster::cluster_link::errc::unable_to_mirror_schemas_topic);
+    }
+    {
+        auto m1 = create_base_metadata();
+        m1.configuration.topic_metadata_mirroring_cfg
+          .mirror_schema_registry_topic
+          = ::cluster_link::model::topic_metadata_mirroring_config::
+            mirror_schemas_topic_t::yes;
+        _sr_offset = kafka::offset(0);
+
+        EXPECT_EQ(
+          co_await upsert_cluster_link(std::move(m1)),
+          cluster::cluster_link::errc::success);
+    }
+}
+
+TEST_F_CORO(frontend_validation_test, test_add_schemas_topic_not_enabled) {
+    ASSERT_EQ_CORO(
+      co_await upsert_cluster_link(create_base_metadata()), errc::success);
+    auto maybe_link_id = _table.local().find_id_by_name(name_t("link1"));
+    ASSERT_TRUE_CORO(maybe_link_id.has_value());
+    auto link_id = maybe_link_id.value();
+    add_mirror_topic_cmd cmd{
+      .topic = model::schema_registry_internal_tp.topic,
+      .metadata = testing::create_mirror_topic_metadata(
+        mirror_topic_status::active, model::schema_registry_internal_tp.topic)};
+    EXPECT_EQ(
+      co_await add_mirror_topic(link_id, std::move(cmd)),
+      errc::mirror_schemas_topic_not_enabled);
+}
+
+TEST_F_CORO(frontend_validation_test, test_add_schemas_topic) {
+    auto m1 = create_base_metadata();
+    m1.configuration.topic_metadata_mirroring_cfg.mirror_schema_registry_topic
+      = ::cluster_link::model::topic_metadata_mirroring_config::
+        mirror_schemas_topic_t::yes;
+
+    ASSERT_EQ_CORO(co_await upsert_cluster_link(std::move(m1)), errc::success);
+    auto maybe_link_id = _table.local().find_id_by_name(name_t("link1"));
+    ASSERT_TRUE_CORO(maybe_link_id.has_value());
+    auto link_id = maybe_link_id.value();
+
+    {
+        _sr_offset = kafka::offset(1);
+        add_mirror_topic_cmd cmd{
+          .topic = model::schema_registry_internal_tp.topic,
+          .metadata = testing::create_mirror_topic_metadata(
+            mirror_topic_status::active,
+            model::schema_registry_internal_tp.topic)};
+        EXPECT_EQ(
+          co_await add_mirror_topic(link_id, std::move(cmd)),
+          errc::unable_to_mirror_schemas_topic);
+    }
+    {
+        _sr_offset = kafka::offset(0);
+        add_mirror_topic_cmd cmd{
+          .topic = model::schema_registry_internal_tp.topic,
+          .metadata = testing::create_mirror_topic_metadata(
+            mirror_topic_status::active,
+            model::schema_registry_internal_tp.topic)};
+        EXPECT_EQ(
+          co_await add_mirror_topic(link_id, std::move(cmd)), errc::success);
+    }
+}
+
+TEST_F_CORO(frontend_validation_test, test_update_enable_schemas) {
+    auto m1 = create_base_metadata();
+    ASSERT_EQ_CORO(co_await upsert_cluster_link(m1.copy()), errc::success);
+    auto maybe_link_id = _table.local().find_id_by_name(name_t("link1"));
+    ASSERT_TRUE_CORO(maybe_link_id.has_value());
+    auto link_id = maybe_link_id.value();
+    {
+        _sr_offset = kafka::offset(1);
+        update_cluster_link_configuration_cmd update_cmd{
+          .connection = m1.connection, .link_config = m1.configuration.copy()};
+        update_cmd.link_config.topic_metadata_mirroring_cfg
+          .mirror_schema_registry_topic
+          = ::cluster_link::model::topic_metadata_mirroring_config::
+            mirror_schemas_topic_t::yes;
+        EXPECT_EQ(
+          co_await update_cluster_link_configuration(
+            link_id, std::move(update_cmd)),
+          errc::unable_to_mirror_schemas_topic);
+    }
+    {
+        _sr_offset = kafka::offset(0);
+        update_cluster_link_configuration_cmd update_cmd{
+          .connection = m1.connection, .link_config = m1.configuration.copy()};
+        update_cmd.link_config.topic_metadata_mirroring_cfg
+          .mirror_schema_registry_topic
+          = ::cluster_link::model::topic_metadata_mirroring_config::
+            mirror_schemas_topic_t::yes;
+        EXPECT_EQ(
+          co_await update_cluster_link_configuration(
+            link_id, std::move(update_cmd)),
+          errc::success);
+    }
+    {
+        add_mirror_topic_cmd cmd{
+          .topic = model::schema_registry_internal_tp.topic,
+          .metadata = testing::create_mirror_topic_metadata(
+            mirror_topic_status::active,
+            model::schema_registry_internal_tp.topic)};
+        ASSERT_EQ_CORO(
+          co_await add_mirror_topic(link_id, std::move(cmd)), errc::success);
+        update_cluster_link_configuration_cmd update_cmd{
+          .connection = m1.connection, .link_config = m1.configuration.copy()};
+        update_cmd.link_config.topic_metadata_mirroring_cfg
+          .mirror_schema_registry_topic
+          = ::cluster_link::model::topic_metadata_mirroring_config::
+            mirror_schemas_topic_t::yes;
+        EXPECT_EQ(
+          co_await update_cluster_link_configuration(
+            link_id, std::move(update_cmd)),
+          errc::success);
     }
 }
 

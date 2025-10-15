@@ -487,17 +487,6 @@ ss::future<> controller::start(
       std::ref(_partition_leaders),
       std::ref(_as));
 
-    co_await _cluster_link_frontend.start(
-      _raft0->self().id(),
-      ss::sharded_parameter([this] { return &_partition_leaders.local(); }),
-      ss::sharded_parameter([this] { return &_cluster_link_table.local(); }),
-      ss::sharded_parameter([this] {
-          return _stm.local_is_initialized() ? &_stm.local() : nullptr;
-      }),
-      ss::sharded_parameter([this] { return &_connections.local(); }),
-      ss::sharded_parameter([this] { return &_feature_table.local(); }),
-      ss::sharded_parameter([this] { return &_as.local(); }));
-
     co_await _members_backend.start_single(
       std::ref(_tp_frontend),
       std::ref(_tp_state),
@@ -743,6 +732,18 @@ ss::future<> controller::start(
       ss::sharded_parameter(
         []() { return config::shard_local_cfg().alive_timeout_ms.bind(); }));
     co_await _hm_frontend.invoke_on_all(&health_monitor_frontend::start);
+
+    co_await _cluster_link_frontend.start(
+      _raft0->self().id(),
+      ss::sharded_parameter([this] { return &_partition_leaders.local(); }),
+      ss::sharded_parameter([this] { return &_cluster_link_table.local(); }),
+      ss::sharded_parameter([this] {
+          return _stm.local_is_initialized() ? &_stm.local() : nullptr;
+      }),
+      ss::sharded_parameter([this] { return &_connections.local(); }),
+      ss::sharded_parameter([this] { return &_feature_table.local(); }),
+      ss::sharded_parameter([this] { return &_hm_frontend.local(); }),
+      ss::sharded_parameter([this] { return &_as.local(); }));
 
     co_await _oidc_service.invoke_on_all(&security::oidc::service::start);
 

@@ -16,6 +16,7 @@
 #include "cluster/commands.h"
 #include "cluster/controller_stm.h"
 #include "cluster/fwd.h"
+#include "cluster/health_monitor_frontend.h"
 #include "cluster_link/model/types.h"
 #include "container/chunked_vector.h"
 #include "features/feature_table.h"
@@ -45,6 +46,7 @@ public:
       cluster::controller_stm*,
       rpc::connection_cache*,
       features::feature_table*,
+      health_monitor_frontend*,
       ss::abort_source*);
 
     using notification_id = table::notification_id;
@@ -151,8 +153,8 @@ private:
     ss::future<errc>
       do_local_mutation(cluster_link_cmd, model::timeout_clock::time_point);
 
-    cluster::cluster_link::errc
-    validate_mutation(const cluster_link_cmd&) const;
+    cluster::cluster_link::errc validate_mutation(
+      const cluster_link_cmd&, std::optional<kafka::offset>) const;
 
     bool is_sanctioned();
 
@@ -166,8 +168,9 @@ public:
           size_t max_links,
           absl::flat_hash_set<std::string_view> excluded_topic_properties);
 
-        cluster::cluster_link::errc
-        validate_mutation(const cluster_link_cmd&) const;
+        cluster::cluster_link::errc validate_mutation(
+          const cluster_link_cmd&,
+          std::optional<kafka::offset> sr_offset) const;
 
     private:
         cluster::cluster_link::errc validate_connection_config(
@@ -175,6 +178,11 @@ public:
         cluster::cluster_link::errc validate_metadata_mirroring_config(
           const ::cluster_link::model::topic_metadata_mirroring_config& config)
           const;
+        cluster::cluster_link::errc validate_set_mirror_schemas_topic(
+          const ::cluster_link::model::topic_metadata_mirroring_config&
+            cmd_config,
+          const ::cluster_link::model::metadata& existing_metadata,
+          std::optional<kafka::offset> sr_offset) const;
 
     private:
         table* _table;
@@ -190,6 +198,7 @@ private:
     ss::abort_source* _as;
     cluster::controller_stm* _controller;
     features::feature_table* _features;
+    health_monitor_frontend* _hm_frontend;
 
     mutex _mu{"panda-link::frontend::mu"};
 };
