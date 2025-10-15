@@ -130,6 +130,10 @@ create_topic_metadata_mirroring_config(
         config.topic_properties_to_mirror.end()));
     config.exclude_default = options.get_exclude_default();
 
+    config.mirror_schema_registry_topic = cluster_link::model::
+      topic_metadata_mirroring_config::mirror_schemas_topic_t{
+        options.get_select_schema_registry_for_shadowing()};
+
     return config;
 }
 
@@ -809,6 +813,8 @@ topic_metadata_sync_options create_topic_metadata_sync_options(
 
     options.set_synced_shadow_topic_properties(std::move(mirrored_properties));
     options.set_exclude_default(cfg.exclude_default);
+    options.set_select_schema_registry_for_shadowing(
+      bool(cfg.mirror_schema_registry_topic));
 
     return options;
 }

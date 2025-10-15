@@ -463,6 +463,7 @@ TEST(converter_test, create_with_metadata_sync_options) {
       std::move(filters));
     topic_metadata_sync_options.set_synced_shadow_topic_properties({"prop"});
     topic_metadata_sync_options.set_exclude_default(true);
+    topic_metadata_sync_options.set_select_schema_registry_for_shadowing(true);
 
     shadow_link_client_options.set_bootstrap_servers({"localhost:9092"});
     shadow_link_configurations.set_client_options(
@@ -489,6 +490,8 @@ TEST(converter_test, create_with_metadata_sync_options) {
       md.configuration.topic_metadata_mirroring_cfg.topic_name_filters.size(),
       2);
     EXPECT_TRUE(md.configuration.topic_metadata_mirroring_cfg.exclude_default);
+    EXPECT_TRUE(md.configuration.topic_metadata_mirroring_cfg
+                  .mirror_schema_registry_topic);
 
     chunked_vector<cluster_link::model::resource_name_filter_pattern> expected{
       cluster_link::model::resource_name_filter_pattern{
@@ -717,6 +720,9 @@ TEST(converter_test, metadata_to_shadow_link_topic_mirroring_cfg) {
         .pattern = "test-prefix-exclude",
       }};
     md.configuration.topic_metadata_mirroring_cfg.exclude_default = true;
+    md.configuration.topic_metadata_mirroring_cfg.mirror_schema_registry_topic
+      = cluster_link::model::topic_metadata_mirroring_config::
+        mirror_schemas_topic_t::yes;
 
     auto sl = admin::metadata_to_shadow_link(std::move(md));
     const auto& topic_metadata_sync_options
@@ -746,6 +752,8 @@ TEST(converter_test, metadata_to_shadow_link_topic_mirroring_cfg) {
       expected_filters);
 
     EXPECT_TRUE(topic_metadata_sync_options.get_exclude_default());
+    EXPECT_TRUE(
+      topic_metadata_sync_options.get_select_schema_registry_for_shadowing());
 }
 
 proto::admin::shadow_topic_status create_shadow_topic_status(
