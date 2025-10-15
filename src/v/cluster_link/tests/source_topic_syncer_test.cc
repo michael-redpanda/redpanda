@@ -200,6 +200,47 @@ TEST_F_CORO(source_topic_syncer_test, select_all_with_exclude) {
       << "Excluded topic should not be mirrored";
 }
 
+TEST_F_CORO(source_topic_syncer_test, schema_registry_test) {
+    co_await fixture()->upsert_link(get_default_metadata(true));
+
+    fixture()->get_cluster_mock().add_topic(
+      ::model::schema_registry_internal_tp.topic,
+      1,
+      3,
+      kafka::topic_authorized_operations(0x508));
+
+    // sleep for 2 seconds to allow source topic syncer to run and then verify
+    // that the topic was not added to the mirror topic state
+    co_await ss::sleep(2s);
+
+    auto link_metadata = fixture()->find_link_by_name(
+      model::name_t("test_link"));
+    auto& mirror_topics = link_metadata->get().state.mirror_topics;
+    auto mirror_topic_it = mirror_topics.find(
+      ::model::schema_registry_internal_tp.topic);
+    ASSERT_EQ_CORO(mirror_topic_it, mirror_topics.end())
+      << "Should not have been able to find "
+      << ::model::schema_registry_internal_tp.topic;
+
+    // Now enable schema registry topic mirroring and ensure that it shows up
+    auto update = link_metadata->get().copy();
+    update.configuration.topic_metadata_mirroring_cfg
+      .mirror_schema_registry_topic
+      = model::topic_metadata_mirroring_config::mirror_schemas_topic_t::yes;
+    auto link_id = fixture()->find_link_id_by_name(model::name_t("test_link"));
+    ASSERT_TRUE_CORO(link_id.has_value());
+    co_await fixture()->update_link(*link_id, std::move(update));
+
+    RPTEST_REQUIRE_EVENTUALLY_CORO(5s, [this] {
+        auto link_metadata = fixture()->find_link_by_name(
+          model::name_t("test_link"));
+        auto& mirror_topics = link_metadata->get().state.mirror_topics;
+        auto mirror_topic_it = mirror_topics.find(
+          ::model::schema_registry_internal_tp.topic);
+        return mirror_topic_it != mirror_topics.end();
+    });
+}
+
 TEST_F_CORO(source_topic_syncer_test, invalid_authorization) {
     fixture()->get_cluster_mock().add_topic(
       ::model::topic("test_topic"),

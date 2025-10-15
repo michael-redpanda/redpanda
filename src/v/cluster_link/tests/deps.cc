@@ -14,6 +14,8 @@
 #include "cluster/types.h"
 #include "cluster_link/types.h"
 
+#include <sys/types.h>
+
 using namespace std::chrono_literals;
 
 using kafka::data::rpc::test::fake_topic_creator;
@@ -176,6 +178,34 @@ cluster_link_manager_test_fixture::upsert_link(model::metadata metadata) {
       });
 }
 
+ss::future<> cluster_link_manager_test_fixture::update_link(
+  model::id_t id, model::metadata metadata) {
+    return ss::do_with(
+      id,
+      std::move(metadata),
+      [this](model::id_t& id, model::metadata& metadata) {
+          return _table.invoke_on_all(
+            [id, &metadata](cluster::cluster_link::table& table) {
+                return table
+                  .apply_update(
+                    cluster::cluster_link::testing::
+                      create_update_cluster_link_configuration_command(
+                        id,
+                        ::cluster_link::model::
+                          update_cluster_link_configuration_cmd{
+                            .connection = metadata.connection,
+                            .link_config = metadata.configuration.copy(),
+                          }))
+                  .then([](std::error_code ec) {
+                      vassert(
+                        ec.value() == 0,
+                        "Failed to update link: {}",
+                        ec.message());
+                  });
+            });
+      });
+}
+
 std::optional<std::reference_wrapper<const model::metadata>>
 cluster_link_manager_test_fixture::find_link_by_id(model::id_t id) {
     return _table.local().find_link_by_id(id);
@@ -185,6 +215,12 @@ std::optional<std::reference_wrapper<const model::metadata>>
 cluster_link_manager_test_fixture::find_link_by_name(
   const model::name_t& name) {
     return _table.local().find_link_by_name(name);
+}
+
+std::optional<model::id_t>
+cluster_link_manager_test_fixture::find_link_id_by_name(
+  const model::name_t& name) {
+    return _table.local().find_id_by_name(name);
 }
 
 ss::future<std::optional<model::cluster_link_task_status_report>>

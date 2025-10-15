@@ -560,11 +560,15 @@ public:
 
     ss::future<> upsert_link(model::metadata metadata);
 
+    ss::future<> update_link(model::id_t id, model::metadata metadata);
+
     std::optional<std::reference_wrapper<const model::metadata>>
     find_link_by_id(model::id_t id);
 
     std::optional<std::reference_wrapper<const model::metadata>>
     find_link_by_name(const model::name_t& name);
+
+    std::optional<model::id_t> find_link_id_by_name(const model::name_t& name);
 
     link_factory* get_link_factory() { return _lf; }
 
