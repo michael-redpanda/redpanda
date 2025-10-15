@@ -48,6 +48,8 @@ T handle_error(cluster_link::cl_result<T> result) {
     case cluster_link::errc::cluster_link_disabled:
     case cluster_link::errc::link_has_active_shadow_topics:
     case cluster_link::errc::license_required:
+    case cluster_link::errc::unable_to_mirror_schemas_topic:
+    case cluster_link::errc::mirror_schemas_topic_not_enabled:
         throw serde::pb::rpc::failed_precondition_exception(info.message());
     case cluster_link::errc::link_id_not_found:
         throw serde::pb::rpc::not_found_exception(info.message());

@@ -66,6 +66,13 @@ struct error_category final : public std::error_category {
             return "topic metadata is stale";
         case errc::license_required:
             return "license required for operation";
+        case errc::unable_to_mirror_schemas_topic:
+            return "unable to mirror the internal _schemas topic - data "
+                   "already "
+                   "exists on topic";
+        case errc::mirror_schemas_topic_not_enabled:
+            return "mirroring of schemas topic is not enabled on the shadow "
+                   "link";
         }
 
         return "(unknown error code)";

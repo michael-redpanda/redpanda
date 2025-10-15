@@ -41,6 +41,8 @@ enum class errc : int {
     topic_does_not_exist,
     topic_metadata_stale,
     license_required,
+    unable_to_mirror_schemas_topic,
+    mirror_schemas_topic_not_enabled,
 };
 
 std::error_code make_error_code(errc) noexcept;

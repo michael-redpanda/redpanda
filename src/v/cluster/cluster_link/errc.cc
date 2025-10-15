@@ -68,6 +68,11 @@ std::string errc_category::message(int c) const {
         return "Link has active shadow topics";
     case errc::license_required:
         return "A valid license is required to create a shadow link";
+    case errc::unable_to_mirror_schemas_topic:
+        return "Unable to mirror the internal _schemas topic - data already "
+               "exists on topic";
+    case errc::mirror_schemas_topic_not_enabled:
+        return "Mirroring of schemas topic is not enabled on the shadow link";
     }
     return "cluster::cluster_link::unknown";
 }
@@ -167,5 +172,13 @@ auto fmt::formatter<cluster::cluster_link::errc>::format(
     case cluster::cluster_link::errc::license_required:
         return fmt::format_to(
           ctx.out(), "cluster::cluster_link::errc::license_required");
+    case cluster::cluster_link::errc::unable_to_mirror_schemas_topic:
+        return fmt::format_to(
+          ctx.out(),
+          "cluster::cluster_link::errc::unable_to_mirror_schemas_topic");
+    case cluster::cluster_link::errc::mirror_schemas_topic_not_enabled:
+        return fmt::format_to(
+          ctx.out(),
+          "cluster::cluster_link::errc::mirror_schemas_topic_not_enabled");
     }
 }

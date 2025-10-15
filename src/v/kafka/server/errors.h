@@ -209,6 +209,8 @@ constexpr error_code map_cluster_link_errc(cluster::cluster_link::errc ec) {
     case cluster::cluster_link::errc::scram_configuration_invalid:
     case cluster::cluster_link::errc::link_has_active_shadow_topics:
     case cluster::cluster_link::errc::license_required:
+    case cluster::cluster_link::errc::unable_to_mirror_schemas_topic:
+    case cluster::cluster_link::errc::mirror_schemas_topic_not_enabled:
         return error_code::unknown_server_error;
     }
 }

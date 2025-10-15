@@ -41,6 +41,8 @@ enum class errc : int16_t {
     scram_configuration_invalid,
     link_has_active_shadow_topics,
     license_required,
+    unable_to_mirror_schemas_topic,
+    mirror_schemas_topic_not_enabled,
 };
 
 struct errc_category final : public std::error_category {
