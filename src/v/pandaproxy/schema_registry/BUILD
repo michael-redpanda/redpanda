@@ -184,6 +184,7 @@ redpanda_cc_library(
         "//src/v/kafka/client:config_utils",
         "//src/v/kafka/client:configuration",
         "//src/v/kafka/client:exceptions",
+        "//src/v/kafka/data/rpc",
         "//src/v/kafka/protocol",
         "//src/v/kafka/protocol:create_topics",
         "//src/v/kafka/protocol:list_offset",

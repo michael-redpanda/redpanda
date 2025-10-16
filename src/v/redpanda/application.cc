@@ -1331,6 +1331,7 @@ void application::wire_up_runtime_services(
           memory_groups().kafka_total_memory(),
           *_schema_reg_client_config,
           *_schema_reg_config,
+          &metadata_cache,
           std::reference_wrapper(controller),
           std::ref(audit_mgr));
     }

@@ -32,7 +32,10 @@
 namespace cluster {
 class controller;
 }
-
+namespace kafka::data::rpc {
+class topic_creator;
+class topic_metadata_cache;
+} // namespace kafka::data::rpc
 namespace pandaproxy::schema_registry {
 
 class service : public ss::peering_sharded_service<service> {
@@ -45,6 +48,9 @@ public:
       ss::sharded<kafka::client::client>& client,
       sharded_store& store,
       ss::sharded<seq_writer>& sequencer,
+      std::unique_ptr<kafka::data::rpc::topic_metadata_cache>
+        topic_metadata_cache,
+      std::unique_ptr<kafka::data::rpc::topic_creator> topic_creator,
       std::unique_ptr<cluster::controller>&,
       ss::sharded<security::audit::audit_log_manager>& audit_mgr);
 
@@ -87,6 +93,9 @@ private:
     ctx_server<service> _server;
     sharded_store& _store;
     ss::sharded<seq_writer>& _writer;
+    std::unique_ptr<kafka::data::rpc::topic_metadata_cache>
+      _topic_metadata_cache;
+    std::unique_ptr<kafka::data::rpc::topic_creator> _topic_creator;
     std::unique_ptr<cluster::controller>& _controller;
     ss::sharded<security::audit::audit_log_manager>& _audit_mgr;
 

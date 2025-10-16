@@ -17,6 +17,7 @@
 #include "kafka/client/client_fetch_batch_reader.h"
 #include "kafka/client/config_utils.h"
 #include "kafka/client/exceptions.h"
+#include "kafka/data/rpc/deps.h"
 #include "kafka/protocol/create_topics.h"
 #include "kafka/protocol/errors.h"
 #include "kafka/protocol/list_offset.h"
@@ -574,6 +575,8 @@ service::service(
   ss::sharded<kafka::client::client>& client,
   sharded_store& store,
   ss::sharded<seq_writer>& sequencer,
+  std::unique_ptr<kafka::data::rpc::topic_metadata_cache> topic_metadata_cache,
+  std::unique_ptr<kafka::data::rpc::topic_creator> topic_creator,
   std::unique_ptr<cluster::controller>& controller,
   ss::sharded<security::audit::audit_log_manager>& audit_mgr)
   : _config(config)
@@ -599,6 +602,8 @@ service::service(
       srreqs)
   , _store(store)
   , _writer(sequencer)
+  , _topic_metadata_cache(std::move(topic_metadata_cache))
+  , _topic_creator(std::move(topic_creator))
   , _controller(controller)
   , _audit_mgr(audit_mgr)
   , _ensure_started{[this]() { return do_start(); }}

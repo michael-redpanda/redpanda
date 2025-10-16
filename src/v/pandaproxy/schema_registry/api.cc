@@ -9,8 +9,10 @@
 
 #include "pandaproxy/schema_registry/api.h"
 
+#include "cluster/controller.h"
 #include "config/configuration.h"
 #include "kafka/client/configuration.h"
+#include "kafka/data/rpc/deps.h"
 #include "model/metadata.h"
 #include "pandaproxy/logger.h"
 #include "pandaproxy/schema_registry/configuration.h"
@@ -32,6 +34,7 @@ api::api(
   size_t max_memory,
   kafka::client::configuration& client_cfg,
   configuration& cfg,
+  ss::sharded<cluster::metadata_cache>* metadata_cache,
   std::unique_ptr<cluster::controller>& c,
   ss::sharded<security::audit::audit_log_manager>& audit_mgr) noexcept
   : _node_id{node_id}
@@ -39,6 +42,7 @@ api::api(
   , _max_memory{max_memory}
   , _client_cfg{client_cfg}
   , _cfg{cfg}
+  , _metadata_cache(metadata_cache)
   , _controller(c)
   , _audit_mgr(audit_mgr) {}
 
@@ -69,6 +73,14 @@ ss::future<> api::start() {
       std::ref(_client),
       std::ref(*_store),
       std::ref(_sequencer),
+      ss::sharded_parameter([this]() {
+          return kafka::data::rpc::topic_metadata_cache::make_default(
+            _metadata_cache);
+      }),
+      ss::sharded_parameter([this]() {
+          return kafka::data::rpc::topic_creator::make_default(
+            _controller.get());
+      }),
       std::ref(_controller),
       std::ref(_audit_mgr));
 
