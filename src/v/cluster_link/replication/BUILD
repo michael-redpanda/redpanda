@@ -46,6 +46,9 @@ redpanda_cc_library(
     hdrs = [
         "link_replication_mgr.h",
     ],
+    implementation_deps = [
+        "//src/v/ssx:future_util",
+    ],
     visibility = ["//src/v/cluster_link:__subpackages__"],
     deps = [
         ":deps",
