@@ -347,13 +347,9 @@ class ShadowLinkTestBase(PreallocNodesTest):
                 "enable_shadow_linking": True,
             }
         )
-
-        super().__init__(
-            test_context=test_context,
-            # For running kgo producer/consumer
-            node_prealloc_count=num_prealloc_nodes,
-            num_brokers=3,
-            log_config=LoggingConfig(
+        kwargs.setdefault(
+            "log_config",
+            LoggingConfig(
                 "info",
                 logger_levels={
                     "cluster_link": "trace",
@@ -362,6 +358,13 @@ class ShadowLinkTestBase(PreallocNodesTest):
                     "tx": "trace",
                 },
             ),
+        )
+
+        super().__init__(
+            test_context=test_context,
+            # For running kgo producer/consumer
+            node_prealloc_count=num_prealloc_nodes,
+            num_brokers=3,
             *args,
             **kwargs,
         )
