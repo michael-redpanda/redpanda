@@ -15,6 +15,7 @@
 #include "cluster_link/logger.h"
 #include "cluster_link/manager.h"
 #include "cluster_link/model/types.h"
+#include "model/namespace.h"
 #include "ssx/future-util.h"
 
 #include <seastar/coroutine/as_future.hh>
@@ -64,6 +65,20 @@ bool operator==(
     }
 
     return false;
+}
+
+bool mirror_active_state(model::mirror_topic_status status) {
+    switch (status) {
+    case model::mirror_topic_status::active:
+        return true;
+    case model::mirror_topic_status::failed:
+    case model::mirror_topic_status::paused:
+    case model::mirror_topic_status::failing_over:
+    case model::mirror_topic_status::failed_over:
+    case model::mirror_topic_status::promoting:
+    case model::mirror_topic_status::promoted:
+        return false;
+    }
 }
 } // namespace
 
@@ -167,7 +182,8 @@ ss::future<cl_result<void>> link::register_task(task_factory* tf) {
         co_return err_info(
           errc::task_creation_failed,
           ssx::sformat(
-            "Failed to create task from factory {} for cluster link {}",
+            "Failed to create task from factory {} for cluster "
+            "link {}",
             tf->created_task_name(),
             _config.name));
     }
@@ -184,6 +200,15 @@ void link::update_config(
       _config.uuid,
       config,
       revision);
+    chunked_vector<::model::topic> new_topics_to_replicate;
+    for (const auto& [topic, m] : config.state.mirror_topics) {
+        if (
+          !_config.state.mirror_topics.contains(topic)
+          && mirror_active_state(m.status)) {
+            vlog(cllog.debug, "New topic to replicate: {}", topic);
+            new_topics_to_replicate.push_back(topic);
+        }
+    }
     _config = std::move(config);
     maybe_update_sasl_configuration(_config.connection.authn_config);
 
@@ -193,8 +218,8 @@ void link::update_config(
     }
 
     // reconcile the replicators. We do not need replicators running
-    // if the link is not active or a specific topic in the link is not
-    // active.
+    // if the link is not active or a specific topic in the link is
+    // not active.
     if (!requires_active_replicators()) {
         vlog(
           cllog.debug,
@@ -208,11 +233,13 @@ void link::update_config(
             }
             vlog(
               cllog.debug,
-              "Topic {} on link {} is not active, stopping its replicators",
+              "Topic {} on link {} is not active, stopping its "
+              "replicators",
               topic,
               _config.name);
             _replication_mgr.stop_replicators(topic);
         }
+        handle_new_topics_to_replicate(std::move(new_topics_to_replicate));
     }
 }
 
@@ -235,18 +262,7 @@ bool link::requires_active_replicators(const ::model::topic& topic) const {
     if (it == mts.end()) {
         return false;
     }
-    switch (it->second.status) {
-    case model::mirror_topic_status::active:
-        return true;
-    case model::mirror_topic_status::failed:
-    case model::mirror_topic_status::paused:
-    case model::mirror_topic_status::failing_over:
-    case model::mirror_topic_status::failed_over:
-    case model::mirror_topic_status::promoting:
-    case model::mirror_topic_status::promoted:
-        return false;
-    }
-    __builtin_unreachable();
+    return mirror_active_state(it->second.status);
 }
 
 ss::future<> link::handle_on_leadership_change(
@@ -256,7 +272,8 @@ ss::future<> link::handle_on_leadership_change(
     co_await ss::coroutine::switch_to(_manager->scheduling_group());
     vlog(
       cllog.trace,
-      "Cluster link {} handling leadership change for {}: {}, term: {}",
+      "Cluster link {} handling leadership change for {}: {}, "
+      "term: {}",
       _config.name,
       ntp,
       is_ntp_leader,
@@ -266,7 +283,8 @@ ss::future<> link::handle_on_leadership_change(
     if (mirror_topics.contains(ntp.tp.topic)) {
         vlog(
           cllog.debug,
-          "[{}] Leadership change event for partition {}, is_leader: {}",
+          "[{}] Leadership change event for partition {}, "
+          "is_leader: {}",
           _link_id,
           ntp,
           is_ntp_leader);
@@ -274,7 +292,8 @@ ss::future<> link::handle_on_leadership_change(
         if (!needs_replicators) {
             vlog(
               cllog.info,
-              "[{}] Topic {} is not active, will stop any active replicators",
+              "[{}] Topic {} is not active, will stop any active "
+              "replicators",
               _link_id,
               ntp.tp.topic);
         }
@@ -393,8 +412,9 @@ bool link::should_stop_task(task* t) const {
 
 ss::future<> link::run_task_reconciler() {
     /**
-     * Always run the task reconciler in the manager scheduling group this way
-     * task fibers will be run in the correct scheduling group
+     * Always run the task reconciler in the manager scheduling
+     * group this way task fibers will be run in the correct
+     * scheduling group
      */
     // TODO: consider adding a separate scheduling group per task
     co_await ss::coroutine::switch_to(_manager->scheduling_group());
@@ -466,8 +486,8 @@ ss::future<cl_result<void>> link::do_register_task(std::unique_ptr<task> t) {
     }
 
     cl_result<void> res = outcome::success();
-    // Do not need to unregister the task callback as the task lifetime is
-    // managed by the link
+    // Do not need to unregister the task callback as the task
+    // lifetime is managed by the link
     t->register_for_updates([this](
                               std::string_view task_name,
                               task::state_change change) {
@@ -476,8 +496,8 @@ ss::future<cl_result<void>> link::do_register_task(std::unique_ptr<task> t) {
         _task_state_change_notifications.notify(
           _config.name, task_name, change);
     });
-    // If we register a task after the link has started, then check to see
-    // if it should start and do so
+    // If we register a task after the link has started, then check
+    // to see if it should start and do so
     if (!_as.abort_requested() && should_start_task(t.get())) {
         vlog(cllog.info, "Starting task {}", t->name());
         res = co_await start_task(t.get());
@@ -489,8 +509,8 @@ ss::future<cl_result<void>> link::do_register_task(std::unique_ptr<task> t) {
               res.assume_error().message());
         }
     }
-    // Even if the task failed to start, still emplace it into the list, the
-    // task reconcilier will re-attempt later
+    // Even if the task failed to start, still emplace it into the
+    // list, the task reconcilier will re-attempt later
     auto name = t->name();
     _tasks.emplace(std::move(name), std::move(t));
 
@@ -521,6 +541,70 @@ void link::maybe_update_sasl_configuration(
           authn_config);
         _cluster_connection->set_sasl_configuration(
           authn_config.transform(transform_func));
+    }
+}
+
+void link::handle_new_topics_to_replicate(
+  chunked_vector<::model::topic> new_topics) {
+    vlog(cllog.debug, "New topics to replicate: {}", new_topics);
+
+    for (const auto& topic : new_topics) {
+        auto topic_cfg = _manager->topic_metadata_cache().find_topic_cfg(
+          {::model::kafka_namespace, topic});
+        if (!topic_cfg) {
+            vlog(
+              cllog.trace,
+              "Topic {} does not exist yet.  Leadership changes "
+              "will trigger "
+              "replicators",
+              topic);
+            continue;
+        }
+        auto partition_count = topic_cfg->partition_count;
+        for (auto p : std::views::iota(0, partition_count)) {
+            auto part_id = ::model::partition_id{p};
+            auto ntp = ::model::ntp(::model::kafka_namespace, topic, part_id);
+            auto leader_node
+              = _manager->partition_leader_cache().get_leader_node(ntp);
+            if (!leader_node) {
+                vlog(
+                  cllog.trace,
+                  "Topic {} partition {} does not have a leader "
+                  "yet.  "
+                  "Leadership changes will trigger replicators",
+                  topic,
+                  part_id);
+                continue;
+            }
+            if (*leader_node != _self) {
+                vlog(cllog.trace, "Not the leader for {}.  Skipping", ntp);
+                continue;
+            }
+            if (!_manager->partition_manager().is_current_shard_leader(ntp)) {
+                vlog(
+                  cllog.trace,
+                  "Topic {} partition {} is not on this shard.  "
+                  "Skipping",
+                  topic,
+                  part_id);
+                continue;
+            }
+
+            auto term = _manager->partition_manager().get_term(ntp);
+            if (!term.has_value()) {
+                vlog(
+                  cllog.trace,
+                  "Topic {} partition {} does not have a term.  "
+                  "Skipping",
+                  topic,
+                  part_id);
+                continue;
+            }
+
+            vlog(cllog.debug, "Starting replicator for {}", ntp);
+            _replication_mgr.start_replicator(
+              {::model::kafka_namespace, topic, part_id}, *term);
+        }
     }
 }
 } // namespace cluster_link

@@ -128,6 +128,7 @@ private:
     void maybe_update_sasl_configuration(
       const std::optional<model::connection_config::authn_variant>&
         authn_config);
+    void handle_new_topics_to_replicate(chunked_vector<::model::topic>);
 
 private:
     ::model::node_id _self;
