@@ -326,6 +326,10 @@ public:
           shard_id, ktp, std::move(fn), require_leader);
     }
 
+    std::optional<::model::term_id> get_term(const ::model::ntp&) const final {
+        return std::nullopt;
+    }
+
 private:
     fake_partition_manager_proxy* _impl;
 };
