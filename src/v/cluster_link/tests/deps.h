@@ -665,6 +665,10 @@ public:
 
     fake_topic_metadata_cache& topic_metadata_cache() { return *_tmc; }
 
+    kafka::data::rpc::test::fake_topic_creator& topic_creator() {
+        return *_ftpc;
+    }
+
 private:
     void setup_cluster_mock();
 
