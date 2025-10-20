@@ -421,6 +421,11 @@ ss::future<> service::configure() {
       _ctx.smp_sg, [has_ephemeral_credentials](service& s) {
           s._has_ephemeral_credentials = has_ephemeral_credentials;
       });
+
+    if (_has_ephemeral_credentials) {
+        vlog(srlog.info, "[configure] Creating ACLs for ephemeral credentials");
+        co_await create_acls(_controller->get_security_frontend().local());
+    }
 }
 
 ss::future<> service::mitigate_error(std::exception_ptr eptr) {
