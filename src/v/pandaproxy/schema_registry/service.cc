@@ -13,6 +13,7 @@
 #include "cluster/ephemeral_credential_frontend.h"
 #include "cluster/members_table.h"
 #include "cluster/security_frontend.h"
+#include "config/broker_authn_endpoint.h"
 #include "config/configuration.h"
 #include "kafka/client/client_fetch_batch_reader.h"
 #include "kafka/client/config_utils.h"
@@ -33,6 +34,8 @@
 #include "pandaproxy/util.h"
 #include "security/acl.h"
 #include "security/audit/audit_log_manager.h"
+#include "security/authorizer.h"
+#include "security/credential_store.h"
 #include "security/ephemeral_credential_store.h"
 #include "security/request_auth.h"
 #include "ssx/semaphore.h"
@@ -565,6 +568,82 @@ ss::future<> service::fetch_internal_topic() {
     // reprocess them once now that the whole topic has been read,  in case they
     // have a reference to a schema declared later in the topic.
     co_await _store.process_marked_schemas();
+}
+
+void service::validate_topic_creation_authorization() {
+    // If authz is not enabled on the cluster, then no need to validate
+    // authn/authz
+    if (!config::kafka_authz_enabled()) {
+        return;
+    }
+
+    // If the client is not configured with a SCRAM user, it will be using
+    // ephemeral credentials which are assumed to work
+    if (!kafka::client::is_scram_configured(_client_config)) {
+        return;
+    }
+
+    // If authn/authz is enabled on the cluster _and_ the user has configured
+    // SCRAM credentials, then first validate those credentials and then verify
+    // that the user has the appropriate authorizations on the _schemas topic
+    const auto& cred_store = _controller->get_credential_store().local();
+    const auto cred_opt = cred_store.get<security::scram_credential>(
+      security::credential_user{_client_config.scram_username()});
+    if (!cred_opt.has_value()) {
+        throw kafka::exception(
+          kafka::error_code::sasl_authentication_failed,
+          "SCRAM credentials not found for user");
+    }
+    auto scram_mech = _client_config.sasl_mechanism().empty()
+                        ? "SCRAM-SHA-256"
+                        : _client_config.sasl_mechanism();
+
+    if (scram_mech == "SCRAM-SHA-256") {
+        if (!security::scram_sha256::validate_password(
+              _client_config.scram_password(),
+              cred_opt->stored_key(),
+              cred_opt->salt(),
+              cred_opt->iterations())) {
+            throw kafka::exception(
+              kafka::error_code::sasl_authentication_failed,
+              "SCRAM-SHA-256 authentication failed for user");
+        }
+    } else if (scram_mech == "SCRAM-SHA-512") {
+        if (!security::scram_sha512::validate_password(
+              _client_config.scram_password(),
+              cred_opt->stored_key(),
+              cred_opt->salt(),
+              cred_opt->iterations())) {
+            throw kafka::exception(
+              kafka::error_code::sasl_authentication_failed,
+              "SCRAM-SHA-512 authentication failed for user");
+        }
+    } else {
+        throw kafka::exception(
+          kafka::error_code::unsupported_sasl_mechanism,
+          fmt::format("Unsupported SCRAM mechanism: {}", scram_mech));
+    }
+
+    const auto& kafka_api = config::node().kafka_api.value();
+    if (kafka_api.empty()) {
+        throw kafka::exception(
+          kafka::error_code::unknown_server_error,
+          "No Kafka API endpoints configured on this broker");
+    }
+    kafka_api.begin()->address.host();
+
+    // Now that we verified authentication, verify authorization
+    if (!authorizor().authorized(
+          model::schema_registry_internal_tp.topic,
+          security::acl_operation::create,
+          security::acl_principal{
+            security::principal_type::user, _client_config.scram_password()},
+          security::acl_host{kafka_api.begin()->address.host()},
+          security::superuser_required::no)) {
+        throw kafka::exception(
+          kafka::error_code::topic_authorization_failed,
+          "Not authorized to create _schemas topic");
+    }
 }
 
 service::service(
