@@ -29,6 +29,7 @@ namespace cluster::cluster_link {
 using ::cluster_link::model::add_mirror_topic_cmd;
 using ::cluster_link::model::delete_mirror_topic_cmd;
 using ::cluster_link::model::id_t;
+using ::cluster_link::model::link_status;
 using ::cluster_link::model::metadata;
 using ::cluster_link::model::name_t;
 using ::cluster_link::model::update_cluster_link_configuration_cmd;
@@ -327,6 +328,14 @@ bool frontend::schema_registry_shadowing_active() const {
         return md->get().state.mirror_topics.contains(
           ::model::schema_registry_internal_tp.topic);
     });
+}
+
+std::optional<link_status> frontend::get_link_status(id_t link_id) const {
+    return _table->get_link_status(link_id);
+}
+
+std::optional<link_status> frontend::get_link_status(const name_t& name) const {
+    return _table->get_link_status(name);
 }
 
 ss::future<errc> frontend::do_mutation(

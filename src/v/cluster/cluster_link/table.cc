@@ -21,6 +21,7 @@ namespace cluster::cluster_link {
 using ::cluster_link::model::add_mirror_topic_cmd;
 using ::cluster_link::model::delete_mirror_topic_cmd;
 using ::cluster_link::model::id_t;
+using ::cluster_link::model::link_status;
 using ::cluster_link::model::metadata;
 using ::cluster_link::model::mirror_topic_status;
 using ::cluster_link::model::name_t;
@@ -326,6 +327,22 @@ void table::unregister_for_updates(notification_id id) { _callbacks.erase(id); }
 bool table::cluster_link_active() const {
     // TODO: Update when we have proper states for cluster links
     return !_link_metadata.empty();
+}
+
+std::optional<link_status> table::get_link_status(id_t link_id) const {
+    auto meta = find_link_by_id(link_id);
+    if (!meta) {
+        return std::nullopt;
+    }
+    return meta->get().state.status;
+}
+
+std::optional<link_status> table::get_link_status(const name_t& name) const {
+    auto meta = find_link_by_name(name);
+    if (!meta) {
+        return std::nullopt;
+    }
+    return meta->get().state.status;
 }
 
 void table::run_callbacks(id_t id, model::revision_id revision) {

@@ -82,6 +82,12 @@ public:
     /// active
     bool cluster_link_active() const;
 
+    std::optional<::cluster_link::model::link_status>
+      get_link_status(::cluster_link::model::id_t) const;
+
+    std::optional<::cluster_link::model::link_status>
+    get_link_status(const ::cluster_link::model::name_t&) const;
+
 private:
     /// Snapshot copy of all the cluster links
     map_t all_links() const;

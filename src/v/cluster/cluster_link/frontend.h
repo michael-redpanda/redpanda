@@ -143,6 +143,18 @@ public:
      */
     bool schema_registry_shadowing_active() const;
 
+    /**
+     * @brief Get the link status object
+     */
+    std::optional<::cluster_link::model::link_status>
+      get_link_status(::cluster_link::model::id_t) const;
+
+    /**
+     * @brief Get the link status object
+     */
+    std::optional<::cluster_link::model::link_status>
+    get_link_status(const ::cluster_link::model::name_t&) const;
+
 private:
     ss::future<errc>
       do_mutation(cluster_link_cmd, model::timeout_clock::time_point);
