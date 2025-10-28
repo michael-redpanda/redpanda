@@ -211,6 +211,11 @@ public:
         return _plf->failover_link_topics(id, timeout);
     }
 
+    std::optional<model::link_status>
+    get_link_status(model::id_t id) const final {
+        return _plf->get_link_status(id);
+    }
+
 private:
     frontend* _plf;
     service* _svc;

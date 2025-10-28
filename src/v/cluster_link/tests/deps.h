@@ -230,6 +230,11 @@ public:
         co_return ::cluster::cluster_link::errc::success;
     }
 
+    std::optional<model::link_status>
+    get_link_status(model::id_t id) const override {
+        return _table->get_link_status(id);
+    }
+
 private:
     cluster::cluster_link::table* _table;
     ::model::offset _last_offset{0};

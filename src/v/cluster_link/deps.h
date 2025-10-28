@@ -95,6 +95,9 @@ public:
 
     virtual ss::future<::cluster::cluster_link::errc>
       failover_link_topics(model::id_t, ::model::timeout_clock::time_point) = 0;
+
+    virtual std::optional<model::link_status>
+      get_link_status(model::id_t) const = 0;
 };
 
 /**
