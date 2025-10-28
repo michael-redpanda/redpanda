@@ -913,6 +913,49 @@ TEST_F_CORO(cluster_link_table_test, update_cluster_link_configuration) {
     EXPECT_EQ(found_link->get().configuration, update_cmd.link_config);
 }
 
+TEST_F_CORO(cluster_link_table_test, pause_unpause_link) {
+    metadata link{
+      .name = name_t{"link"},
+      .uuid = uuid_t(::uuid_t::create()),
+      .connection = connection_config{}};
+
+    auto ec = co_await _table.local().apply_update(
+      testing::create_upsert_command(model::offset{1}, link.copy()));
+    ASSERT_FALSE_CORO(ec);
+
+    auto found_link = _table.local().find_link_by_id(id_t{1});
+    EXPECT_EQ(
+      found_link->get().state.status,
+      ::cluster_link::model::link_status::active);
+
+    update_cluster_link_configuration_cmd pause_cmd{
+      .link_config
+      = link_configuration{.paused = ::cluster_link::model::paused_t::yes},
+    };
+
+    ec = co_await _table.local().apply_update(
+      testing::create_update_cluster_link_configuration_command(
+        id_t{1}, pause_cmd.copy()));
+    ASSERT_FALSE_CORO(ec);
+
+    found_link = _table.local().find_link_by_id(id_t{1});
+    EXPECT_EQ(
+      found_link->get().state.status,
+      ::cluster_link::model::link_status::paused);
+
+    pause_cmd.link_config.paused = ::cluster_link::model::paused_t::no;
+
+    ec = co_await _table.local().apply_update(
+      testing::create_update_cluster_link_configuration_command(
+        id_t{1}, pause_cmd.copy()));
+    ASSERT_FALSE_CORO(ec);
+
+    found_link = _table.local().find_link_by_id(id_t{1});
+    EXPECT_EQ(
+      found_link->get().state.status,
+      ::cluster_link::model::link_status::active);
+}
+
 TEST_F_CORO(cluster_link_table_test, update_non_existent_link) {
     update_cluster_link_configuration_cmd update_cmd {
         .connection = connection_config{

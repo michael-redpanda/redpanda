@@ -561,6 +561,9 @@ cluster::cluster_link::errc table::update_cluster_link_configuration(
     }
     _link_metadata[id].connection = cmd.connection;
     _link_metadata[id].configuration = cmd.link_config.copy();
+    _link_metadata[id].state.status
+      = cmd.link_config.paused ? ::cluster_link::model::link_status::paused
+                               : ::cluster_link::model::link_status::active;
     _link_revision_index[id] = revision;
 
     run_callbacks(id, revision);
