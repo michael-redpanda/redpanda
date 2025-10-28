@@ -56,12 +56,21 @@ public:
     const ss::sstring& name() const noexcept;
 
     /// Returns true if the task should be started on the current node shard
-    bool should_start(ss::shard_id shard, ::model::node_id current_node) const;
+    bool should_start(
+      model::link_status link_status,
+      ss::shard_id shard,
+      ::model::node_id current_node) const;
 
     /// Returns true if the task should be stopped on the current node shard
-    bool should_stop(ss::shard_id shard, ::model::node_id current_node) const;
+    bool should_stop(
+      model::link_status link_status,
+      ss::shard_id shard,
+      ::model::node_id current_node) const;
     /// Returns true if the task should be paused
-    bool should_pause(ss::shard_id shard, ::model::node_id current_node) const;
+    bool should_pause(
+      model::link_status link_status,
+      ss::shard_id shard,
+      ::model::node_id current_node) const;
     /// Updates config of the task
     virtual void update_config(const model::metadata&) = 0;
 

@@ -135,6 +135,7 @@ private:
     ss::future<cl_result<void>> do_register_task(std::unique_ptr<task>);
     void maybe_update_connection_configuration();
     void handle_new_topics_to_replicate(chunked_vector<::model::topic>);
+    void unpause_replicators();
 
 private:
     ::model::node_id _self;

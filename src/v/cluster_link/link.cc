@@ -218,6 +218,9 @@ void link::update_config(
             new_topics_to_replicate.push_back(topic);
         }
     }
+    // Flag indicates that the link was unpaused
+    bool unpaused = _config.state.status == model::link_status::paused
+                    && config.state.status == model::link_status::active;
     _config = std::move(config);
     maybe_update_connection_configuration();
 
@@ -255,7 +258,15 @@ void link::update_config(
               _config.name);
             _replication_mgr.stop_replicators(topic);
         }
-        handle_new_topics_to_replicate(std::move(new_topics_to_replicate));
+        if (unpaused) {
+            // If we are unpausing, then we need to start all replicators in the
+            // link
+            unpause_replicators();
+        } else {
+            // If we aren't unpausing, then just start replicators for new
+            // topics
+            handle_new_topics_to_replicate(std::move(new_topics_to_replicate));
+        }
     }
 }
 
@@ -424,15 +435,29 @@ link::get_partition_offsets_report() const {
 }
 
 bool link::should_start_task(task* t) const {
-    return t->should_start(ss::this_shard_id(), _self);
+    auto status = _manager->registry()->get_link_status(_link_id);
+    if (!status) {
+        return false;
+    }
+    // Tasks may only start if the link is active
+    return t->should_start(status.value(), ss::this_shard_id(), _self);
 }
 
 bool link::should_pause_task(task* t) const {
-    return t->should_pause(ss::this_shard_id(), _self);
+    auto status = _manager->registry()->get_link_status(_link_id);
+    if (!status) {
+        return false;
+    }
+    // Pause tasks if the link is paused and the task is not stopping
+    return t->should_pause(status.value(), ss::this_shard_id(), _self);
 }
 
 bool link::should_stop_task(task* t) const {
-    return t->should_stop(ss::this_shard_id(), _self);
+    auto status = _manager->registry()->get_link_status(_link_id);
+    if (!status) {
+        return false;
+    }
+    return t->should_stop(status.value(), ss::this_shard_id(), _self);
 }
 
 ss::future<> link::run_task_reconciler() {
@@ -639,6 +664,69 @@ void link::handle_new_topics_to_replicate(
             vlog(cllog.debug, "Starting replicator for {}", ntp);
             _replication_mgr.start_replicator(
               {::model::kafka_namespace, topic, part_id}, *term);
+        }
+    }
+}
+
+void link::unpause_replicators() {
+    for (const auto& [name, state] : _config.state.mirror_topics) {
+        if (state.status != model::mirror_topic_status::active) {
+            vlog(cllog.trace, "Skipping non-active topic {}", name);
+            continue;
+        }
+
+        auto tp_cfg = _manager->topic_metadata_cache().find_topic_cfg(
+          {::model::kafka_namespace, name});
+        if (!tp_cfg) {
+            vlog(
+              cllog.trace,
+              "Topic {} does not exist yet.  Leadership changes will trigger "
+              "replicators",
+              name);
+            continue;
+        }
+
+        auto partition_count = tp_cfg->partition_count;
+        for (auto p : std::views::iota(int32_t{0}, partition_count)) {
+            auto part_id = ::model::partition_id{p};
+            auto ntp = ::model::ntp(::model::kafka_namespace, name, part_id);
+            auto leader_node
+              = _manager->partition_leader_cache().get_leader_node(ntp);
+            if (!leader_node) {
+                vlog(
+                  cllog.trace,
+                  "Topic {} partition {} does not have a leader yet.  "
+                  "Leadership changes will trigger replicators",
+                  name,
+                  part_id);
+                continue;
+            }
+            if (*leader_node != _self) {
+                vlog(cllog.trace, "Not the leader for {}. Skipping", ntp);
+                continue;
+            }
+            if (!_manager->partition_manager().is_current_shard_leader(ntp)) {
+                vlog(
+                  cllog.trace,
+                  "Topic {} partition {} is not on this shard. Skipping",
+                  name,
+                  part_id);
+                continue;
+            }
+
+            auto term = _manager->partition_manager().get_term(ntp);
+            if (!term.has_value()) {
+                vlog(
+                  cllog.trace,
+                  "Topic {} partition {} does not have a term. Skipping",
+                  name,
+                  part_id);
+                continue;
+            }
+
+            vlog(cllog.debug, "Starting replicator for {}", ntp);
+            _replication_mgr.start_replicator(
+              {::model::kafka_namespace, name, part_id}, *term);
         }
     }
 }

@@ -197,18 +197,21 @@ ss::future<cl_result<void>> task::pause() {
 
 /// Returns true if the task should be started on the current node shard
 bool task::should_start(
-  ss::shard_id shard, ::model::node_id current_node) const {
+  model::link_status link_status,
+  ss::shard_id shard,
+  ::model::node_id current_node) const {
     if (
       get_state() != model::task_state::stopped
       && get_state() != model::task_state::paused) {
         return false;
     }
-    return is_enabled() && should_start_impl(shard, current_node);
+    return link_status == model::link_status::active && is_enabled()
+           && should_start_impl(shard, current_node);
 }
 
 /// Returns true if the task should be stopped on the current node shard
 bool task::should_stop(
-  ss::shard_id shard, ::model::node_id current_node) const {
+  model::link_status, ss::shard_id shard, ::model::node_id current_node) const {
     if (get_state() == model::task_state::stopped) {
         return false;
     }
@@ -216,12 +219,15 @@ bool task::should_stop(
 }
 
 bool task::should_pause(
-  ss::shard_id shard, ::model::node_id current_node) const {
+  model::link_status link_status,
+  ss::shard_id shard,
+  ::model::node_id current_node) const {
     if (get_state() == model::task_state::paused) {
         return false;
     }
-    // A paused task is one that is disabled but can be resumed later
-    return !is_enabled() && should_start_impl(shard, current_node);
+    // A task can be paused if it is startable
+    return should_start_impl(shard, current_node)
+           && (!is_enabled() || link_status == model::link_status::paused);
 }
 
 const ss::sstring& task::name() const noexcept { return _name; }
