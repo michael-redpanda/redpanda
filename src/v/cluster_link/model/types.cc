@@ -204,6 +204,7 @@ link_configuration link_configuration::copy() const {
     copy.consumer_groups_mirroring_cfg = consumer_groups_mirroring_cfg.copy();
     copy.security_settings_sync_cfg = security_settings_sync_cfg.copy();
     copy.schema_registry_sync_cfg = schema_registry_sync_cfg;
+    copy.paused = paused;
     return copy;
 }
 
@@ -716,11 +717,13 @@ auto fmt::formatter<cluster_link::model::link_configuration>::format(
     return fmt::format_to(
       ctx.out(),
       "{{topic_metadata_mirroring_cfg: {}, consumer_groups_mirroring_cfg: {}, "
-      "security_settings_sync_cfg: {}, schema_registry_sync_cfg: {}}}",
+      "security_settings_sync_cfg: {}, schema_registry_sync_cfg: {}, paused: "
+      "{}}}",
       cfg.topic_metadata_mirroring_cfg,
       cfg.consumer_groups_mirroring_cfg,
       cfg.security_settings_sync_cfg,
-      cfg.schema_registry_sync_cfg);
+      cfg.schema_registry_sync_cfg,
+      cfg.paused);
 }
 
 auto fmt::

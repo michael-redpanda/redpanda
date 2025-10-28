@@ -48,6 +48,8 @@ using uuid_t = named_type<uuid_t, struct uuid_tag>;
 using name_t = named_type<ss::sstring, struct name_tag>;
 /// Type to indicate if the task is enabled or not
 using enabled_t = ss::bool_class<struct enabled_tag>;
+/// Type to indicate if the link is paused or
+using paused_t = ss::bool_class<struct paused_tag>;
 
 inline auto required_topic_properties_to_sync = std::to_array<std::string_view>(
   {
@@ -769,6 +771,8 @@ struct link_configuration
     security_settings_sync_config security_settings_sync_cfg;
     /// Configuration for syncing schema registry
     schema_registry_sync_config schema_registry_sync_cfg;
+    /// Indicates if the link is paused
+    paused_t paused{paused_t::no};
 
     friend bool operator==(const link_configuration&, const link_configuration&)
       = default;
@@ -778,7 +782,8 @@ struct link_configuration
           topic_metadata_mirroring_cfg,
           consumer_groups_mirroring_cfg,
           security_settings_sync_cfg,
-          schema_registry_sync_cfg);
+          schema_registry_sync_cfg,
+          paused);
     }
 
     link_configuration copy() const;
