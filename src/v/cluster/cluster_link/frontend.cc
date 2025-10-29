@@ -1149,6 +1149,34 @@ ss::future<errc> frontend::failover_link_topics(
           id);
         co_return map_errc(errors.front());
     }
+
+    // Now that all topics are marked for failing over, we will pause the link
+    meta = _table->find_link_by_id(id);
+    if (!meta.has_value()) {
+        // It is possible that the link was deleted while we were failing over
+        // In this case, just return success;
+        co_return errc::success;
+    }
+    auto update = meta->get().copy();
+    update.configuration.paused = ::cluster_link::model::paused_t::yes;
+
+    update_cluster_link_configuration_cmd update_cmd{
+      .connection = std::move(update.connection),
+      .link_config = std::move(update.configuration),
+    };
+
+    auto ec = co_await update_cluster_link_configuration(
+      id, std::move(update_cmd), timeout);
+
+    if (ec != errc::success) {
+        vlog(
+          cluster::clusterlog.warn,
+          "Failed to pause link id {} after failing over topics: {}",
+          id,
+          ec);
+        co_return ec;
+    }
+
     co_return errc::success;
 }
 } // namespace cluster::cluster_link
