@@ -361,6 +361,9 @@ create_link_configuration(const shadow_link& sl) {
     config.schema_registry_sync_cfg = create_schema_registry_sync_config(
       sl.get_configurations().get_schema_registry_sync_options());
 
+    config.paused = cluster_link::model::paused_t{
+      sl.get_configurations().get_pause()};
+
     return config;
 }
 
@@ -963,6 +966,8 @@ create_shadow_link_configuration(const cluster_link::model::metadata& md) {
     configurations.set_schema_registry_sync_options(
       create_schema_registry_sync_options(
         md.configuration.schema_registry_sync_cfg));
+
+    configurations.set_pause(bool(md.configuration.paused));
 
     return configurations;
 }

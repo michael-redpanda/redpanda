@@ -58,6 +58,7 @@ TEST(converter_test, create_to_metadata_no_authn) {
     EXPECT_TRUE(md.configuration.topic_metadata_mirroring_cfg.is_enabled);
     EXPECT_TRUE(md.configuration.consumer_groups_mirroring_cfg.is_enabled);
     EXPECT_TRUE(md.configuration.security_settings_sync_cfg.is_enabled);
+    EXPECT_FALSE(md.configuration.paused);
 }
 
 TEST(converter_test, create_to_metadata_tasks_disabled) {
@@ -85,6 +86,7 @@ TEST(converter_test, create_to_metadata_tasks_disabled) {
     security_settings_sync_options.set_paused(true);
     shadow_link_configurations.set_security_sync_options(
       std::move(security_settings_sync_options));
+    shadow_link_configurations.set_pause(true);
 
     shadow_link.set_configurations(std::move(shadow_link_configurations));
     shadow_link.set_name(ss::sstring{name});
@@ -95,6 +97,7 @@ TEST(converter_test, create_to_metadata_tasks_disabled) {
     EXPECT_FALSE(md.configuration.topic_metadata_mirroring_cfg.is_enabled);
     EXPECT_FALSE(md.configuration.consumer_groups_mirroring_cfg.is_enabled);
     EXPECT_FALSE(md.configuration.security_settings_sync_cfg.is_enabled);
+    EXPECT_TRUE(md.configuration.paused);
 }
 
 TEST(converter_test, create_no_bootstrap) {
