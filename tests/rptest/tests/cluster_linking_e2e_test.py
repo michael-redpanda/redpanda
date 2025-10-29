@@ -2659,6 +2659,13 @@ class ShadowLinkTopicFailoverTests(ShadowLinkPreAllocTestBase):
             if with_failures:
                 sleep(5)
             self.failover_link(name="test-link")
+            link = self.get_link(name="test-link")
+            assert link.status.state == shadow_link_pb2.SHADOW_LINK_STATE_PAUSED, (
+                f"Expected link state to be {shadow_link_pb2.SHADOW_LINK_STATE_PAUSED} but is in state {link.status.state}"
+            )
+            assert link.configurations.pause is True, (
+                "Expected link to be paused after failover"
+            )
             self.wait_for_link_failover(link="test-link")
 
         self._produce_to_topics(
