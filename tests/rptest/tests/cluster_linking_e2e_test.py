@@ -1380,6 +1380,97 @@ class ShadowLinkBasicTests(ShadowLinkTestBase):
         ):
             self._execute_task_pausing(num_topics=num_topics)
 
+    @cluster(num_nodes=7)
+    def test_link_pausing(self):
+        """
+        This test will verify that pausing and resuming the cluster link works as expected.
+        """
+
+        shadow_link = self.create_link("test-link")
+        shadow_link.configurations.pause = True
+        update_mask = google.protobuf.field_mask_pb2.FieldMask(
+            paths=["configurations.pause"]
+        )
+        self.logger.debug("Pausing cluster link")
+        self.update_link(shadow_link=shadow_link, update_mask=update_mask)
+
+        # Now create a topic, ACLs, and consumer groups in the source cluster and validate
+        # that they are not created on the shadow
+
+        topic = TopicSpec(name="source-topic")
+        self.source_default_client().create_topic(topic)
+
+        self.source_cluster_rpk.acl_create_allow_cluster(username="admin", op="ALL")
+
+        KgoVerifierProducer.oneshot(
+            self.test_context, self.source_cluster.service, topic.name, 128, 10000
+        )
+
+        consumer = KgoVerifierConsumerGroupConsumer(
+            self.test_context,
+            self.source_cluster.service,
+            topic=topic.name,
+            group_name="test_group",
+            msg_size=128,
+            readers=1,
+        )
+        consumer.start()
+        consumer.wait()
+        consumer.stop()
+        description = self.source_cluster_rpk.group_describe(group="test_group")
+        self.logger.info(f"source_state: {description}")
+
+        def _group_present_in_target_cluster():
+            groups = self.target_cluster_rpk.group_list()
+
+            return any(g.group == "test_group" for g in groups)
+
+        def _acls_present_in_target_cluster():
+            acls = self.target_cluster_rpk.acl_list(format="json")["matches"]
+            self.logger.info(f"Target cluster ACLs: {acls}")
+
+            return len(acls) != 0
+
+        with expect_exception(ducktape.errors.TimeoutError, lambda _: True):
+            wait_until(_group_present_in_target_cluster, timeout_sec=5, backoff_sec=1)
+
+        with expect_exception(ducktape.errors.TimeoutError, lambda _: True):
+            wait_until(_acls_present_in_target_cluster, timeout_sec=5, backoff_sec=1)
+
+        with expect_exception(ducktape.errors.TimeoutError, lambda _: True):
+            wait_until(
+                lambda: self.topic_exists_in_target(topic=topic.name),
+                timeout_sec=5,
+                backoff_sec=1,
+            )
+
+        # Now unpause the link and verify that everything gets replicated
+
+        shadow_link = self.get_link("test-link")
+        shadow_link.configurations.pause = False
+        update_mask = google.protobuf.field_mask_pb2.FieldMask(
+            paths=["configurations.pause"]
+        )
+        self.logger.debug("Resuming cluster link")
+        self.update_link(shadow_link=shadow_link, update_mask=update_mask)
+
+        wait_until(
+            lambda: self.topic_exists_in_target(topic=topic.name),
+            timeout_sec=5,
+            backoff_sec=1,
+        )
+
+        wait_until(_acls_present_in_target_cluster, timeout_sec=5, backoff_sec=1)
+        wait_until(_group_present_in_target_cluster, timeout_sec=5, backoff_sec=1)
+
+        def wait_for_hwm():
+            partition_info = list(self.target_cluster_rpk.describe_topic(topic.name))
+            for p in partition_info:
+                if p.id == 0:
+                    return p.high_watermark >= 10000
+
+        wait_until(wait_for_hwm, timeout_sec=30, backoff_sec=1)
+
 
 class ShadowLinkingReplicationTests(ShadowLinkPreAllocTestBase):
     def _get_shadow_topic(
@@ -1831,6 +1922,67 @@ class ShadowLinkingReplicationTests(ShadowLinkPreAllocTestBase):
         assert all(ts == expected_timestamps[o] for o, ts in consumed.items()), (
             f"Timestamps don't match {expected_timestamps=} vs {consumed=}"
         )
+
+    @cluster(num_nodes=8)
+    @matrix(
+        shuffle_leadership=[True, False],
+    )
+    def test_replication_while_pausing_unpausing(self, shuffle_leadership: bool):
+        """
+        This test will rapidly toggle the link to pause and unpause while shuffling leadership
+        of the shadow topic's partitions.  Meanwhile it will run a producer/consumer to verify that
+        replication continues to work as expected.
+        """
+        partition_count = 5
+        topic = TopicSpec(
+            name="source-topic", partition_count=partition_count, replication_factor=3
+        )
+
+        self.source_default_client().create_topic(topic)
+        self.create_link("test-link")
+
+        self.target_cluster.service.wait_until(
+            lambda: self.topic_exists_in_target(topic.name),
+            timeout_sec=30,
+            backoff_sec=1,
+            err_msg=f"Topic {topic.name} not found in target cluster",
+        )
+
+        self.stop_event = threading.Event()
+
+        def toggle_link_paused(link_name: str):
+            state: bool = False
+            while True:
+                if self.stop_event.is_set():
+                    self.logger.info("Stopping toggle_link_paused")
+                    break
+
+                state = not state
+                created_link = self.get_link(link_name)
+                created_link.configurations.pause = state
+                update_mask = google.protobuf.field_mask_pb2.FieldMask(
+                    paths=["configurations.pause"]
+                )
+                self.logger.debug(f"{'Disabling' if state else 'Enabling'} pause")
+                self.update_link(shadow_link=created_link, update_mask=update_mask)
+                time.sleep(1)  # Small delay between toggles
+
+        with self.leadership_shuffler(
+            redpanda=self.target_cluster.service,
+            topic=topic.name,
+            enabled=shuffle_leadership,
+        ):
+            toggle_thread = threading.Thread(
+                target=toggle_link_paused, args=("test-link",)
+            )
+            toggle_thread.start()
+
+            self.start_producer_consumer(
+                topic=topic.name, msg_size=128, msg_cnt=1000000
+            )
+            self.verify()
+            self.stop_event.set()
+            toggle_thread.join(timeout=30)
 
 
 class ShadowLinkConsumeGroupsMirroringTest(ShadowLinkTestBase):
