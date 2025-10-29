@@ -235,6 +235,11 @@ message ShadowLinkConfigurations {
     SecuritySettingsSyncOptions security_sync_options = 4;
     // Schema Registry sync options
     SchemaRegistrySyncOptions schema_registry_sync_options = 5;
+    // Flag used to pause/unpause the Shadow Link.  If the link is paused, then
+    // all Shadow Topic replication will be halted and any metadata syncing
+    // tests (ACLs, Consumer Groups, Topics) will also be paused until the link
+    // is unpaused.
+    bool pause = 6;
 }
 // Options for the client link
 message ShadowLinkClientOptions {

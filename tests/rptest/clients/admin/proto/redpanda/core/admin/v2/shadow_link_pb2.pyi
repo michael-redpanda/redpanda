@@ -559,6 +559,9 @@ class ShadowLinkConfigurations(google.protobuf.message.Message):
     CONSUMER_OFFSET_SYNC_OPTIONS_FIELD_NUMBER: builtins.int
     SECURITY_SYNC_OPTIONS_FIELD_NUMBER: builtins.int
     SCHEMA_REGISTRY_SYNC_OPTIONS_FIELD_NUMBER: builtins.int
+    PAUSE_FIELD_NUMBER: builtins.int
+    pause: builtins.bool
+    'Flag used to pause/unpause the Shadow Link.  If the link is paused, then\n    all Shadow Topic replication will be halted and any metadata syncing\n    tests (ACLs, Consumer Groups, Topics) will also be paused until the link\n    is unpaused.\n    '
 
     @property
     def client_options(self) -> global___ShadowLinkClientOptions:
@@ -580,13 +583,13 @@ class ShadowLinkConfigurations(google.protobuf.message.Message):
     def schema_registry_sync_options(self) -> global___SchemaRegistrySyncOptions:
         """Schema Registry sync options"""
 
-    def __init__(self, *, client_options: global___ShadowLinkClientOptions | None=..., topic_metadata_sync_options: global___TopicMetadataSyncOptions | None=..., consumer_offset_sync_options: global___ConsumerOffsetSyncOptions | None=..., security_sync_options: global___SecuritySettingsSyncOptions | None=..., schema_registry_sync_options: global___SchemaRegistrySyncOptions | None=...) -> None:
+    def __init__(self, *, client_options: global___ShadowLinkClientOptions | None=..., topic_metadata_sync_options: global___TopicMetadataSyncOptions | None=..., consumer_offset_sync_options: global___ConsumerOffsetSyncOptions | None=..., security_sync_options: global___SecuritySettingsSyncOptions | None=..., schema_registry_sync_options: global___SchemaRegistrySyncOptions | None=..., pause: builtins.bool=...) -> None:
         ...
 
     def HasField(self, field_name: typing.Literal['client_options', b'client_options', 'consumer_offset_sync_options', b'consumer_offset_sync_options', 'schema_registry_sync_options', b'schema_registry_sync_options', 'security_sync_options', b'security_sync_options', 'topic_metadata_sync_options', b'topic_metadata_sync_options']) -> builtins.bool:
         ...
 
-    def ClearField(self, field_name: typing.Literal['client_options', b'client_options', 'consumer_offset_sync_options', b'consumer_offset_sync_options', 'schema_registry_sync_options', b'schema_registry_sync_options', 'security_sync_options', b'security_sync_options', 'topic_metadata_sync_options', b'topic_metadata_sync_options']) -> None:
+    def ClearField(self, field_name: typing.Literal['client_options', b'client_options', 'consumer_offset_sync_options', b'consumer_offset_sync_options', 'pause', b'pause', 'schema_registry_sync_options', b'schema_registry_sync_options', 'security_sync_options', b'security_sync_options', 'topic_metadata_sync_options', b'topic_metadata_sync_options']) -> None:
         ...
 global___ShadowLinkConfigurations = ShadowLinkConfigurations
 
