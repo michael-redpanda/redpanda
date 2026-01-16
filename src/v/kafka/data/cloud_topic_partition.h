@@ -57,8 +57,10 @@ public:
 
     bool is_leader() const final;
 
-    ss::future<error_code>
-      prefix_truncate(model::offset, ss::lowres_clock::time_point) final;
+    ss::future<error_code> prefix_truncate(
+      model::offset,
+      ss::lowres_clock::time_point,
+      allow_truncate_above_hwm = allow_truncate_above_hwm::no) final;
 
     ss::future<std::error_code> linearizable_barrier() final;
 

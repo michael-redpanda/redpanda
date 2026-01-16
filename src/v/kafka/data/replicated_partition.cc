@@ -527,14 +527,15 @@ replicated_partition::get_leader_epoch_last_offset_unbounded(
 
 ss::future<error_code> replicated_partition::prefix_truncate(
   model::offset kafka_truncation_offset,
-  ss::lowres_clock::time_point deadline) {
+  ss::lowres_clock::time_point deadline,
+  allow_truncate_above_hwm allow_above_hwm) {
     // truncation_offset < 0 cases have already been checked in
     // `kafka::prefix_truncate()` handler.
     if (kafka_truncation_offset <= start_offset()) {
         // No-op, return early.
         co_return kafka::error_code::none;
     }
-    if (kafka_truncation_offset > high_watermark()) {
+    if (!allow_above_hwm && kafka_truncation_offset > high_watermark()) {
         co_return error_code::offset_out_of_range;
     }
     model::offset rp_truncate_offset{};

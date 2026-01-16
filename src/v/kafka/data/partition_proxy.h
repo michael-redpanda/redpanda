@@ -21,10 +21,15 @@
 #include "storage/translating_reader.h"
 #include "storage/types.h"
 
+#include <seastar/util/bool_class.hh>
+
 #include <optional>
 #include <system_error>
 
 namespace kafka {
+
+using allow_truncate_above_hwm
+  = ss::bool_class<struct allow_truncate_above_hwm_tag>;
 
 /**
  * Describes single partition replica. Used by replica selector
@@ -69,10 +74,22 @@ public:
 
         virtual bool is_leader() const = 0;
         virtual ss::future<std::error_code> linearizable_barrier() = 0;
+<<<<<<< HEAD
         virtual ss::future<error_code>
           prefix_truncate(model::offset, ss::lowres_clock::time_point) = 0;
         virtual ss::future<storage::translating_reader>
           make_reader(kafka::log_reader_config) = 0;
+=======
+        virtual ss::future<error_code> prefix_truncate(
+          model::offset,
+          ss::lowres_clock::time_point,
+          allow_truncate_above_hwm = allow_truncate_above_hwm::no)
+          = 0;
+        virtual ss::future<storage::translating_reader> make_reader(
+          kafka::log_reader_config,
+          std::optional<model::timeout_clock::time_point>)
+          = 0;
+>>>>>>> 1a6f25f12b (kafka/data: add allow_truncate_above_hwm parameter to prefix_truncate)
         virtual ss::future<std::optional<storage::timequery_result>>
           timequery(storage::timequery_config) = 0;
         virtual ss::future<std::vector<model::tx_range>> aborted_transactions(
@@ -121,9 +138,11 @@ public:
         return _impl->linearizable_barrier();
     }
 
-    ss::future<error_code>
-    prefix_truncate(model::offset o, ss::lowres_clock::time_point deadline) {
-        return _impl->prefix_truncate(o, deadline);
+    ss::future<error_code> prefix_truncate(
+      model::offset o,
+      ss::lowres_clock::time_point deadline,
+      allow_truncate_above_hwm allow_above_hwm = allow_truncate_above_hwm::no) {
+        return _impl->prefix_truncate(o, deadline, allow_above_hwm);
     }
 
     bool is_leader() const { return _impl->is_leader(); }

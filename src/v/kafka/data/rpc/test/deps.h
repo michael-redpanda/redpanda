@@ -106,8 +106,10 @@ public:
     ss::future<std::error_code> linearizable_barrier() final {
         throw std::runtime_error("unimplemented");
     }
-    ss::future<kafka::error_code>
-    prefix_truncate(model::offset, ss::lowres_clock::time_point) final {
+    ss::future<kafka::error_code> prefix_truncate(
+      model::offset,
+      ss::lowres_clock::time_point,
+      kafka::allow_truncate_above_hwm) final {
         throw std::runtime_error("unimplemented");
     }
     ss::future<storage::translating_reader>

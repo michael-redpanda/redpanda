@@ -602,7 +602,9 @@ redpanda_cc_btest(
     deps = [
         "//src/v/cluster",
         "//src/v/kafka/data:partition_proxy",
+        "//src/v/kafka/protocol",
         "//src/v/model",
+        "//src/v/model/tests:random",
         "//src/v/raft",
         "//src/v/redpanda/tests:fixture",
         "//src/v/storage:record_batch_builder",

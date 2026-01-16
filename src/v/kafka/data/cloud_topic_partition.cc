@@ -183,7 +183,11 @@ cloud_topic_partition::get_leader_epoch_last_offset(
 }
 
 ss::future<error_code> cloud_topic_partition::prefix_truncate(
-  model::offset offset, ss::lowres_clock::time_point deadline) {
+  model::offset offset,
+  ss::lowres_clock::time_point deadline,
+  allow_truncate_above_hwm /*allow_above_hwm*/) {
+    // Note: allow_truncate_above_hwm is not used for cloud topics as the
+    // underlying frontend handles offset validation differently.
     auto result = co_await _fe->prefix_truncate(
       model::offset_cast(offset), deadline);
     co_return result.transform_error(map_errc).error_or(error_code::none);
