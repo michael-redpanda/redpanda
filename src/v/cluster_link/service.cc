@@ -552,7 +552,10 @@ public:
       ss::lowres_clock::time_point deadline) final {
         auto h = _gate.hold();
         co_return co_await kafka::make_partition_proxy(_partition)
-          .prefix_truncate(kafka::offset_cast(truncation_offset), deadline);
+          .prefix_truncate(
+            kafka::offset_cast(truncation_offset),
+            deadline,
+            kafka::allow_truncate_above_hwm::yes);
     }
 
     kafka::offset start_offset() final {
