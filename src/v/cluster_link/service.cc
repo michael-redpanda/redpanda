@@ -551,6 +551,22 @@ public:
       kafka::offset truncation_offset,
       ss::lowres_clock::time_point deadline) final {
         auto h = _gate.hold();
+        auto timeout
+          = std::chrono::duration_cast<::model::timeout_clock::duration>(
+            deadline - ss::lowres_clock::now());
+        auto err = co_await _stm->ensure_truncatable(
+          truncation_offset, timeout);
+        if (err != kafka::write_at_offset_stm::errc::success) {
+            vlog(
+              cllog.warn,
+              "[{}] Failed to ensure truncatable offset {}: {}, will be "
+              "retried later",
+              _partition->ntp(),
+              truncation_offset,
+              err);
+            // a blanket error to trigger a retry later
+            co_return kafka::error_code::offset_out_of_range;
+        }
         co_return co_await kafka::make_partition_proxy(_partition)
           .prefix_truncate(
             kafka::offset_cast(truncation_offset),
