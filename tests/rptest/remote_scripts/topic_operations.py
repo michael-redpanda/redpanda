@@ -43,18 +43,25 @@ def write_json(ioclass, data):
     ioclass.flush()
 
 
+class Creds:
+    username: str
+    password: str
+    mechanism: str
+
+
 class TopicSwarm:
     # Based on manual runs, maximum creation time
     # is 16 sec for a batch with 16384 topics
     create_topic_timeout_ms = 30 * 1000
     delete_topic_timeout_ms = 30 * 1000
 
-    def __init__(self, brokers, workers, issilent, logger):
+    def __init__(self, brokers, workers, issilent, logger, creds: Creds | None = None):
         self.logger = logger
         # Remove quotes if any
         self.brokers = brokers.strip('"').strip("'")
         self.workers = workers
         self.issilent = issilent
+        self.creds = creds
 
     @staticmethod
     def generate_topic_name(prefix, length) -> str:
@@ -81,6 +88,10 @@ class TopicSwarm:
             bootstrap_servers=self.brokers,
             request_timeout_ms=30000,
             api_version_auto_timeout_ms=3000,
+            sasl_mechanism=self.creds.mechanism if self.creds else None,
+            sasl_plain_username=self.creds.username if self.creds else None,
+            sasl_plain_password=self.creds.password if self.creds else None,
+            security_protocol="SASL_PLAINTEXT" if self.creds else "PLAINTEXT",
         )
 
     def create_many_topics(
@@ -366,7 +377,15 @@ commands = [COMMAND_CREATE, COMMAND_DELETE]
 
 def main(args):
     errorlevel = 0
-    tm = TopicSwarm(args.brokers, args.workers, args.issilent, logger=setup_logger())
+    creds = None
+    if args.user_name and args.password and args.mechanism:
+        creds = Creds()
+        creds.username = args.user_name
+        creds.password = args.password
+        creds.mechanism = args.mechanism
+    tm = TopicSwarm(
+        args.brokers, args.workers, args.issilent, logger=setup_logger(), creds=creds
+    )
 
     try:
         if args.command == COMMAND_CREATE:
@@ -452,6 +471,33 @@ if __name__ == "__main__":
         default=512,
         type=int,
         help="Number of topics in one batch.",
+    )
+
+    parser.add_argument(
+        "-u",
+        "--user-name",
+        dest="user_name",
+        default=None,
+        type=str,
+        help="Username to use when connecting to Kafka cluster",
+    )
+
+    parser.add_argument(
+        "-P",
+        "--password",
+        dest="password",
+        default=None,
+        type=str,
+        help="Password to use when connecting to Kafka cluster",
+    )
+
+    parser.add_argument(
+        "-m",
+        "--mechanism",
+        dest="mechanism",
+        default=None,
+        type=str,
+        help="SASL mechanism to use when connecting to Kafka cluster",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)

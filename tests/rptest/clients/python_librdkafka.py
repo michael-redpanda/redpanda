@@ -78,7 +78,7 @@ class PythonLibrdkafka:
     def get_producer(self) -> Producer:
         producer_conf = self._get_config()
         self._redpanda.logger.debug(f"{producer_conf}")
-        return Producer(producer_conf)
+        return Producer(producer_conf, logger=self._redpanda.logger)
 
     def get_consumer(self, extra_config: dict[str, Any] = {}):
         conf = self._get_config()
